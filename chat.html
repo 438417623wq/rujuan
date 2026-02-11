@@ -1,0 +1,2093 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIRP - Story</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
+  <script src="common.js?v=8"></script>
+  <style>
+    /* ============================================================
+       Chat Page - Complete Layout
+       ============================================================ */
+    .chat-app {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      width: 100%;
+    }
+
+    /* ---- Top Bar ---- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .topbar-center {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Story title - editable inline input */
+    .story-title {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--accent);
+      background: none;
+      border: none;
+      text-align: center;
+      outline: none;
+      max-width: 320px;
+      width: 100%;
+      padding: 2px 8px;
+      border-radius: var(--radius);
+      transition: all var(--transition);
+      cursor: pointer;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+    }
+    .story-title:hover {
+      background: var(--accent-dim);
+    }
+    .story-title:focus {
+      background: var(--bg-surface);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+      cursor: text;
+    }
+
+    /* Phase badge */
+    .phase-badge {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      flex-shrink: 0;
+      user-select: none;
+    }
+    .phase-badge.init {
+      background: rgba(201, 164, 76, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(201, 164, 76, 0.25);
+    }
+    .phase-badge.rp {
+      background: rgba(124, 184, 122, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(124, 184, 122, 0.25);
+    }
+
+    /* ---- Main Content Area ---- */
+    .main-content {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ---- Chat Column ---- */
+    .chat-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      position: relative;
+    }
+
+    /* ---- Messages Area ---- */
+    .messages-area {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 24px 20px 16px;
+      scroll-behavior: smooth;
+    }
+    .messages-list {
+      max-width: 780px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ---- Message Bubbles ---- */
+    .message {
+      position: relative;
+      animation: fadeIn 0.4s ease forwards;
+      opacity: 0;
+    }
+    .message:hover .message-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .message:hover .message-time {
+      opacity: 1;
+    }
+
+    /* AI message (left-aligned, story text) */
+    .message.assistant {
+      padding: 0;
+    }
+    .message.assistant .message-content {
+      font-family: var(--font-body);
+      font-size: 15.5px;
+      line-height: 1.85;
+      color: var(--text-primary);
+      letter-spacing: 0.015em;
+    }
+    .message.assistant .message-content strong {
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .message.assistant .message-content em {
+      color: var(--text-secondary);
+      font-style: italic;
+    }
+    .message.assistant .message-content .quote-text {
+      color: var(--accent);
+      font-style: italic;
+    }
+    .message.assistant .message-content hr.story-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 20px 0;
+    }
+
+    /* Decorative left accent bar for AI messages */
+    .message.assistant::before {
+      content: '';
+      position: absolute;
+      left: -16px;
+      top: 4px;
+      bottom: 4px;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--accent), transparent);
+      border-radius: 1px;
+      opacity: 0.4;
+    }
+
+    /* Abstract / details block within AI messages */
+    .message.assistant .message-content details {
+      margin-top: 16px;
+      padding: 10px 14px;
+      background: var(--accent-dim);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.6;
+      color: var(--text-secondary);
+    }
+    .message.assistant .message-content details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      user-select: none;
+      outline: none;
+      margin-bottom: 4px;
+    }
+    .message.assistant .message-content details summary::-webkit-details-marker {
+      color: var(--accent);
+    }
+    .message.assistant .message-content details[open] summary {
+      margin-bottom: 8px;
+    }
+
+    /* User message (right-aligned bubble) */
+    .message.user {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .message.user .message-bubble {
+      max-width: 75%;
+      background: var(--bg-glass-light);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-lg) var(--radius-lg) 4px var(--radius-lg);
+      padding: 12px 18px;
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--text-primary);
+      position: relative;
+    }
+
+    /* Hidden message (greyed out, strikethrough) */
+    .message.hidden-msg {
+      opacity: 0.35;
+    }
+    .message.hidden-msg .message-content,
+    .message.hidden-msg .message-bubble {
+      text-decoration: line-through;
+      text-decoration-color: var(--text-muted);
+    }
+
+    /* Message timestamp */
+    .message-time {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+    .message.user .message-time {
+      text-align: right;
+    }
+
+    /* Message action buttons (hover toolbar) */
+    .message-actions {
+      position: absolute;
+      top: -8px;
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--transition);
+      z-index: 10;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2px;
+      box-shadow: var(--shadow);
+    }
+    .message.assistant .message-actions {
+      right: 0;
+    }
+    .message.user .message-actions {
+      left: 0;
+    }
+    .message-actions .btn-icon {
+      width: 28px;
+      height: 28px;
+    }
+    .message-actions .btn-icon .icon {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* ---- Typing / Streaming Indicator ---- */
+    .typing-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 0;
+      animation: fadeIn 0.3s ease forwards;
+      opacity: 0;
+    }
+    .typing-dots {
+      display: flex;
+      gap: 4px;
+    }
+    .typing-dots span {
+      width: 6px;
+      height: 6px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.2s ease infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+    .typing-label {
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* Streaming cursor blink */
+    .streaming-cursor::after {
+      content: '';
+      display: inline-block;
+      width: 2px;
+      height: 1em;
+      background: var(--accent);
+      margin-left: 2px;
+      vertical-align: text-bottom;
+      animation: pulse 0.8s ease infinite;
+    }
+
+    /* ---- MVU Init Confirmation Bar ---- */
+    .mvu-confirm-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      background: rgba(201, 164, 76, 0.08);
+      border: 1px solid rgba(201, 164, 76, 0.2);
+      border-radius: var(--radius);
+      margin-top: 12px;
+      animation: fadeIn 0.4s ease forwards;
+      opacity: 0;
+      flex-wrap: wrap;
+    }
+    .mvu-confirm-bar p {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-secondary);
+      min-width: 180px;
+    }
+    .mvu-confirm-bar .btn {
+      font-size: 12px;
+      padding: 6px 14px;
+    }
+
+    /* ---- Empty State ---- */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 300px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 40px;
+    }
+    .empty-state-icon {
+      width: 64px;
+      height: 64px;
+      color: var(--accent);
+      opacity: 0.3;
+      margin-bottom: 16px;
+    }
+    .empty-state-icon svg {
+      width: 100%;
+      height: 100%;
+    }
+    .empty-state h3 {
+      font-family: var(--font-display);
+      font-size: 22px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    .empty-state p {
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 320px;
+    }
+
+    /* ---- Options Tags ---- */
+    .options-bar {
+      flex-shrink: 0;
+      padding: 6px 20px 2px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      max-width: 820px;
+      margin: 0 auto;
+    }
+    .option-tag {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      padding: 7px 16px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      max-width: 300px;
+    }
+    .option-tag:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--accent-dim);
+      transform: translateY(-1px);
+      box-shadow: 0 2px 12px rgba(201, 164, 76, 0.15);
+    }
+    .option-tag:active {
+      transform: translateY(0);
+    }
+    .option-type {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: var(--accent-dim);
+      color: var(--accent);
+      flex-shrink: 0;
+      letter-spacing: 0.5px;
+    }
+    .option-text {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    /* ---- Input Area ---- */
+    .input-area {
+      flex-shrink: 0;
+      padding: 12px 20px 16px;
+      background: linear-gradient(to top, var(--bg-glass) 80%, transparent);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .input-area.disabled {
+      pointer-events: none;
+      opacity: 0.5;
+    }
+    .input-wrapper {
+      max-width: 780px;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 8px 12px;
+      transition: border-color var(--transition), box-shadow var(--transition);
+    }
+    .input-wrapper:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+    .input-textarea {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.55;
+      resize: none;
+      outline: none;
+      min-height: 22px;
+      max-height: 160px;
+      padding: 4px 0;
+      overflow-y: auto;
+    }
+    .input-textarea::placeholder {
+      color: var(--text-muted);
+    }
+    .input-textarea:focus {
+      box-shadow: none;
+    }
+    .send-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+      transition: all var(--transition);
+      flex-shrink: 0;
+    }
+    .send-btn.ready {
+      background: linear-gradient(135deg, var(--accent), #d4b05c);
+      color: #1a1510;
+    }
+    .send-btn.ready:hover {
+      filter: brightness(1.15);
+      transform: scale(1.05);
+    }
+    .send-btn.idle {
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      cursor: default;
+    }
+    .send-btn.streaming {
+      background: var(--danger);
+      color: #fff;
+    }
+    .send-btn.streaming:hover {
+      filter: brightness(1.15);
+    }
+    .send-btn .icon {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ---- MVU Sidebar ---- */
+    .mvu-sidebar {
+      width: 360px;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      overflow-y: scroll;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      padding: 16px;
+      transform: translateX(0);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.35s ease,
+                  width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 1;
+    }
+    .mvu-sidebar.collapsed {
+      width: 0;
+      padding: 0;
+      opacity: 0;
+      transform: translateX(360px);
+      border-left: none;
+      overflow: hidden;
+    }
+    .mvu-sidebar-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mvu-sidebar-title {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.3px;
+    }
+    .mvu-placeholder {
+      text-align: center;
+      padding: 32px 12px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+      line-height: 1.6;
+    }
+    .mvu-placeholder .icon {
+      width: 32px;
+      height: 32px;
+      color: var(--accent);
+      opacity: 0.25;
+      margin-bottom: 12px;
+    }
+    .mvu-content {
+      min-height: 40px;
+    }
+
+    /* ---- Scroll-to-bottom button ---- */
+    .scroll-bottom-btn {
+      position: absolute;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border-strong);
+      color: var(--text-secondary);
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 50;
+    }
+    .scroll-bottom-btn.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+    .scroll-bottom-btn:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .scroll-bottom-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* ---- Edit Message Overlay ---- */
+    .edit-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 8000;
+      background: rgba(0,0,0,0.5);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .edit-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .edit-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 20px;
+      width: 90%;
+      max-width: 560px;
+      box-shadow: var(--shadow);
+    }
+    .edit-panel h3 {
+      font-family: var(--font-display);
+      font-size: 17px;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .edit-panel textarea {
+      min-height: 140px;
+      margin-bottom: 12px;
+    }
+    .edit-panel-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ---- Stream Status Indicator ---- */
+    .stream-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--text-muted);
+      animation: fadeIn 0.3s ease forwards;
+      opacity: 0;
+    }
+    .stream-status .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .stream-status.connecting .status-dot {
+      background: var(--accent);
+      animation: pulse 1.2s ease infinite;
+    }
+    .stream-status.streaming .status-dot {
+      background: var(--success);
+      animation: pulse 0.8s ease infinite;
+    }
+    .stream-status.retrying .status-dot {
+      background: var(--danger);
+      animation: pulse 1s ease infinite;
+    }
+    .stream-status .status-timer {
+      font-variant-numeric: tabular-nums;
+      color: var(--text-muted);
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    /* ---- Error Retry Bar (inline after failed message) ---- */
+    .error-retry-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      margin-top: 8px;
+      background: rgba(201, 106, 90, 0.08);
+      border: 1px solid rgba(201, 106, 90, 0.2);
+      border-radius: var(--radius);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--danger);
+      animation: fadeIn 0.3s ease forwards;
+      opacity: 0;
+      flex-wrap: wrap;
+    }
+    .error-retry-bar .error-msg {
+      flex: 1;
+      min-width: 120px;
+      color: var(--text-secondary);
+    }
+    .error-retry-bar .error-msg strong {
+      color: var(--danger);
+      font-weight: 600;
+    }
+    .error-retry-bar .btn {
+      font-size: 12px;
+      padding: 5px 12px;
+    }
+
+    /* ---- Offline Banner ---- */
+    .offline-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      background: var(--danger);
+      color: #fff;
+      text-align: center;
+      padding: 6px 16px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      transform: translateY(-100%);
+      transition: transform 0.3s ease;
+    }
+    .offline-banner.visible {
+      transform: translateY(0);
+    }
+
+    /* ---- Partial response interrupted marker ---- */
+    .stream-interrupted {
+      display: inline-block;
+      padding: 2px 8px;
+      margin-left: 4px;
+      font-family: var(--font-ui);
+      font-size: 11px;
+      color: var(--danger);
+      opacity: 0.7;
+      border-left: 2px solid var(--danger);
+    }
+
+    /* ---- Copy success feedback ---- */
+    @keyframes copyFlash {
+      0% { background: var(--accent-dim); }
+      100% { background: transparent; }
+    }
+    .copy-flash {
+      animation: copyFlash 0.6s ease;
+    }
+
+    /* ---- Mobile Overlay for sidebar ---- */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 199;
+      background: rgba(0,0,0,0.4);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      pointer-events: none;
+    }
+    .sidebar-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 768px) {
+      .sidebar-overlay {
+        display: block;
+      }
+      .mvu-sidebar {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 200;
+        width: 360px;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+      }
+      .mvu-sidebar.collapsed {
+        transform: translateX(100%);
+      }
+      .message.user .message-bubble {
+        max-width: 90%;
+      }
+      .story-title {
+        max-width: 160px;
+        font-size: 17px;
+      }
+      .messages-area {
+        padding: 16px 14px 12px;
+      }
+      .input-area {
+        padding: 10px 14px 14px;
+      }
+      .mvu-confirm-bar, .error-retry-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+      .mvu-confirm-bar .btn, .error-retry-bar .btn {
+        text-align: center;
+        justify-content: center;
+        min-height: 44px;
+      }
+      /* Mobile: disable all backdrop-filter to prevent GPU blur artifacts */
+      .topbar,
+      .message.user .message-bubble,
+      .input-area,
+      .scroll-bottom-btn,
+      .edit-overlay,
+      .sidebar-overlay,
+      .mvu-sidebar {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+      .topbar,
+      .input-area {
+        background: var(--bg-surface);
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="chat-app" id="app">
+
+  <!-- Top Bar -->
+  <div class="topbar">
+    <div class="topbar-left">
+      <button class="btn-icon" id="backBtn" title="返回" onclick="goBack()">
+        <span class="icon" style="width:20px;height:20px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        </span>
+      </button>
+    </div>
+    <div class="topbar-center">
+      <input type="text" class="story-title" id="storyTitle" value="新故事"
+             onfocus="this.select()" onblur="saveTitle()" onkeydown="if(event.key==='Enter'){this.blur();}">
+      <span class="phase-badge init" id="phaseBadge">初始化</span>
+    </div>
+    <div class="topbar-right">
+      <button class="btn-icon" id="sidebarToggle" title="状态栏" onclick="toggleSidebar()">
+        <span class="icon" style="width:20px;height:20px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+        </span>
+      </button>
+      <button class="btn-icon" id="exportBtn" title="导出" onclick="exportConversation()">
+        <span class="icon" style="width:20px;height:20px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main-content">
+
+    <!-- Chat Column -->
+    <div class="chat-column">
+
+      <!-- Messages Area -->
+      <div class="messages-area" id="messagesArea">
+        <div class="messages-list" id="messagesList"></div>
+      </div>
+
+      <!-- Scroll to bottom -->
+      <button class="scroll-bottom-btn" id="scrollBottomBtn" onclick="scrollToBottom(true)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      <!-- Options Bar -->
+      <div class="options-bar" id="optionsBar" style="display:none;"></div>
+
+      <!-- Input Area -->
+      <div class="input-area" id="inputArea">
+        <div class="input-wrapper">
+          <textarea class="input-textarea" id="inputTextarea"
+                    placeholder="写下你的行动..."
+                    rows="1"
+                    onkeydown="handleInputKeydown(event)"></textarea>
+          <button class="send-btn idle" id="sendBtn" onclick="handleSend()">
+            <span class="icon" style="width:18px;height:18px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MVU Sidebar -->
+    <div class="mvu-sidebar collapsed" id="mvuSidebar">
+      <div class="mvu-sidebar-header">
+        <span class="mvu-sidebar-title">Status Panel</span>
+        <button class="btn-icon" onclick="toggleSidebar()" style="width:28px;height:28px;">
+          <span class="icon" style="width:16px;height:16px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </span>
+        </button>
+      </div>
+      <div class="mvu-content" id="mvuContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Offline banner -->
+<div class="offline-banner" id="offlineBanner">网络已断开，请检查网络连接</div>
+
+<!-- Sidebar overlay for mobile -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<!-- Edit message overlay (hidden by default) -->
+<div class="edit-overlay" id="editOverlay">
+  <div class="edit-panel">
+    <h3>编辑消息</h3>
+    <textarea id="editTextarea"></textarea>
+    <div class="edit-panel-actions">
+      <button class="btn btn-secondary" onclick="closeEdit()">取消</button>
+      <button class="btn btn-primary" onclick="confirmEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// State
+// ============================================================
+let conversation = null;
+let isStreaming = false;
+let streamAborted = false;
+let editingMsgId = null;
+let sidebarOpen = false;
+let userScrolledUp = false;
+let pendingMvuInit = null;
+let currentAbortController = null;
+let streamStartTime = 0;
+let streamStatusTimer = null;
+let lastFailedUserMsgId = null;
+
+// ============================================================
+// Initialization
+// ============================================================
+document.addEventListener('DOMContentLoaded', init);
+
+function init() {
+  const params = new URLSearchParams(location.search);
+  const convId = params.get('id');
+
+  if (!convId) {
+    goBack();
+    return;
+  }
+
+  conversation = Storage.getConversation(convId);
+  if (!conversation) {
+    UI.showToast('会话不存在', 'error');
+    setTimeout(() => goBack(), 1200);
+    return;
+  }
+
+  // Ensure summary object exists
+  if (!conversation.summary) {
+    const settings = Storage.getSettings();
+    conversation.summary = { text: '', lastMergedIdx: 0, interval: settings.summaryInterval || 50 };
+    Storage.saveConversation(conversation);
+  }
+
+  // Mobile: move sidebar out of overflow:hidden parent to fix touch scrolling
+  if (window.innerWidth <= 768) {
+    document.body.appendChild(document.getElementById('mvuSidebar'));
+  }
+
+  // Render initial state
+  renderTitle();
+  renderPhaseBadge();
+  renderAllMessages();
+  renderMvuSidebar();
+  setupAutoGrow();
+  setupScrollDetection();
+  updateSendButton();
+
+  // In RP phase, open sidebar by default on desktop
+  if (conversation.phase === 'rp' && conversation.mvu?.html && window.innerWidth > 768) {
+    toggleSidebar();
+  }
+
+  // Offline detection
+  setupOfflineDetection();
+
+  // Focus input
+  document.getElementById('inputTextarea').focus();
+  log('Chat initialized', { id: conversation.id, phase: conversation.phase, msgCount: conversation.messages.length });
+}
+
+// ============================================================
+// Navigation
+// ============================================================
+function goBack() {
+  location.href = 'index.html?v=8';
+}
+
+// ============================================================
+// Title
+// ============================================================
+function renderTitle() {
+  const el = document.getElementById('storyTitle');
+  el.value = conversation.name || '新故事';
+  document.title = `AIRP - ${conversation.name || '新故事'}`;
+}
+
+function saveTitle() {
+  const el = document.getElementById('storyTitle');
+  const newName = el.value.trim() || '新故事';
+  el.value = newName;
+  if (conversation.name !== newName) {
+    conversation.name = newName;
+    Storage.saveConversation(conversation);
+    document.title = `AIRP - ${newName}`;
+  }
+}
+
+// ============================================================
+// Phase Badge
+// ============================================================
+function renderPhaseBadge() {
+  const badge = document.getElementById('phaseBadge');
+  if (conversation.phase === 'rp') {
+    badge.textContent = 'RP';
+    badge.className = 'phase-badge rp';
+  } else {
+    badge.textContent = '初始化';
+    badge.className = 'phase-badge init';
+  }
+}
+
+// ============================================================
+// Message Rendering
+// ============================================================
+
+/**
+ * Render AI message content with proper handling of <details> blocks.
+ * Strategy:
+ *   1. Clean MVU/story_setting code blocks from text
+ *   2. Separate the abstract (<details>) from the story body
+ *   3. Render story body through renderMarkdown (which escapes HTML)
+ *   4. Append abstract as raw trusted HTML
+ */
+function renderAiContent(rawContent) {
+  if (!rawContent) return '';
+
+  // Step 1: Clean code blocks (mvu, story_setting)
+  const cleaned = MVU.cleanText(rawContent);
+
+  // Step 2: Extract abstract (the <details> block)
+  const abstract = Summary.parseAbstract(cleaned);
+  const body = Summary.cleanAbstract(cleaned);
+
+  // Step 3: Render body text through markdown renderer
+  let html = Utils.renderMarkdown(body);
+
+  // Step 4: Append abstract as raw HTML (trusted AI output)
+  if (abstract) {
+    html += '<br>' + abstract;
+  }
+
+  return html;
+}
+
+function renderAllMessages() {
+  const list = document.getElementById('messagesList');
+  list.innerHTML = '';
+
+  if (conversation.messages.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">${Icons.book}</div>
+        <h3>Begin Your Story</h3>
+        <p>${conversation.phase === 'init'
+          ? '描述你想要的故事设定，角色和世界观。AI 将与你共同创作一段独特的叙事。'
+          : '故事已就绪，写下你的第一个行动来开始冒险。'}</p>
+      </div>`;
+    return;
+  }
+
+  for (let i = 0; i < conversation.messages.length; i++) {
+    const msg = conversation.messages[i];
+    const el = createMessageElement(msg, i);
+    list.appendChild(el);
+  }
+
+  scrollToBottom(false);
+}
+
+function createMessageElement(msg, idx) {
+  const wrapper = document.createElement('div');
+  wrapper.className = `message ${msg.role}${msg.hidden ? ' hidden-msg' : ''}`;
+  wrapper.id = `msg-${msg.id || idx}`;
+  wrapper.dataset.msgIdx = idx;
+
+  // Build action buttons
+  const msgIdAttr = msg.id || idx;
+  const actionsHtml = `
+    <div class="message-actions">
+      <button class="btn-icon" title="复制" onclick="copyMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${Icons.copy}</span>
+      </button>
+      <button class="btn-icon" title="编辑" onclick="editMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${Icons.edit}</span>
+      </button>
+      <button class="btn-icon" title="${msg.hidden ? '显示' : '隐藏'}" onclick="toggleHideMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${msg.hidden ? Icons.eye : Icons.eyeOff}</span>
+      </button>
+      <button class="btn-icon" title="删除" onclick="deleteMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${Icons.trash}</span>
+      </button>
+    </div>`;
+
+  const timeStr = msg.timestamp ? Utils.formatTime(msg.timestamp) : '';
+  const timeHtml = timeStr ? `<div class="message-time">${timeStr}</div>` : '';
+
+  if (msg.role === 'assistant') {
+    const rendered = renderAiContent(msg.content);
+    wrapper.innerHTML = `
+      ${actionsHtml}
+      <div class="message-content">${rendered}</div>
+      ${timeHtml}`;
+  } else {
+    const escaped = Utils.escapeHtml(msg.content);
+    wrapper.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:flex-end;width:100%;">
+        ${actionsHtml}
+        <div class="message-bubble">${escaped.replace(/\n/g, '<br>')}</div>
+        ${timeHtml}
+      </div>`;
+  }
+
+  return wrapper;
+}
+
+function appendMessageElement(msg) {
+  const list = document.getElementById('messagesList');
+  // Remove empty state if present
+  const empty = list.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const idx = conversation.messages.indexOf(msg);
+  const el = createMessageElement(msg, idx >= 0 ? idx : conversation.messages.length - 1);
+  list.appendChild(el);
+  scrollToBottom(false);
+  return el;
+}
+
+function updateAssistantBubble(msgId, content, streaming) {
+  const wrapper = document.getElementById(`msg-${msgId}`);
+  if (!wrapper) return;
+  const contentEl = wrapper.querySelector('.message-content');
+  if (!contentEl) return;
+
+  if (streaming) {
+    // During streaming, just do basic markdown render (no abstract parsing yet, still coming)
+    const cleaned = MVU.cleanText(content);
+    const body = Summary.cleanAbstract(cleaned);
+    contentEl.innerHTML = Utils.renderMarkdown(body);
+    contentEl.classList.add('streaming-cursor');
+  } else {
+    // Final render with full abstract support
+    contentEl.innerHTML = renderAiContent(content);
+    contentEl.classList.remove('streaming-cursor');
+  }
+}
+
+// ============================================================
+// Options Bar
+// ============================================================
+function renderOptionsBar(rawContent) {
+  const bar = document.getElementById('optionsBar');
+  if (!bar) return;
+
+  const options = MVU.parseOptions(rawContent);
+  if (!options || options.length === 0 || conversation.phase === 'init') {
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+
+  bar.innerHTML = options.map(opt => {
+    // Parse "1.(类型)：行动描述" or "1.(类型): 行动描述" or plain text
+    const match = opt.match(/^\d+\.\s*\(([^)]+)\)\s*[：:]\s*(.+)$/);
+    if (match) {
+      const type = match[1];
+      const desc = match[2];
+      return `<button class="option-tag" onclick="selectOption(this)" data-action="${Utils.escapeHtml(desc)}">
+        <span class="option-type">${Utils.escapeHtml(type)}</span>
+        <span class="option-text">${Utils.escapeHtml(desc)}</span>
+      </button>`;
+    }
+    // Plain text fallback
+    const plain = opt.replace(/^\d+\.\s*/, '');
+    return `<button class="option-tag" onclick="selectOption(this)" data-action="${Utils.escapeHtml(plain)}">
+      <span class="option-text">${Utils.escapeHtml(plain)}</span>
+    </button>`;
+  }).join('');
+  bar.style.display = 'flex';
+}
+
+function selectOption(el) {
+  const text = el.dataset.action || el.textContent.trim();
+  document.getElementById('inputTextarea').value = text;
+  handleSend();
+}
+
+function clearOptionsBar() {
+  const bar = document.getElementById('optionsBar');
+  if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+}
+
+// ============================================================
+// MVU Sidebar
+// ============================================================
+function toggleSidebar() {
+  const sidebar = document.getElementById('mvuSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  sidebarOpen = !sidebarOpen;
+
+  if (sidebarOpen) {
+    sidebar.classList.remove('collapsed');
+    overlay.classList.add('visible');
+  } else {
+    sidebar.classList.add('collapsed');
+    overlay.classList.remove('visible');
+  }
+}
+
+function renderMvuSidebar() {
+  const container = document.getElementById('mvuContent');
+
+  if (conversation.phase === 'init' || !conversation.mvu?.html) {
+    container.innerHTML = `
+      <div class="mvu-placeholder">
+        <div class="icon" style="width:32px;height:32px;display:block;margin:0 auto 12px;">${Icons.book}</div>
+        ${conversation.phase === 'init'
+          ? '讨论故事设定中...<br><span style="font-size:11px;opacity:0.7;">AI 确认设定后将自动生成状态面板</span>'
+          : '状态栏未初始化'}
+      </div>`;
+    return;
+  }
+
+  // RP phase with data - render MVU
+  MVU.render(container, conversation.mvu);
+}
+
+// ============================================================
+// Input Handling
+// ============================================================
+function handleInputKeydown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+}
+
+async function handleSend() {
+  if (isStreaming) {
+    stopStreaming();
+    return;
+  }
+
+  const textarea = document.getElementById('inputTextarea');
+  const text = textarea.value.trim();
+  if (!text) return;
+
+  // Validate API profile exists
+  const settings = Storage.getSettings();
+  const apiProfileId = conversation.apiProfileId || settings.defaultApiProfileId;
+  if (!apiProfileId) {
+    UI.showToast('请先在设置中配置 API', 'error');
+    return;
+  }
+  const profile = Storage.getApiProfile(apiProfileId);
+  if (!profile) {
+    UI.showToast('API 配置不存在，请检查设置', 'error');
+    return;
+  }
+
+  // Clear input and options
+  textarea.value = '';
+  resetTextareaHeight();
+  clearOptionsBar();
+
+  // 1. Push user message
+  const userMsg = {
+    id: Utils.generateId('msg'),
+    role: 'user',
+    content: text,
+    timestamp: Date.now(),
+    hidden: false,
+  };
+  conversation.messages.push(userMsg);
+  Storage.saveConversation(conversation);
+  appendMessageElement(userMsg);
+
+  // 2. Stream AI response
+  await streamAIResponse();
+}
+
+// ============================================================
+// Stream Status Indicator
+// ============================================================
+function showStreamStatus(state, detail = '') {
+  removeStreamStatus();
+  const list = document.getElementById('messagesList');
+  const el = document.createElement('div');
+  el.className = `stream-status ${state}`;
+  el.id = 'streamStatusIndicator';
+
+  const labels = { connecting: '连接中...', streaming: '生成中', retrying: '重试中' };
+  let label = labels[state] || state;
+  if (detail) label += ' ' + detail;
+
+  el.innerHTML = `<span class="status-dot"></span><span class="status-text">${label}</span><span class="status-timer" id="statusTimer"></span>`;
+  list.appendChild(el);
+  scrollToBottom(false);
+
+  // Start elapsed timer
+  streamStartTime = Date.now();
+  if (streamStatusTimer) clearInterval(streamStatusTimer);
+  streamStatusTimer = setInterval(updateStatusTimer, 1000);
+}
+
+function updateStreamStatusText(text) {
+  const el = document.querySelector('#streamStatusIndicator .status-text');
+  if (el) el.textContent = text;
+}
+
+function updateStatusTimer() {
+  const el = document.getElementById('statusTimer');
+  if (!el) return;
+  const elapsed = Math.floor((Date.now() - streamStartTime) / 1000);
+  el.textContent = elapsed + 's';
+}
+
+function removeStreamStatus() {
+  const el = document.getElementById('streamStatusIndicator');
+  if (el) el.remove();
+  if (streamStatusTimer) { clearInterval(streamStatusTimer); streamStatusTimer = null; }
+}
+
+// ============================================================
+// Streaming
+// ============================================================
+async function streamAIResponse(retryAttempt = 0) {
+  isStreaming = true;
+  streamAborted = false;
+  updateSendButton();
+
+  const MAX_AUTO_RETRIES = 2;
+  const settings = Storage.getSettings();
+
+  // Build prompt BEFORE adding AI placeholder
+  const { systemPrompt, messages } = PromptBuilder.buildMessages(conversation);
+
+  // Create AI placeholder message
+  const aiMsg = {
+    id: Utils.generateId('msg'),
+    role: 'assistant',
+    content: '',
+    timestamp: Date.now(),
+    hidden: false,
+    abstract: null,
+  };
+  conversation.messages.push(aiMsg);
+  appendMessageElement(aiMsg);
+
+  // Show connecting status
+  showStreamStatus('connecting');
+
+  const apiProfileId = conversation.apiProfileId || settings.defaultApiProfileId;
+  const model = conversation.model || settings.defaultModel;
+  log('streamAIResponse', { phase: conversation.phase, apiProfileId, model, attempt: retryAttempt });
+
+  currentAbortController = API.streamChat({
+    apiProfileId,
+    model,
+    systemPrompt,
+    messages,
+
+    onStatus(status) {
+      if (status === 'connecting') {
+        showStreamStatus('connecting');
+      } else if (status === 'streaming') {
+        showStreamStatus('streaming');
+      }
+    },
+
+    onChunk(chunk, fullText) {
+      if (streamAborted) return;
+      aiMsg.content = fullText;
+      updateAssistantBubble(aiMsg.id, fullText, true);
+      updateStreamStatusText(`生成中 (${fullText.length}字)`);
+      scrollToBottom(false);
+    },
+
+    onDone(fullText, usage) {
+      removeStreamStatus();
+
+      if (streamAborted && !fullText) {
+        fullText = aiMsg.content;
+      }
+
+      aiMsg.content = fullText;
+      aiMsg.timestamp = Date.now();
+      updateAssistantBubble(aiMsg.id, fullText, false);
+
+      const abstract = Summary.parseAbstract(fullText);
+      if (abstract) aiMsg.abstract = abstract;
+
+      processMvuFromResponse(fullText, aiMsg);
+      Storage.saveConversation(conversation);
+      renderOptionsBar(fullText);
+      checkBigSummaryTrigger();
+
+      // Clear failed state since we succeeded
+      lastFailedUserMsgId = null;
+      removeRetryBar();
+
+      isStreaming = false;
+      streamAborted = false;
+      currentAbortController = null;
+      updateSendButton();
+      scrollToBottom(false);
+    },
+
+    onError(error, httpStatus) {
+      removeStreamStatus();
+
+      if (streamAborted || error === 'AbortError') {
+        // User-initiated stop: keep partial content
+        handleStreamStopped(aiMsg);
+        return;
+      }
+
+      const classified = API.classifyError(httpStatus || 0, error);
+      log('API Error:', classified, { apiProfileId, model, phase: conversation.phase, attempt: retryAttempt });
+
+      // Remove the failed AI placeholder
+      conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+      const aiEl = document.getElementById(`msg-${aiMsg.id}`);
+      if (aiEl) aiEl.remove();
+
+      // Auto-retry for retryable errors
+      if (classified.retryable && retryAttempt < MAX_AUTO_RETRIES) {
+        const delay = Math.min(1000 * Math.pow(2, retryAttempt), 8000) * (0.5 + Math.random() * 0.5);
+        showStreamStatus('retrying', `(${retryAttempt + 1}/${MAX_AUTO_RETRIES}) ${Math.round(delay / 1000)}s 后重试...`);
+        setTimeout(() => {
+          removeStreamStatus();
+          streamAIResponse(retryAttempt + 1);
+        }, delay);
+        return;
+      }
+
+      // All retries exhausted or non-retryable: show error retry bar
+      const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
+      if (lastUserMsg) {
+        lastFailedUserMsgId = lastUserMsg.id;
+        showRetryBar(lastUserMsg.id, classified.userMessage);
+      } else {
+        UI.showToast(classified.userMessage, 'error');
+      }
+
+      Storage.saveConversation(conversation);
+      isStreaming = false;
+      streamAborted = false;
+      currentAbortController = null;
+      updateSendButton();
+    },
+  });
+}
+
+function handleStreamStopped(aiMsg) {
+  if (aiMsg.content) {
+    // Keep partial content
+    updateAssistantBubble(aiMsg.id, aiMsg.content, false);
+    // Add interrupted marker
+    const wrapper = document.getElementById(`msg-${aiMsg.id}`);
+    if (wrapper) {
+      const contentEl = wrapper.querySelector('.message-content');
+      if (contentEl) {
+        contentEl.insertAdjacentHTML('beforeend', '<span class="stream-interrupted">— 已停止</span>');
+      }
+    }
+    aiMsg.abstract = Summary.parseAbstract(aiMsg.content);
+    processMvuFromResponse(aiMsg.content, aiMsg);
+    Storage.saveConversation(conversation);
+  } else {
+    // No content, remove placeholder
+    conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+    const el = document.getElementById(`msg-${aiMsg.id}`);
+    if (el) el.remove();
+    Storage.saveConversation(conversation);
+  }
+
+  isStreaming = false;
+  streamAborted = false;
+  currentAbortController = null;
+  updateSendButton();
+  UI.showToast('已停止生成', 'info');
+}
+
+function stopStreaming() {
+  streamAborted = true;
+  if (currentAbortController) {
+    currentAbortController.abort();
+    currentAbortController = null;
+  }
+  removeStreamStatus();
+  isStreaming = false;
+  updateSendButton();
+}
+
+// ============================================================
+// Error Retry Bar
+// ============================================================
+function showRetryBar(userMsgId, errorMsg) {
+  removeRetryBar();
+  const msgEl = document.getElementById(`msg-${userMsgId}`);
+  if (!msgEl) return;
+
+  const bar = document.createElement('div');
+  bar.className = 'error-retry-bar';
+  bar.id = 'errorRetryBar';
+  bar.innerHTML = `
+    <span class="error-msg"><strong>发送失败</strong>: ${Utils.escapeHtml(errorMsg)}</span>
+    <button class="btn btn-primary" onclick="retryLastMessage()">重试</button>
+    <button class="btn btn-secondary" onclick="editAndRetry('${userMsgId}')">编辑后重试</button>
+    <button class="btn btn-ghost" onclick="deleteFailedMessage('${userMsgId}')">删除</button>
+  `;
+  msgEl.after(bar);
+  scrollToBottom(false);
+}
+
+function removeRetryBar() {
+  const bar = document.getElementById('errorRetryBar');
+  if (bar) bar.remove();
+}
+
+function retryLastMessage() {
+  if (isStreaming) return;
+  removeRetryBar();
+  lastFailedUserMsgId = null;
+  streamAIResponse(0);
+}
+
+function editAndRetry(userMsgId) {
+  const msg = findMessage(userMsgId);
+  if (!msg) return;
+
+  editingMsgId = userMsgId;
+  const overlay = document.getElementById('editOverlay');
+  const textarea = document.getElementById('editTextarea');
+  textarea.value = msg.content;
+  overlay.classList.add('visible');
+
+  // Override confirm to do retry after edit
+  window._editRetryMode = true;
+  setTimeout(() => textarea.focus(), 100);
+}
+
+function deleteFailedMessage(userMsgId) {
+  removeRetryBar();
+  lastFailedUserMsgId = null;
+
+  conversation.messages = conversation.messages.filter(m => m.id !== userMsgId);
+  Storage.saveConversation(conversation);
+  const el = document.getElementById(`msg-${userMsgId}`);
+  if (el) {
+    el.style.transition = 'opacity 0.3s ease';
+    el.style.opacity = '0';
+    setTimeout(() => {
+      el.remove();
+      if (conversation.messages.length === 0) renderAllMessages();
+    }, 300);
+  }
+}
+
+// ============================================================
+// Offline Detection
+// ============================================================
+function setupOfflineDetection() {
+  const banner = document.getElementById('offlineBanner');
+  const updateStatus = () => {
+    if (!navigator.onLine) {
+      banner.classList.add('visible');
+      document.getElementById('inputArea').classList.add('disabled');
+    } else {
+      banner.classList.remove('visible');
+      document.getElementById('inputArea').classList.remove('disabled');
+    }
+  };
+  window.addEventListener('online', updateStatus);
+  window.addEventListener('offline', updateStatus);
+  updateStatus();
+}
+
+// ============================================================
+// MVU Processing
+// ============================================================
+function processMvuFromResponse(text, aiMsg) {
+  if (conversation.phase === 'init') {
+    const initData = MVU.parseInit(text);
+    const updateData = MVU.parseMvuUpdate(text);
+    const storySetting = MVU.parseStorySetting(text);
+
+    let changed = false;
+
+    if (initData) {
+      // Full init (first time or full replacement)
+      initData._storySetting = storySetting || (pendingMvuInit?._storySetting) || '';
+      pendingMvuInit = initData;
+      changed = true;
+    } else if (updateData && pendingMvuInit) {
+      // Incremental update — merge changed fields into existing draft
+      if (updateData.schema) pendingMvuInit.schema = updateData.schema;
+      if (updateData.html) pendingMvuInit.html = updateData.html;
+      if (updateData.css) pendingMvuInit.css = updateData.css;
+      changed = true;
+    }
+
+    // Story setting can update independently
+    if (storySetting) {
+      if (pendingMvuInit) {
+        pendingMvuInit._storySetting = storySetting;
+        changed = true;
+      }
+    }
+
+    if (changed && pendingMvuInit) {
+      previewMvuInit();
+      showMvuInitConfirmation(aiMsg.id);
+      if (!pendingMvuInit._storySetting) {
+        UI.showToast('注意：AI 未输出故事设定，建议要求补充', 'error');
+      }
+    }
+  } else if (conversation.phase === 'rp') {
+    // Check for mvu patch in response
+    const patchData = MVU.parsePatch(text);
+    if (patchData && conversation.mvu?.schema) {
+      if (patchData.analysis) {
+        log('[MVU Analysis]', patchData.analysis);
+      }
+      conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
+      Storage.saveConversation(conversation);
+      // Update DOM
+      const container = document.getElementById('mvuContent');
+      MVU.updateDOM(container, conversation.mvu.state, conversation.mvu.schema);
+    }
+  }
+}
+
+function showMvuInitConfirmation(afterMsgId) {
+  const msgEl = document.getElementById(`msg-${afterMsgId}`);
+  if (!msgEl) return;
+
+  // Remove any existing confirm bar
+  const existing = document.querySelector('.mvu-confirm-bar');
+  if (existing) existing.remove();
+
+  const bar = document.createElement('div');
+  bar.className = 'mvu-confirm-bar';
+  const hasStory = pendingMvuInit?._storySetting ? true : false;
+  bar.innerHTML = `
+    <p>AI 已生成${hasStory ? '故事设定 + ' : ''}状态栏${!hasStory ? ' <span style="color:var(--danger);">(缺少故事设定)</span>' : ''}。确认后进入RP，或继续修改。</p>
+    <button class="btn btn-secondary" onclick="rejectMvuInit()">放弃草稿</button>
+    <button class="btn btn-primary" onclick="confirmMvuInit()">确认开始RP</button>
+  `;
+  msgEl.after(bar);
+  scrollToBottom(false);
+}
+
+function previewMvuInit() {
+  if (!pendingMvuInit) return;
+
+  // Build temporary MVU data for preview
+  const tempMvu = {
+    schema: pendingMvuInit.schema,
+    state: {},
+    html: pendingMvuInit.html,
+    css: pendingMvuInit.css,
+  };
+
+  // Initialize state from schema
+  if (pendingMvuInit.schema) {
+    for (const [key, def] of Object.entries(pendingMvuInit.schema)) {
+      if (def.value !== undefined) {
+        tempMvu.state[key] = def.value;
+      } else if (def.type === 'list') {
+        tempMvu.state[key] = [];
+      } else if (def.type === 'number' || def.type === 'bar') {
+        tempMvu.state[key] = def.max || 100;
+      } else {
+        tempMvu.state[key] = '';
+      }
+    }
+  }
+
+  // Render preview in sidebar
+  const container = document.getElementById('mvuContent');
+  MVU.render(container, tempMvu);
+
+  // Open sidebar if closed
+  if (!sidebarOpen) toggleSidebar();
+
+  UI.showToast('预览模式 - 确认后生效', 'info');
+}
+
+function confirmMvuInit() {
+  if (!pendingMvuInit) return;
+
+  // Apply MVU init
+  conversation.mvu = {
+    schema: pendingMvuInit.schema,
+    state: {},
+    html: pendingMvuInit.html,
+    css: pendingMvuInit.css,
+  };
+
+  // Initialize state from schema defaults
+  if (pendingMvuInit.schema) {
+    for (const [key, def] of Object.entries(pendingMvuInit.schema)) {
+      if (def.value !== undefined) {
+        conversation.mvu.state[key] = def.value;
+      } else if (def.type === 'list') {
+        conversation.mvu.state[key] = [];
+      } else if (def.type === 'number' || def.type === 'bar') {
+        conversation.mvu.state[key] = def.max || 100;
+      } else {
+        conversation.mvu.state[key] = '';
+      }
+    }
+  }
+
+  // Save story setting
+  if (pendingMvuInit._storySetting) {
+    conversation.storySetting = pendingMvuInit._storySetting;
+  }
+
+  // Ensure summary
+  if (!conversation.summary) {
+    const settings = Storage.getSettings();
+    conversation.summary = { text: '', lastMergedIdx: 0, interval: settings.summaryInterval || 50 };
+  }
+
+  // Clear init-phase messages
+  conversation.messages = [];
+
+  // Switch to RP phase
+  conversation.phase = 'rp';
+  Storage.saveConversation(conversation);
+
+  // Update UI
+  renderPhaseBadge();
+  renderMvuSidebar();
+  renderAllMessages();
+
+  // Open sidebar to show new panel
+  if (!sidebarOpen) toggleSidebar();
+
+  // Remove confirmation bar
+  const bar = document.querySelector('.mvu-confirm-bar');
+  if (bar) bar.remove();
+
+  pendingMvuInit = null;
+  UI.showToast('状态面板已初始化，故事正式开始！', 'success');
+}
+
+function rejectMvuInit() {
+  pendingMvuInit = null;
+
+  // Reset sidebar preview
+  renderMvuSidebar();
+
+  const bar = document.querySelector('.mvu-confirm-bar');
+  if (bar) bar.remove();
+  UI.showToast('已取消，请继续讨论设定', 'info');
+}
+
+// ============================================================
+// Big Summary
+// ============================================================
+async function checkBigSummaryTrigger() {
+  if (!Summary.shouldTriggerBigSummary(conversation)) return;
+
+  log('Triggering big summary generation');
+  UI.showToast('正在合并故事摘要...', 'info');
+
+  try {
+    const result = await Summary.generateBigSummary(conversation);
+    if (result) {
+      conversation.summary = {
+        ...conversation.summary,
+        text: result.text,
+        lastMergedIdx: result.lastMergedIdx,
+      };
+      Storage.saveConversation(conversation);
+      UI.showToast('故事总结已更新', 'success');
+    }
+  } catch (e) {
+    log('Big summary generation failed:', e);
+  }
+}
+
+// ============================================================
+// Message Actions
+// ============================================================
+function findMessage(msgId) {
+  return conversation.messages.find(m => m.id === msgId);
+}
+
+function copyMessage(msgId) {
+  const msg = findMessage(msgId);
+  if (!msg) return;
+
+  const textToCopy = msg.role === 'assistant'
+    ? Summary.cleanAbstract(MVU.cleanText(msg.content))
+    : msg.content;
+
+  navigator.clipboard.writeText(textToCopy).then(() => {
+    UI.showToast('已复制到剪贴板', 'success');
+    // Flash feedback
+    const el = document.getElementById(`msg-${msgId}`);
+    if (el) {
+      el.classList.add('copy-flash');
+      setTimeout(() => el.classList.remove('copy-flash'), 600);
+    }
+  }).catch(() => {
+    UI.showToast('复制失败', 'error');
+  });
+}
+
+function editMessage(msgId) {
+  const msg = findMessage(msgId);
+  if (!msg) return;
+
+  editingMsgId = msgId;
+  const overlay = document.getElementById('editOverlay');
+  const textarea = document.getElementById('editTextarea');
+  textarea.value = msg.content;
+  overlay.classList.add('visible');
+  setTimeout(() => textarea.focus(), 100);
+}
+
+function closeEdit() {
+  editingMsgId = null;
+  window._editRetryMode = false;
+  document.getElementById('editOverlay').classList.remove('visible');
+}
+
+function confirmEdit() {
+  if (!editingMsgId) return;
+  const msg = findMessage(editingMsgId);
+  if (!msg) return;
+
+  const textarea = document.getElementById('editTextarea');
+  const newContent = textarea.value.trim();
+  if (!newContent) return;
+
+  msg.content = newContent;
+
+  // Re-parse abstract if assistant message
+  if (msg.role === 'assistant') {
+    msg.abstract = Summary.parseAbstract(newContent);
+  }
+
+  Storage.saveConversation(conversation);
+
+  // Re-render the specific message
+  const el = document.getElementById(`msg-${editingMsgId}`);
+  if (el) {
+    const idx = conversation.messages.indexOf(msg);
+    const newEl = createMessageElement(msg, idx);
+    el.replaceWith(newEl);
+  }
+
+  const wasRetryMode = window._editRetryMode;
+  window._editRetryMode = false;
+
+  closeEdit();
+
+  if (wasRetryMode) {
+    // After editing a failed message, retry sending
+    removeRetryBar();
+    lastFailedUserMsgId = null;
+    UI.showToast('消息已修改，正在重新发送', 'info');
+    streamAIResponse(0);
+  } else {
+    UI.showToast('消息已更新', 'success');
+  }
+}
+
+function toggleHideMessage(msgId) {
+  const msg = findMessage(msgId);
+  if (!msg) return;
+
+  msg.hidden = !msg.hidden;
+  Storage.saveConversation(conversation);
+
+  // Re-render the message
+  const el = document.getElementById(`msg-${msgId}`);
+  if (el) {
+    const idx = conversation.messages.indexOf(msg);
+    const newEl = createMessageElement(msg, idx);
+    el.replaceWith(newEl);
+  }
+
+  UI.showToast(msg.hidden ? '消息已隐藏（不会发送给AI）' : '消息已恢复', 'info');
+}
+
+function deleteMessage(msgId) {
+  UI.showConfirm({
+    title: '删除消息',
+    message: '确定要删除这条消息吗？此操作无法撤销。',
+    onConfirm: () => {
+      conversation.messages = conversation.messages.filter(m => m.id !== msgId);
+      Storage.saveConversation(conversation);
+
+      const el = document.getElementById(`msg-${msgId}`);
+      if (el) {
+        el.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        el.style.opacity = '0';
+        el.style.transform = 'translateY(-10px)';
+        setTimeout(() => {
+          el.remove();
+          // Also remove any confirm bar after it
+          const bar = el.nextElementSibling;
+          if (bar && bar.classList.contains('mvu-confirm-bar')) bar.remove();
+          // Show empty state if no messages left
+          if (conversation.messages.length === 0) {
+            renderAllMessages();
+          }
+        }, 300);
+      }
+    },
+  });
+}
+
+// ============================================================
+// Export
+// ============================================================
+function exportConversation() {
+  if (!conversation || conversation.messages.length === 0) {
+    UI.showToast('没有可导出的内容', 'info');
+    return;
+  }
+  const settings = Storage.getSettings();
+  Exporter.download(conversation, settings.exportFormat || 'md');
+  UI.showToast('导出成功', 'success');
+}
+
+// ============================================================
+// Send Button State
+// ============================================================
+function updateSendButton() {
+  const btn = document.getElementById('sendBtn');
+  const textarea = document.getElementById('inputTextarea');
+  const iconSpan = btn.querySelector('.icon');
+
+  if (isStreaming) {
+    btn.className = 'send-btn streaming';
+    iconSpan.innerHTML = Icons.stop;
+    btn.title = '停止生成';
+  } else if (textarea.value.trim()) {
+    btn.className = 'send-btn ready';
+    iconSpan.innerHTML = Icons.send;
+    btn.title = '发送';
+  } else {
+    btn.className = 'send-btn idle';
+    iconSpan.innerHTML = Icons.send;
+    btn.title = '发送';
+  }
+}
+
+// ============================================================
+// Auto-grow Textarea
+// ============================================================
+function setupAutoGrow() {
+  const textarea = document.getElementById('inputTextarea');
+  textarea.addEventListener('input', () => {
+    autoGrowTextarea();
+    updateSendButton();
+  });
+}
+
+function autoGrowTextarea() {
+  const textarea = document.getElementById('inputTextarea');
+  textarea.style.height = 'auto';
+  textarea.style.height = Math.min(textarea.scrollHeight, 160) + 'px';
+}
+
+function resetTextareaHeight() {
+  const textarea = document.getElementById('inputTextarea');
+  textarea.style.height = 'auto';
+}
+
+// ============================================================
+// Scroll Management
+// ============================================================
+function setupScrollDetection() {
+  const area = document.getElementById('messagesArea');
+  area.addEventListener('scroll', () => {
+    const threshold = 80;
+    const atBottom = area.scrollHeight - area.scrollTop - area.clientHeight < threshold;
+    userScrolledUp = !atBottom;
+
+    const btn = document.getElementById('scrollBottomBtn');
+    if (userScrolledUp) {
+      btn.classList.add('visible');
+    } else {
+      btn.classList.remove('visible');
+    }
+  });
+}
+
+function scrollToBottom(force) {
+  if (!force && userScrolledUp) return;
+
+  const area = document.getElementById('messagesArea');
+  requestAnimationFrame(() => {
+    area.scrollTop = area.scrollHeight;
+  });
+}
+
+// ============================================================
+// Keyboard Shortcuts
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (editingMsgId) {
+      closeEdit();
+    } else if (sidebarOpen) {
+      toggleSidebar();
+    }
+  }
+});
+
+</script>
+
+</body>
+</html>

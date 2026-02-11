@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIRP - AI Interactive Roleplay Novel</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
+  <script src="common.js?v=8"></script>
+  <style>
+    /* ── Page Layout ─────────────────────────────── */
+    body {
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .page-container {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 20px 100px;
+    }
+
+    /* ── Header Bar ──────────────────────────────── */
+    .header-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 14px 20px;
+      background: linear-gradient(180deg, rgba(15,12,8,0.9) 0%, rgba(15,12,8,0.6) 60%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .header-bar > * {
+      pointer-events: auto;
+    }
+
+    .btn-settings {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 7px 14px;
+      color: var(--text-secondary);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      text-decoration: none;
+    }
+
+    .btn-settings:hover {
+      color: var(--accent);
+      border-color: var(--border-strong);
+      background: var(--bg-glass-light);
+    }
+
+    /* ── Hero / Header ───────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 80px 0 44px;
+      position: relative;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .hero-ornament {
+      display: block;
+      margin: 0 auto 18px;
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: 72px;
+      font-weight: 700;
+      letter-spacing: 12px;
+      color: var(--text-primary);
+      line-height: 1;
+      position: relative;
+      display: inline-block;
+      text-shadow:
+        0 0 40px rgba(201, 164, 76, 0.25),
+        0 0 80px rgba(201, 164, 76, 0.1);
+    }
+
+    .hero-title::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+    }
+
+    .hero-subtitle {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 400;
+      letter-spacing: 5px;
+      color: var(--text-muted);
+      margin-top: 14px;
+      text-transform: uppercase;
+    }
+
+    .hero-tagline {
+      font-family: var(--font-body);
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 10px;
+      opacity: 0.7;
+      font-style: italic;
+    }
+
+    /* Decorative corner flourishes on hero */
+    .hero-flourish {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--border-strong);
+      border-style: solid;
+      opacity: 0.4;
+    }
+    .hero-flourish.tl { top: 48px; left: -10px; border-width: 1px 0 0 1px; }
+    .hero-flourish.tr { top: 48px; right: -10px; border-width: 1px 1px 0 0; }
+    .hero-flourish.bl { bottom: 14px; left: -10px; border-width: 0 0 1px 1px; }
+    .hero-flourish.br { bottom: 14px; right: -10px; border-width: 0 1px 1px 0; }
+
+    /* ── Main Content Area ───────────────────────── */
+    .main-content {
+      width: 100%;
+      max-width: 700px;
+    }
+
+    /* ── Toolbar ─────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 10px;
+    }
+
+    .toolbar-label {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+    }
+
+    .toolbar-count {
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    /* ── Conversation Cards ──────────────────────── */
+    .conv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .conv-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 22px;
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    .conv-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Parchment-like texture overlay on cards */
+    .conv-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 0%, rgba(201, 164, 76, 0.04), transparent 50%),
+        radial-gradient(ellipse at 90% 100%, rgba(201, 164, 76, 0.03), transparent 50%);
+      pointer-events: none;
+    }
+
+    .conv-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--border);
+    }
+
+    .conv-card:active {
+      transform: translateY(0);
+    }
+
+    .conv-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .conv-card-icon {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-dim);
+      border-radius: var(--radius);
+      color: var(--accent);
+      border: 1px solid rgba(201, 164, 76, 0.1);
+    }
+
+    .conv-card-icon .icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .conv-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .conv-card-name {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .conv-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 5px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .conv-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+
+    .conv-card:hover .conv-card-actions {
+      opacity: 1;
+    }
+
+    .conv-card-actions .btn-icon {
+      width: 32px;
+      height: 32px;
+    }
+
+    .conv-card-actions .btn-icon:hover {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .conv-card-actions .btn-icon.btn-danger:hover {
+      color: var(--danger);
+      background: rgba(201, 106, 90, 0.12);
+    }
+
+    .conv-card-actions .btn-icon .icon svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Phase badge */
+    .phase-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .phase-badge.phase-init {
+      background: rgba(201, 164, 76, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(201, 164, 76, 0.2);
+    }
+
+    .phase-badge.phase-rp {
+      background: rgba(124, 184, 122, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(124, 184, 122, 0.2);
+    }
+
+    .meta-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
+    /* ── Inline Rename Input ─────────────────────── */
+    .conv-card-rename {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      background: var(--bg-surface);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 2px 8px;
+      color: var(--text-primary);
+      width: 100%;
+      outline: none;
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+
+    /* ── Empty State ─────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      opacity: 0;
+      animation: fadeIn 0.6s ease 0.2s forwards;
+    }
+
+    .empty-quill {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      color: var(--text-muted);
+      opacity: 0.35;
+    }
+
+    .empty-quill svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .empty-ornament {
+      display: block;
+      margin: 0 auto 16px;
+      width: 120px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+    }
+
+    .empty-title {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .empty-desc {
+      font-family: var(--font-body);
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.8;
+      max-width: 360px;
+      margin: 0 auto 32px;
+    }
+
+    .empty-cta {
+      font-size: 15px;
+      padding: 12px 36px;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 2px 20px rgba(201, 164, 76, 0.25);
+    }
+
+    .empty-cta:hover {
+      box-shadow: 0 4px 28px rgba(201, 164, 76, 0.4);
+    }
+
+    /* ── Footer area (import/export) ─────────────── */
+    .footer-actions {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0;
+      animation: fadeIn 0.5s ease 0.6s forwards;
+    }
+
+    .footer-actions .btn-ghost {
+      font-size: 12px;
+      color: var(--text-muted);
+      gap: 5px;
+    }
+
+    .footer-actions .btn-ghost .icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* ── FAB (Floating Action Button) ─────────────── */
+    .fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 100;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), #d4b05c);
+      color: #1a1510;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow:
+        0 4px 20px rgba(201, 164, 76, 0.35),
+        0 0 0 1px rgba(201, 164, 76, 0.15);
+      transition: all var(--transition);
+    }
+
+    .fab:hover {
+      transform: translateY(-3px) scale(1.05);
+      box-shadow:
+        0 8px 32px rgba(201, 164, 76, 0.45),
+        0 0 0 1px rgba(201, 164, 76, 0.3);
+    }
+
+    .fab:active {
+      transform: translateY(-1px) scale(1.02);
+    }
+
+    .fab .icon svg {
+      width: 24px;
+      height: 24px;
+      stroke-width: 2.5;
+    }
+
+    /* FAB tooltip */
+    .fab-tooltip {
+      position: absolute;
+      right: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 14px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--text-secondary);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .fab:hover .fab-tooltip {
+      opacity: 1;
+    }
+
+    /* ── Create Modal Specifics ───────────────────── */
+    .create-form .form-group {
+      margin-bottom: 16px;
+    }
+
+    .create-form .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .create-form label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .model-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .model-input-row input {
+      flex: 1;
+    }
+
+    .model-input-row .btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    /* ── Hidden file input ───────────────────────── */
+    #import-file-input {
+      display: none;
+    }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 600px) {
+      .page-container {
+        padding: 0 14px 100px;
+      }
+
+      .hero {
+        padding: 60px 0 28px;
+      }
+
+      .hero-title {
+        font-size: 48px;
+        letter-spacing: 8px;
+      }
+
+      .hero-subtitle {
+        font-size: 12px;
+        letter-spacing: 3px;
+      }
+
+      .hero-flourish {
+        display: none;
+      }
+
+      .conv-card {
+        padding: 14px 16px;
+      }
+
+      .conv-card-name {
+        font-size: 17px;
+      }
+
+      .conv-card-icon {
+        width: 34px;
+        height: 34px;
+      }
+
+      .conv-card-actions {
+        opacity: 1;
+      }
+
+      .fab {
+        bottom: 20px;
+        right: 20px;
+        width: 52px;
+        height: 52px;
+      }
+
+      .fab-tooltip {
+        display: none;
+      }
+
+      .header-bar {
+        padding: 10px 14px;
+      }
+
+      .toolbar-label {
+        font-size: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Fixed Header Bar ─────────────────────── -->
+<div class="header-bar">
+  <a class="btn-settings" href="settings.html?v=8" id="btn-settings">
+    <span class="icon" style="width:16px;height:16px;"></span>
+    设置
+  </a>
+</div>
+
+<!-- ── Page Container ───────────────────────── -->
+<div class="page-container">
+
+  <!-- ── Hero Header ──────────────────────────── -->
+  <header class="hero">
+    <div class="hero-flourish tl"></div>
+    <div class="hero-flourish tr"></div>
+    <div class="hero-flourish bl"></div>
+    <div class="hero-flourish br"></div>
+    <span class="hero-ornament"></span>
+    <h1 class="hero-title">AIRP</h1>
+    <p class="hero-subtitle">AI Interactive Roleplay Novel</p>
+    <p class="hero-tagline">在文字与想象之间，书写属于你的故事</p>
+  </header>
+
+  <!-- ── Main Content ─────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Toolbar (shown when conversations exist) -->
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="toolbar-label">
+        我的故事 <span class="toolbar-count" id="toolbar-count"></span>
+      </div>
+    </div>
+
+    <!-- Conversation List -->
+    <div class="conv-list" id="conv-list">
+      <!-- Cards rendered by JS -->
+    </div>
+
+    <!-- Footer: Import/Export -->
+    <div class="footer-actions" id="footer-actions" style="display:none;">
+      <button class="btn btn-ghost" onclick="exportAllData()" title="导出所有数据" id="btn-export">
+        导出数据
+      </button>
+      <button class="btn btn-ghost" onclick="triggerImport()" title="导入数据" id="btn-import">
+        导入数据
+      </button>
+    </div>
+    <input type="file" id="import-file-input" accept=".json" onchange="importData(event)">
+
+  </main>
+</div>
+
+<!-- ── FAB: Create New Story ──────────────── -->
+<button class="fab" id="fab-create" onclick="showCreateModal()" title="开始新故事">
+  <span class="icon" style="width:24px;height:24px;display:inline-flex;"></span>
+  <span class="fab-tooltip">开始新故事</span>
+</button>
+
+<script>
+  // ── Inject Icons ──────────────────────────────
+  (function injectStaticIcons() {
+    document.querySelector('#btn-settings .icon').innerHTML = Icons.settings;
+    document.querySelector('#fab-create > .icon').innerHTML = Icons.plus;
+
+    const btnExport = document.getElementById('btn-export');
+    const btnImport = document.getElementById('btn-import');
+    btnExport.innerHTML = `${getIcon('download', 14)} 导出数据`;
+    btnImport.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入数据`;
+  })();
+
+  // ── State ──────────────────────────────────────
+  let conversations = [];
+
+  // ── Init ───────────────────────────────────────
+  function init() {
+    loadConversations();
+  }
+
+  // ── Load & Render Conversations ────────────────
+  function loadConversations() {
+    conversations = Storage.getConversationList();
+    renderList();
+  }
+
+  function renderList() {
+    const container = document.getElementById('conv-list');
+    const toolbar = document.getElementById('toolbar');
+    const footer = document.getElementById('footer-actions');
+
+    if (conversations.length === 0) {
+      toolbar.style.display = 'none';
+      footer.style.display = 'none';
+      container.innerHTML = renderEmptyState();
+      return;
+    }
+
+    toolbar.style.display = '';
+    footer.style.display = '';
+    document.getElementById('toolbar-count').textContent = `(${conversations.length})`;
+    container.innerHTML = conversations.map((conv, i) => renderCard(conv, i)).join('');
+
+    // Staggered fade-in animation
+    const cards = container.querySelectorAll('.conv-card');
+    cards.forEach((card, i) => {
+      setTimeout(() => {
+        card.style.transition = `opacity 0.4s ease ${i * 0.06}s, transform 0.4s ease ${i * 0.06}s`;
+        card.classList.add('visible');
+      }, 30);
+    });
+  }
+
+  function renderCard(conv, index) {
+    const phase = conv.phase || 'init';
+    const phaseLabel = phase === 'rp' ? '进行中' : '初始化';
+    const phaseClass = phase === 'rp' ? 'phase-rp' : 'phase-init';
+    const msgCount = (conv.messages || []).filter(m => !m.hidden).length;
+    const timeStr = conv.updatedAt ? Utils.formatRelative(conv.updatedAt) : '未知';
+    const name = Utils.escapeHtml(conv.name || '未命名故事');
+
+    return `
+      <div class="conv-card" data-id="${conv.id}" onclick="openConversation('${conv.id}', event)">
+        <div class="conv-card-header">
+          <div class="conv-card-icon">
+            ${getIcon('book', 18)}
+          </div>
+          <div class="conv-card-info">
+            <div class="conv-card-name" id="name-${conv.id}">${name}</div>
+            <div class="conv-card-meta">
+              <span class="phase-badge ${phaseClass}">${phaseLabel}</span>
+              <span class="meta-dot"></span>
+              <span>${msgCount} 条消息</span>
+              <span class="meta-dot"></span>
+              <span>${timeStr}</span>
+            </div>
+          </div>
+          <div class="conv-card-actions">
+            <button class="btn-icon" onclick="exportConversation('${conv.id}', event)" title="导出">
+              ${getIcon('download', 15)}
+            </button>
+            <button class="btn-icon" onclick="startRename('${conv.id}', event)" title="重命名">
+              ${getIcon('edit', 15)}
+            </button>
+            <button class="btn-icon btn-danger" onclick="confirmDelete('${conv.id}', event)" title="删除">
+              ${getIcon('trash', 15)}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderEmptyState() {
+    return `
+      <div class="empty-state">
+        <div class="empty-quill">
+          ${Icons.book}
+        </div>
+        <span class="empty-ornament"></span>
+        <div class="empty-title">卷轴尚空，故事未启</div>
+        <p class="empty-desc">
+          每一段传奇都始于第一笔墨迹。<br>
+          点击下方按钮开始创作，让AI与你共同书写独一无二的故事。
+        </p>
+        <button class="btn btn-primary empty-cta" onclick="showCreateModal()">
+          ${getIcon('plus', 16)} 开始第一个故事
+        </button>
+      </div>`;
+  }
+
+  // ── Create New Story Modal ───────────────────
+  function showCreateModal() {
+    const settings = Storage.getSettings();
+    const profiles = Storage.getApiProfiles();
+    const profileList = Object.values(profiles);
+
+    // If no API profiles configured, redirect to settings
+    if (profileList.length === 0) {
+      UI.showToast('请先配置API接口', 'error');
+      setTimeout(() => { window.location.href = 'settings.html?v=8'; }, 800);
+      return;
+    }
+
+    const defaultProfileId = settings.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
+    const defaultModel = settings.defaultModel || '';
+
+    const profileOptions = profileList.map(p => {
+      const selected = p.id === defaultProfileId ? 'selected' : '';
+      return `<option value="${p.id}" ${selected}>${Utils.escapeHtml(p.name || p.provider)}</option>`;
+    }).join('');
+
+    UI.showModal({
+      title: '创建新故事',
+      content: `
+        <div class="create-form">
+          <div class="form-group">
+            <label>故事名称</label>
+            <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
+          </div>
+          <div class="form-group">
+            <label>API 配置</label>
+            <select id="create-api-profile" onchange="onCreateApiProfileChange()">
+              ${profileOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>模型</label>
+            <div class="model-input-row">
+              <input type="text" id="create-model" list="create-model-list" value="${Utils.escapeHtml(defaultModel)}" placeholder="输入或选择模型名称">
+              <datalist id="create-model-list"></datalist>
+              <button class="btn btn-secondary" onclick="fetchCreateModels()" id="btn-fetch-models">拉取</button>
+            </div>
+          </div>
+        </div>`,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: '创建', class: 'btn-primary', onclick: 'doCreateConversation()' },
+      ],
+    });
+
+    // Focus the name input after modal opens
+    setTimeout(() => {
+      const nameInput = document.getElementById('create-name');
+      if (nameInput) nameInput.focus();
+    }, 100);
+  }
+
+  function onCreateApiProfileChange() {
+    const profileId = document.getElementById('create-api-profile').value;
+    const profile = Storage.getApiProfile(profileId);
+    if (profile && profile.model) {
+      document.getElementById('create-model').value = profile.model;
+    }
+    // Clear the datalist when switching profiles
+    document.getElementById('create-model-list').innerHTML = '';
+  }
+
+  async function fetchCreateModels() {
+    const profileId = document.getElementById('create-api-profile').value;
+    if (!profileId) {
+      UI.showToast('请选择API配置', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btn-fetch-models');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '拉取中...';
+    }
+
+    UI.showToast('正在拉取模型列表...', 'info');
+    const result = await API.fetchModels(profileId);
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '拉取';
+    }
+
+    if (result.success && result.models.length > 0) {
+      const datalist = document.getElementById('create-model-list');
+      datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+      UI.showToast(`获取到 ${result.models.length} 个模型`, 'success');
+      document.getElementById('create-model').focus();
+    } else {
+      UI.showToast('拉取失败，请检查API配置', 'error');
+    }
+  }
+
+  function doCreateConversation() {
+    const name = (document.getElementById('create-name').value || '').trim() || '新的故事';
+    const apiProfileId = document.getElementById('create-api-profile').value;
+    const model = (document.getElementById('create-model').value || '').trim();
+
+    if (!apiProfileId) {
+      UI.showToast('请选择API配置', 'error');
+      return;
+    }
+    if (!model) {
+      UI.showToast('请输入或选择模型', 'error');
+      return;
+    }
+
+    const settings = Storage.getSettings();
+    const id = Utils.generateId('conv');
+    const conv = {
+      id,
+      name,
+      phase: 'init',
+      persona: settings.defaultPersona || '',
+      apiProfileId,
+      model,
+      messages: [],
+      mvu: null,
+      storySetting: null,
+      summary: { text: '', lastMergedIdx: 0, interval: settings.summaryInterval || 50 },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    Storage.saveConversation(conv);
+    UI.closeModal();
+    window.location.href = `chat.html?v=8&id=${id}&new=true`;
+  }
+
+  // ── Open Conversation ──────────────────────────
+  function openConversation(id, event) {
+    // Don't navigate if clicking action buttons or rename input
+    if (event.target.closest('.conv-card-actions') || event.target.closest('.conv-card-rename')) {
+      return;
+    }
+    window.location.href = `chat.html?v=8&id=${id}`;
+  }
+
+  // ── Rename (inline) ───────────────────────────
+  function startRename(id, event) {
+    event.stopPropagation();
+    const conv = Storage.getConversation(id);
+    if (!conv) return;
+
+    const nameEl = document.getElementById(`name-${id}`);
+    if (!nameEl) return;
+
+    const currentName = conv.name || '未命名故事';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'conv-card-rename';
+    input.value = currentName;
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    function finishRename() {
+      const newName = input.value.trim() || currentName;
+      conv.name = newName;
+      Storage.saveConversation(conv);
+      loadConversations();
+    }
+
+    input.addEventListener('blur', finishRename);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = currentName; input.blur(); }
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  // ── Delete ─────────────────────────────────────
+  function confirmDelete(id, event) {
+    event.stopPropagation();
+    const conv = Storage.getConversation(id);
+    if (!conv) return;
+
+    UI.showConfirm({
+      title: '删除故事',
+      message: `确定要删除「${Utils.escapeHtml(conv.name || '未命名故事')}」吗？此操作不可撤销。`,
+      onConfirm: () => {
+        Storage.deleteConversation(id);
+        UI.showToast('故事已删除', 'success');
+        loadConversations();
+      },
+    });
+  }
+
+  // ── Export Single Conversation ──────────────────
+  function exportConversation(id, event) {
+    event.stopPropagation();
+    const conv = Storage.getConversation(id);
+    if (!conv) return;
+    Exporter.download(conv, Storage.getSettings().exportFormat || 'md');
+    UI.showToast('故事已导出', 'success');
+  }
+
+  // ── Export All Data ────────────────────────────
+  function exportAllData() {
+    const data = Storage.exportAll();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `airp-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    UI.showToast('数据已导出', 'success');
+  }
+
+  // ── Import Data ────────────────────────────────
+  function triggerImport() {
+    document.getElementById('import-file-input').click();
+  }
+
+  function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        UI.showConfirm({
+          title: '导入数据',
+          message: '导入将覆盖当前所有数据，确定继续吗？',
+          onConfirm: () => {
+            Storage.importAll(data);
+            UI.showToast('数据导入成功', 'success');
+            loadConversations();
+          },
+        });
+      } catch {
+        UI.showToast('文件格式无效', 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  // ── Boot ───────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>
