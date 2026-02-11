@@ -693,6 +693,15 @@
       line-height: 1.6;
       color: var(--text-secondary);
     }
+    .summary-merged {
+      border-color: var(--accent-glow);
+      background: rgba(201, 164, 76, 0.06);
+    }
+    .summary-sm-code {
+      background: var(--accent-glow);
+      color: var(--bg-deep);
+      font-weight: 800;
+    }
     .summary-empty {
       text-align: center;
       padding: 32px 12px;
@@ -1365,8 +1374,17 @@ async function init() {
   // Ensure summary object exists
   if (!conversation.summary) {
     const settings = Storage.getSettings();
-    conversation.summary = { text: '', lastMergedIdx: 0, interval: settings.summaryInterval || 50 };
+    conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
     Storage.saveConversation(conversation);
+  }
+  // Migrate old summary format (text → mergedSummaries)
+  if (conversation.summary.text && !conversation.summary.mergedSummaries) {
+    conversation.summary.mergedSummaries = [{ code: 'sm01', content: conversation.summary.text }];
+    delete conversation.summary.text;
+    Storage.saveConversation(conversation);
+  }
+  if (!conversation.summary.mergedSummaries) {
+    conversation.summary.mergedSummaries = [];
   }
 
   // Mobile: move sidebar out of overflow:hidden parent to fix touch scrolling
@@ -1697,19 +1715,29 @@ function renderSummaryPanel() {
   const container = document.getElementById('summaryContent');
   let html = '';
 
-  // Big summary
-  if (conversation.summary?.text) {
-    html += `<div class="summary-big-block">
-      <div class="summary-block-title">Story Summary</div>
-      <div class="summary-block-content">${Utils.escapeHtml(conversation.summary.text).replace(/\n/g, '<br>')}</div>
-    </div>`;
+  // Merged summaries (sm entries)
+  const mergedSm = conversation.summary?.mergedSummaries || [];
+  if (mergedSm.length > 0) {
+    html += '<div class="summary-abstracts-title">Merged Summaries</div>';
+    for (const sm of mergedSm) {
+      html += `<div class="summary-abstract-block summary-merged">
+        <span class="summary-abstract-code summary-sm-code">${sm.code}</span>
+        <div class="summary-abstract-content">${Utils.escapeHtml(sm.content).replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }
   }
 
-  // Individual abstracts
+  // Unmerged abstracts
   const abstracts = getAbstracts();
-  if (abstracts.length > 0) {
-    html += '<div class="summary-abstracts-title">Chapter Abstracts</div>';
-    for (const ab of abstracts) {
+  const lastMergedIdx = conversation.summary?.lastMergedIdx || 0;
+  let mergedAbCount = 0;
+  for (let i = 0; i < lastMergedIdx; i++) {
+    if ((conversation.messages[i] || {}).role === 'assistant' && (conversation.messages[i] || {}).abstract) mergedAbCount++;
+  }
+  const unmerged = abstracts.slice(mergedAbCount);
+  if (unmerged.length > 0) {
+    html += `<div class="summary-abstracts-title">Unmerged Abstracts (${unmerged.length})</div>`;
+    for (const ab of unmerged) {
       html += `<div class="summary-abstract-block">
         <span class="summary-abstract-code">${ab.code}</span>
         <div class="summary-abstract-content">${Utils.escapeHtml(ab.content).replace(/\n/g, '<br>')}</div>
@@ -2272,7 +2300,7 @@ function confirmMvuInit() {
   // Ensure summary
   if (!conversation.summary) {
     const settings = Storage.getSettings();
-    conversation.summary = { text: '', lastMergedIdx: 0, interval: settings.summaryInterval || 50 };
+    conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
   }
 
   // Clear init-phase messages
@@ -2313,24 +2341,27 @@ function rejectMvuInit() {
 // Big Summary
 // ============================================================
 async function checkBigSummaryTrigger() {
-  if (!Summary.shouldTriggerBigSummary(conversation)) return;
+  if (!Summary.shouldTriggerMerge(conversation)) return;
 
-  log('Triggering big summary generation');
-  UI.showToast('正在合并故事摘要...', 'info');
+  const unmergedCount = Summary.countUnmergedAbstracts(conversation);
+  log('Triggering summary merge, unmerged abstracts:', unmergedCount);
+  UI.showToast(`正在合并 ${unmergedCount} 条摘要...`, 'info');
 
   try {
-    const result = await Summary.generateBigSummary(conversation);
+    const result = await Summary.generateMergeSummary(conversation);
     if (result) {
       conversation.summary = {
         ...conversation.summary,
-        text: result.text,
+        mergedSummaries: result.mergedSummaries,
         lastMergedIdx: result.lastMergedIdx,
       };
       Storage.saveConversation(conversation);
-      UI.showToast('故事总结已更新', 'success');
+      renderSummaryPanel();
+      UI.showToast(`摘要已合并为 ${result.mergedSummaries.length} 条总结`, 'success');
     }
   } catch (e) {
-    log('Big summary generation failed:', e);
+    log('Summary merge failed:', e);
+    UI.showToast('摘要合并失败', 'error');
   }
 }
 

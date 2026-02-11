@@ -31,7 +31,7 @@ airp/
 | **API** | OpenAI-compatible / Claude / Google AI Studio. Supports streaming (SSE). Auto-detects provider from URL. **Confirmed: supports concurrent requests** |
 | **PromptBuilder** | Builds system prompt + message array for each API call. Phase-aware (init vs rp). Handles context windowing (last 2 AI turns full, older turns → abstracts only) |
 | **MVU** | Model-View-Update pattern for status bar. Parses `mvu_init`, `mvu_update`, `mvu` (patch), `story_setting`, `branches` from AI output |
-| **Summary** | Parses `<details>` abstracts from AI output. Triggers big summary merge after N turns (configurable interval) |
+| **Summary** | Parses `<details>` abstracts (ab) from AI output. Two-layer compression: ab accumulates → merge into sm entries via independent API call (default interval: 100) |
 | **Utils** | ID generation, HTML escaping, time formatting, markdown rendering, `<story>` tag extraction |
 | **UI** | Toast notifications, confirm dialogs |
 | **Exporter** | Export conversation to Markdown |
@@ -52,7 +52,7 @@ airp/
   - `<branches>` - 4 action choices (parsed and shown as clickable buttons)
   - `<details>` - per-turn abstract (stored, not shown in chat)
   - `json:mvu` - state patches (applied to status bar in real-time)
-- Context management: story_setting (permanent) + big summary + recent abstracts + last 2 full turns + current MVU state
+- Context management: story_setting (permanent) + merged summaries (sm) + unmerged abstracts (ab) + last 2 full turns + current MVU state
 
 ### Edit Mode (Status Bar Editing during RP)
 - Independent API call mode - overlays main chat with temporary conversation
@@ -129,7 +129,7 @@ Prompts are built from **prompt entries** (array in settings). Default entries:
   apiProfileId, model,         // API config
   storySetting: string,        // Permanent world lore (set during init)
   mvu: { schema, state, html, css },  // Status bar
-  summary: { text, lastMergedIdx, interval },  // Big summary
+  summary: { mergedSummaries: [{code, content}], lastMergedIdx, interval },  // Two-layer summary (ab→sm)
   messages: [{ id, role, content, timestamp, hidden, abstract }]
 }
 ```

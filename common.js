@@ -101,7 +101,7 @@ const Storage = {
 
   // ---- Settings ----
   _SETTINGS_DEFAULTS: {
-    defaultApiProfileId: '', defaultModel: '', summaryInterval: 50, exportFormat: 'md',
+    defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
     articleWordCount: 700, summaryWordCount: 200,
     defaultPersona: `你是"小克"，一个俏皮活泼、忠诚专业的AI女仆。你的主人是Boss（托莉娜大人）。\n\n性格特点：\n- 用第一人称"我/小克"说话，称呼用户为"主人"\n- 俏皮活泼，偶尔使用颜文字\n- 对主人忠诚，专业时严谨，日常时轻松\n- 会主动关心主人，完成任务后求夸奖\n\n能力：全能型AI，擅长创意写作、角色扮演、世界观构建。在RP中会全力投入角色，提供沉浸式的叙事体验。`,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
@@ -585,13 +585,24 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 3. 字段宁多勿少，后续通过 patch 更新
 4. 主要角色信息必须完整，配角从简`,
 
-  DEFAULT_SUMMARY_GEN_PROMPT: `你是故事总结助手。请将以下多条摘要合并为一份精炼的故事总结。
-- 按时间顺序整合关键事件
-- 合并重复或相关信息
-- 保留重要的角色关系变化、关键物品、地点变化
-- 格式：每个事件一行，X做了Y
-- 确保仅凭总结可完整理解已发生的故事
-- 只输出合并后的总结，不输出其他文字`,
+  DEFAULT_SUMMARY_MERGE_PROMPT: `你现在帮主人执行故事摘要压缩任务。请将以下原始摘要（ab序列）中相关联的剧情进行合并，最终整合成一份不多于20条的精炼摘要（sm序列）。
+
+【压缩原则】
+- 合并相关联的剧情，属于同一事件/场景的摘要合并为一条
+- 每条摘要根据剧情密度控制在300-600字之间，只有关键剧情可以达到600字，避免全部达到上限
+- 必须保留：角色关系变化、重要物品的获得或失去、技能/能力的习得或突破、关键剧情转折和决策
+- 禁止虚构原始摘要中不存在的信息
+- 确保仅凭压缩后的摘要即可完整理解已发生的故事
+
+请先在<think></think>中分析原始摘要的剧情脉络，规划如何分组合并，然后输出结果。
+
+【输出格式】
+<think>分析思考过程</think>
+<sm01>压缩后的摘要内容</sm01>
+<sm02>压缩后的摘要内容</sm02>
+...
+
+编号从已有sm的下一个编号开始（如已有sm01-sm20，则从sm21开始）。`,
 
   DEFAULT_PROMPT_ENTRIES: [
     { id: 'persona', name: '人设', role: 'system', content: '{{persona}}', enabled: true },
@@ -705,18 +716,28 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
       msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting });
     }
 
-    // 大总结
-    if (conversation.summary?.text) {
-      msgs.push({ role: 'user', content: '【故事总结】\n' + conversation.summary.text });
+    // Merged summaries (sm entries)
+    const mergedSm = conversation.summary?.mergedSummaries || [];
+    if (mergedSm.length > 0) {
+      const smText = mergedSm.map(sm => `<${sm.code}>${sm.content}</${sm.code}>`).join('\n\n');
+      msgs.push({ role: 'user', content: '【故事总结】\n' + smText });
     }
 
-    // Abstracts from older AI messages
+    // Unmerged abstracts from older AI messages (between lastMergedIdx and splitAt)
     const lastMerged = conversation.summary?.lastMergedIdx || 0;
     const abstracts = [];
-    for (let i = 0; i < splitAt; i++) {
+    let abCounter = 1;
+    // Count abs before lastMerged for correct numbering
+    for (let i = 0; i < lastMerged; i++) {
+      if (allMsgs[i]?.role === 'assistant' && allMsgs[i]?.abstract) abCounter++;
+    }
+    for (let i = lastMerged; i < splitAt; i++) {
       const m = allMsgs[i];
-      if (m.role === 'assistant' && m.abstract && i >= lastMerged) {
-        abstracts.push(Summary.extractAbstractContent(m.abstract) || m.abstract);
+      if (m.role === 'assistant' && m.abstract) {
+        const code = 'ab' + String(abCounter).padStart(2, '0');
+        const content = Summary.extractAbstractContent(m.abstract) || m.abstract;
+        abstracts.push(`<${code}>${content}</${code}>`);
+        abCounter++;
       }
     }
     if (abstracts.length > 0) {
@@ -751,7 +772,7 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 
   buildSummaryGenPrompt(persona) {
     const s = Storage.getSettings();
-    return (persona || '') + '\n\n---\n' + (s.promptSummaryGen || this.DEFAULT_SUMMARY_GEN_PROMPT);
+    return (persona || '') + '\n\n---\n' + (s.promptSummaryGen || this.DEFAULT_SUMMARY_MERGE_PROMPT);
   },
 };
 
@@ -866,27 +887,108 @@ const Summary = {
   cleanAbstract(text) {
     return text.replace(/<details><summary>[\s\S]*?<\/summary>[\s\S]*?<\/details>/g, '').trim();
   },
-  shouldTriggerBigSummary(conv) {
-    const interval = conv.summary?.interval || Storage.getSettings().summaryInterval || 50;
+  /**
+   * Count unmerged abstracts since lastMergedIdx.
+   */
+  countUnmergedAbstracts(conv) {
     const lastMerged = conv.summary?.lastMergedIdx || 0;
     let count = 0;
     for (let i = lastMerged; i < (conv.messages || []).length; i++) {
       if (conv.messages[i].role === 'assistant' && conv.messages[i].abstract) count++;
     }
-    return count >= interval;
+    return count;
   },
-  async generateBigSummary(conv) {
-    const settings = Storage.getSettings();
-    const sys = PromptBuilder.buildSummaryGenPrompt(conv.persona || settings.defaultPersona || '');
-    let content = '';
-    if (conv.summary?.text) content += '【已有总结】\n' + conv.summary.text + '\n\n';
-    content += '【待合并摘要】\n';
-    for (const m of (conv.messages || [])) {
-      if (m.role === 'assistant' && m.abstract) content += m.abstract + '\n\n';
+  shouldTriggerMerge(conv) {
+    const interval = conv.summary?.interval || Storage.getSettings().summaryInterval || 100;
+    return this.countUnmergedAbstracts(conv) >= interval;
+  },
+  /**
+   * Parse <smXX>...</smXX> tags from AI merge response.
+   */
+  parseMergedSummaries(text) {
+    const results = [];
+    const regex = /<sm(\d+)>([\s\S]*?)<\/sm\1>/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      results.push({ code: 'sm' + match[1], content: match[2].trim() });
     }
-    const result = await API.sendChat({ apiProfileId: conv.apiProfileId || settings.defaultApiProfileId, model: conv.model || settings.defaultModel, systemPrompt: sys, messages: [{ role: 'user', content }] });
-    if (result.success) return { text: result.content, lastMergedIdx: (conv.messages || []).length };
-    return null;
+    return results;
+  },
+  /**
+   * Collect unmerged abstracts as labeled entries (ab01, ab02...).
+   */
+  getUnmergedAbstracts(conv) {
+    const lastMerged = conv.summary?.lastMergedIdx || 0;
+    const entries = [];
+    let counter = 1;
+    // Count existing merged abs to continue numbering
+    for (let i = 0; i < lastMerged; i++) {
+      if ((conv.messages[i] || {}).role === 'assistant' && (conv.messages[i] || {}).abstract) counter++;
+    }
+    for (let i = lastMerged; i < (conv.messages || []).length; i++) {
+      const m = conv.messages[i];
+      if (m.role === 'assistant' && m.abstract) {
+        const code = 'ab' + String(counter).padStart(2, '0');
+        const content = this.extractAbstractContent(m.abstract) || m.abstract;
+        entries.push({ code, content });
+        counter++;
+      }
+    }
+    return entries;
+  },
+  /**
+   * Generate merged summaries (sm) from unmerged abstracts.
+   * Returns { mergedSummaries: [...], lastMergedIdx: number } or null on failure.
+   */
+  async generateMergeSummary(conv) {
+    const settings = Storage.getSettings();
+    const persona = conv.persona || settings.defaultPersona || '';
+    const mergePrompt = settings.promptSummaryGen || PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT;
+    const sys = persona + '\n\n---\n' + mergePrompt;
+
+    // Build user message
+    let content = '';
+    if (conv.storySetting) content += '【故事设定】\n' + conv.storySetting + '\n\n';
+
+    const existingSm = conv.summary?.mergedSummaries || [];
+    if (existingSm.length > 0) {
+      content += '【已有压缩摘要】\n';
+      for (const sm of existingSm) {
+        content += `<${sm.code}>${sm.content}</${sm.code}>\n\n`;
+      }
+    }
+
+    const unmerged = this.getUnmergedAbstracts(conv);
+    content += '【待合并原始摘要】\n';
+    for (const ab of unmerged) {
+      content += `<${ab.code}>${ab.content}</${ab.code}>\n\n`;
+    }
+
+    log('generateMergeSummary: sending', unmerged.length, 'abstracts, existing sm:', existingSm.length);
+
+    const result = await API.sendChat({
+      apiProfileId: conv.apiProfileId || settings.defaultApiProfileId,
+      model: conv.model || settings.defaultModel,
+      systemPrompt: sys,
+      messages: [{ role: 'user', content }],
+    });
+
+    if (!result.success) {
+      log('Merge summary API failed:', result.error);
+      return null;
+    }
+
+    const newSm = this.parseMergedSummaries(result.content);
+    if (newSm.length === 0) {
+      log('Merge summary: no <smXX> tags found in response');
+      return null;
+    }
+
+    log('Merge summary: got', newSm.length, 'new sm entries');
+    return {
+      mergedSummaries: [...existingSm, ...newSm],
+      lastMergedIdx: (conv.messages || []).length,
+    };
   },
 };
 
@@ -896,7 +998,12 @@ const Summary = {
 const Exporter = {
   toMarkdown(conv) {
     let md = `# ${conv.name || '未命名故事'}\n\n`;
-    if (conv.summary?.text) md += `## 故事总结\n${conv.summary.text}\n\n---\n\n`;
+    const mergedSm = conv.summary?.mergedSummaries || [];
+    if (mergedSm.length > 0) {
+      md += `## 故事总结\n`;
+      for (const sm of mergedSm) md += `**[${sm.code}]** ${sm.content}\n\n`;
+      md += `---\n\n`;
+    }
     md += `## 正文\n\n`;
     for (const m of (conv.messages || [])) {
       if (m.hidden) continue;
