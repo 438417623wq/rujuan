@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AIRP - AI Interactive Roleplay Novel</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <script src="common.js?v=8"></script>
+  <script src="common.js?v=9"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -598,7 +598,7 @@
 
 <!-- ── Fixed Header Bar ─────────────────────── -->
 <div class="header-bar">
-  <a class="btn-settings" href="settings.html?v=8" id="btn-settings">
+  <a class="btn-settings" href="settings.html?v=9" id="btn-settings">
     <span class="icon" style="width:16px;height:16px;"></span>
     设置
   </a>
@@ -670,7 +670,8 @@
   let conversations = [];
 
   // ── Init ───────────────────────────────────────
-  function init() {
+  async function init() {
+    await Storage.syncFromServer();
     loadConversations();
   }
 
@@ -773,7 +774,7 @@
     // If no API profiles configured, redirect to settings
     if (profileList.length === 0) {
       UI.showToast('请先配置API接口', 'error');
-      setTimeout(() => { window.location.href = 'settings.html?v=8'; }, 800);
+      setTimeout(() => { window.location.href = 'settings.html?v=9'; }, 800);
       return;
     }
 
@@ -895,7 +896,7 @@
 
     Storage.saveConversation(conv);
     UI.closeModal();
-    window.location.href = `chat.html?v=8&id=${id}&new=true`;
+    window.location.href = `chat.html?v=9&id=${id}&new=true`;
   }
 
   // ── Open Conversation ──────────────────────────
@@ -904,7 +905,7 @@
     if (event.target.closest('.conv-card-actions') || event.target.closest('.conv-card-rename')) {
       return;
     }
-    window.location.href = `chat.html?v=8&id=${id}`;
+    window.location.href = `chat.html?v=9&id=${id}`;
   }
 
   // ── Rename (inline) ───────────────────────────

@@ -41,6 +41,65 @@ const Storage = {
   _get(key, fb = null) { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fb; } catch { return fb; } },
   _set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } },
 
+  // ---- Server sync helpers ----
+  _apiBase: '',  // auto-detected, same origin
+  _syncToServer(endpoint, data, method = 'PUT') {
+    fetch(this._apiBase + endpoint, {
+      method, headers: { 'Content-Type': 'application/json' },
+      body: method !== 'DELETE' ? JSON.stringify(data) : undefined,
+    }).catch(e => log('Server sync failed:', endpoint, e.message));
+  },
+  async _fetchFromServer(endpoint) {
+    try {
+      const res = await fetch(this._apiBase + endpoint);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch { return null; }
+  },
+
+  /**
+   * Pull all data from server into localStorage. Call once on page load.
+   * Server data wins over local (newer shared state).
+   */
+  async syncFromServer() {
+    const [settings, profiles, conversations] = await Promise.all([
+      this._fetchFromServer('/api/settings'),
+      this._fetchFromServer('/api/profiles'),
+      this._fetchFromServer('/api/conversations'),
+    ]);
+    let synced = false;
+    if (settings && Object.keys(settings).length > 0) {
+      this._set(this.KEYS.SETTINGS, settings);
+      synced = true;
+    }
+    if (profiles && Object.keys(profiles).length > 0) {
+      this._set(this.KEYS.API_PROFILES, profiles);
+      synced = true;
+    }
+    if (conversations && Object.keys(conversations).length > 0) {
+      this._set(this.KEYS.CONVERSATIONS, conversations);
+      synced = true;
+    }
+    if (synced) log('Synced from server');
+    return synced;
+  },
+
+  /**
+   * Push all local data to server. Call when migrating from localStorage-only.
+   */
+  async pushAllToServer() {
+    const settings = this._get(this.KEYS.SETTINGS, null);
+    const profiles = this._get(this.KEYS.API_PROFILES, {});
+    const conversations = this._get(this.KEYS.CONVERSATIONS, {});
+    if (settings) this._syncToServer('/api/settings', settings);
+    if (Object.keys(profiles).length) this._syncToServer('/api/profiles', profiles);
+    for (const [id, conv] of Object.entries(conversations)) {
+      this._syncToServer(`/api/conversations/${id}`, conv);
+    }
+    log('Pushed all local data to server');
+  },
+
+  // ---- Settings ----
   _SETTINGS_DEFAULTS: {
     defaultApiProfileId: '', defaultModel: '', summaryInterval: 50, exportFormat: 'md',
     articleWordCount: 700, summaryWordCount: 200,
@@ -50,24 +109,53 @@ const Storage = {
   getSettings() {
     const saved = this._get(this.KEYS.SETTINGS, null);
     if (!saved) return { ...this._SETTINGS_DEFAULTS };
-    // Merge: saved values override defaults, but missing keys get defaults
     return { ...this._SETTINGS_DEFAULTS, ...saved };
   },
-  saveSettings(s) { return this._set(this.KEYS.SETTINGS, s); },
+  saveSettings(s) {
+    this._set(this.KEYS.SETTINGS, s);
+    this._syncToServer('/api/settings', s);
+  },
 
+  // ---- API Profiles ----
   getApiProfiles() { return this._get(this.KEYS.API_PROFILES, {}); },
   getApiProfile(id) { return this.getApiProfiles()[id] || null; },
-  saveApiProfile(p) { const a = this.getApiProfiles(); a[p.id] = p; return this._set(this.KEYS.API_PROFILES, a); },
-  deleteApiProfile(id) { const a = this.getApiProfiles(); delete a[id]; return this._set(this.KEYS.API_PROFILES, a); },
+  saveApiProfile(p) {
+    const a = this.getApiProfiles(); a[p.id] = p;
+    this._set(this.KEYS.API_PROFILES, a);
+    this._syncToServer('/api/profiles', a);
+  },
+  deleteApiProfile(id) {
+    const a = this.getApiProfiles(); delete a[id];
+    this._set(this.KEYS.API_PROFILES, a);
+    this._syncToServer('/api/profiles', a);
+  },
 
+  // ---- Conversations ----
   getConversations() { return this._get(this.KEYS.CONVERSATIONS, {}); },
   getConversation(id) { return this.getConversations()[id] || null; },
-  saveConversation(c) { const a = this.getConversations(); c.updatedAt = Date.now(); a[c.id] = c; return this._set(this.KEYS.CONVERSATIONS, a); },
-  deleteConversation(id) { const a = this.getConversations(); delete a[id]; return this._set(this.KEYS.CONVERSATIONS, a); },
+  saveConversation(c) {
+    const a = this.getConversations(); c.updatedAt = Date.now(); a[c.id] = c;
+    this._set(this.KEYS.CONVERSATIONS, a);
+    this._syncToServer(`/api/conversations/${c.id}`, c);
+  },
+  deleteConversation(id) {
+    const a = this.getConversations(); delete a[id];
+    this._set(this.KEYS.CONVERSATIONS, a);
+    this._syncToServer(`/api/conversations/${id}`, null, 'DELETE');
+  },
   getConversationList() { return Object.values(this.getConversations()).sort((a, b) => b.updatedAt - a.updatedAt); },
 
   exportAll() { return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations: this.getConversations() }; },
-  importAll(d) { if (d.settings) this._set(this.KEYS.SETTINGS, d.settings); if (d.apiProfiles) this._set(this.KEYS.API_PROFILES, d.apiProfiles); if (d.conversations) this._set(this.KEYS.CONVERSATIONS, d.conversations); },
+  importAll(d) {
+    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); this._syncToServer('/api/settings', d.settings); }
+    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); this._syncToServer('/api/profiles', d.apiProfiles); }
+    if (d.conversations) {
+      this._set(this.KEYS.CONVERSATIONS, d.conversations);
+      for (const [id, conv] of Object.entries(d.conversations)) {
+        this._syncToServer(`/api/conversations/${id}`, conv);
+      }
+    }
+  },
 };
 
 // ============================================================
@@ -493,7 +581,10 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 - 避免模糊或含糊的描述
 </details>` },
     { id: 'writing_style', name: '写作风格', role: 'system', enabled: true,
-      content: '每次回复正文约{{articleWords}}字。' },
+      content: `每次回复正文约{{articleWords}}字。
+
+【输出格式】故事正文必须包裹在 <story></story> 标签中。标签外的内容（状态更新、摘要、选项）不展示给玩家。
+输出顺序：<story>正文</story> → <branches>选项</branches> → <details>摘要</details> → \`\`\`json:mvu\`\`\`` },
     { id: 'options_req', name: '剧情选项', role: 'system', enabled: true,
       content: `每次回复正文末尾追加 <branches></branches> 包裹的4条分支选项。选项按"叙事合理性 + 人物性格下采取的概率"从高到低排序。
 
@@ -513,7 +604,7 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 4.(类型)：行动描述
 </branches>` },
     { id: 'mvu_req', name: '状态栏更新', role: 'system', enabled: true,
-      content: `在故事正文输出完成后，如果有状态变化，简要分析并输出更新补丁：
+      content: `在故事正文输出完成后，请首先尽可能考虑全面需要更新的变量，宁可多做更新，就算不在场景里的角色，如果时间发生明显流逝，也需要更新他们的状态，然后用文字输出你的分析，并输出更新补丁。：
 \`\`\`json:mvu
 {
   "analysis": "简述哪些状态变化及原因",
@@ -691,6 +782,7 @@ const MVU = {
       .replace(/```text:story_setting\s*\n[\s\S]*?\n```/g, '')
       .replace(/```text:options\s*\n[\s\S]*?\n```/g, '')
       .replace(/<branches>[\s\S]*?<\/branches>/g, '')
+      .replace(/<\/?story>/g, '')
       .trim();
   },
 
@@ -819,6 +911,34 @@ const Utils = {
     h = h.replace(/^(\*{3}|---)/gm, '<hr class="story-divider">');
     h = h.replace(/\n/g, '<br>');
     return h;
+  },
+  /**
+   * Extract only <story>...</story> content from AI output.
+   * Handles partial (unclosed) tags during streaming.
+   * Falls back to old cleaning for backward compat (pre-story-tag messages).
+   */
+  extractStoryContent(text) {
+    if (!text) return '';
+    if (!text.includes('<story>')) {
+      // Backward compat: no <story> tag, use old cleaning
+      return Summary.cleanAbstract(MVU.cleanText(text));
+    }
+    let result = '';
+    let pos = 0;
+    while (pos < text.length) {
+      const start = text.indexOf('<story>', pos);
+      if (start === -1) break;
+      const contentStart = start + 7;
+      const end = text.indexOf('</story>', contentStart);
+      if (end === -1) {
+        // Unclosed tag — still streaming inside <story>
+        result += text.substring(contentStart);
+        break;
+      }
+      result += text.substring(contentStart, end);
+      pos = end + 8;
+    }
+    return result.trim();
   },
 };
 

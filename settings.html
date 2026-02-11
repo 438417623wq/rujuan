@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AIRP - 设置</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <script src="common.js?v=8"></script>
+  <script src="common.js?v=9"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -603,7 +603,7 @@
 
   <!-- ── Header ──────────────────────────────── -->
   <header class="settings-header">
-    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=8'" title="返回">
+    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=9'" title="返回">
       <!-- icon injected by JS -->
     </button>
     <div>
@@ -781,7 +781,8 @@
   // ================================================================
   // Initialization
   // ================================================================
-  function init() {
+  async function init() {
+    await Storage.syncFromServer();
     injectIcons();
     loadAllSections();
     animateSections();
