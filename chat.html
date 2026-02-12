@@ -1211,13 +1211,15 @@
       .message.user .message-bubble {
         max-width: 90%;
       }
-      /* Mobile: always show action buttons (no hover) */
+      /* Mobile: tap to show action buttons */
       .message-actions {
-        opacity: 0.6;
-        pointer-events: auto;
         position: relative;
         top: 0;
         margin-top: 4px;
+      }
+      .message.show-actions .message-actions {
+        opacity: 1;
+        pointer-events: auto;
       }
       .message.assistant .message-actions {
         justify-content: flex-start;
@@ -2785,6 +2787,24 @@ function setupScrollDetection() {
       btn.classList.remove('visible');
     }
   });
+
+  // Mobile: tap message bubble to toggle action buttons
+  const isMobile = window.matchMedia('(max-width: 768px)').matches;
+  if (isMobile) {
+    area.addEventListener('click', (e) => {
+      const bubble = e.target.closest('.message-bubble');
+      const msg = bubble && bubble.closest('.message');
+      if (!msg) {
+        // Tapped outside any message: hide all
+        area.querySelectorAll('.message.show-actions').forEach(el => el.classList.remove('show-actions'));
+        return;
+      }
+      // Toggle this message, hide others
+      const wasShown = msg.classList.contains('show-actions');
+      area.querySelectorAll('.message.show-actions').forEach(el => el.classList.remove('show-actions'));
+      if (!wasShown) msg.classList.add('show-actions');
+    });
+  }
 }
 
 function scrollToBottom(force) {
