@@ -525,21 +525,21 @@ const PromptBuilder = {
 【schema 设计示例（仅展示字段结构，不含HTML/CSS）】
 以修仙题材为例，一个完整的 schema 大致包含：
 \`\`\`
-环境类：date(text), location(text), environment(text)
-主角数值：hp(bar), mp(bar), exp(bar), level(text), currency(number)
-主角文本：status_effects(text), title(text)
-技能列表：skills(list) — 每项格式如"基础剑法 Lv.3 | 熟练度60% | 以气御剑的入门剑术"
-物品栏：inventory(list)
-任务：main_quest(text), side_quests(list) — 每项格式如"寻找灵草 | 目标：采集3株冰心草 | 进度：1/3"
-角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text), lin_affection(bar), lin_intimacy(bar), lin_relation(tag), lin_thoughts(text), lin_location(text)
-角色-配角张三：zhang_profile(text,简要), zhang_relation(tag), zhang_affection(number), zhang_location(text)
+环境类：date(text, rule:"每个场景转换后更新"), location(text, rule:"角色移动后更新"), environment(text, rule:"环境发生变化时更新")
+主角数值：hp(bar, rule:"战斗/受伤后减少，休息/治疗后恢复"), mp(bar, rule:"施法后消耗，冥想/药物恢复"), exp(bar, rule:"战斗/任务/修炼后增加"), level(text, rule:"经验满后突破时更新"), currency(number, rule:"交易/拾取/奖励时变动")
+主角文本：status_effects(text, rule:"受到buff/debuff时更新，持续时间结束时清除"), title(text, rule:"获得新头衔/称号时更新")
+技能列表：skills(list, rule:"习得新技能或技能升级时更新") — 每项格式如"基础剑法 Lv.3 | 熟练度60% | 以气御剑的入门剑术"
+物品栏：inventory(list, rule:"获得/使用/丢失物品时增删")
+任务：main_quest(text, rule:"主线推进或完成时更新"), side_quests(list, rule:"接取/推进/完成支线时更新") — 每项格式如"寻找灵草 | 目标：采集3株冰心草 | 进度：1/3"
+角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_intimacy(bar, rule:"亲密互动后±1~3"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
+角色-配角张三：zhang_profile(text,简要), zhang_relation(tag, rule:"关系变化时更新"), zhang_affection(number, rule:"互动后±1~3"), zhang_location(text, rule:"角色移动后更新")
 \`\`\`
 以上仅为参考，请根据用户讨论的具体题材灵活设计——关键是覆盖全面、信息充分，并且鼓励添加更多有趣的、题材特色的追踪维度。
 
 \`\`\`json:mvu_init
 {
   "schema": {
-    "字段名": { "type": "bar|number|text|list|tag", "label": "显示名", "max": 100, "value": "初始值", "color": "#颜色（可选）" }
+    "字段名": { "type": "bar|number|text|list|tag", "label": "显示名", "max": 100, "value": "初始值", "color": "#颜色（可选）", "rule": "更新规则（可选但推荐）" }
   },
   "templates": {
     "模板名": {
@@ -554,6 +554,12 @@ const PromptBuilder = {
 \`\`\`
 
 schema 类型：bar(进度条,需max)、number(数字)、text(文本)、list(数组)、tag(标签)
+
+rule（更新规则）：描述该字段何时更新及变化逻辑。例如：
+- bar/number 类型："战斗后±5~20，休息时缓慢恢复"
+- text 类型："角色移动后更新"
+- list 类型："获得/失去物品时增删"
+rule 帮助 AI 在 RP 阶段准确判断哪些字段需要更新，字段越多越建议写 rule。环境类（时间、位置等）和角色心理状态等高频变化字段必须写 rule。
 
 templates（模板）用于RP阶段动态添加同类条目（如新遇到的角色）：
 - fields：该模板每个实例会创建的字段定义，实际字段名为 \${id}_字段名
@@ -657,10 +663,22 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 4.(类型)：行动描述
 </branches>` },
     { id: 'mvu_req', name: '状态栏更新', role: 'system', enabled: true,
-      content: `在故事正文输出完成后，请首先尽可能考虑全面需要更新的变量，宁可多做更新，就算不在场景里的角色，如果时间发生明显流逝，也需要更新他们的状态，然后用文字输出你的分析，并输出更新补丁。：
+      content: `在故事正文输出完成后，根据本轮发生的事件更新状态栏。
+
+【更新流程】
+1. 判断本轮触发了哪类事件（可多选）：
+   - 时间/环境变化（位置移动、时间流逝、天气变化）
+   - 社交互动（对话、关系变化、情感波动）
+   - 战斗/受伤/消耗（HP/体力等数值变化）
+   - 物品变动（获得、使用、丢失）
+   - 成长/里程碑（技能习得、等级提升、关系阶段转变）
+2. 对照每个字段的 rule 逐项检查是否需要更新——rule 中描述的触发条件满足则更新，不满足则跳过
+3. 不在当前场景中的角色：若本轮有明显时间流逝，也要合理推演其状态变化
+4. 没有任何变化时不输出 mvu 代码块
+
 \`\`\`json:mvu
 {
-  "analysis": "简述哪些状态变化及原因",
+  "analysis": "1.事件类型 2.逐字段检查结果",
   "patches": [
     {"op": "replace", "path": "/字段名", "value": 新值},
     {"op": "delta", "path": "/数值字段", "value": -15},
@@ -672,8 +690,7 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 }
 \`\`\`
 操作：replace(替换)、delta(数值增量,如-15)、add(列表添加)、remove(列表删除)、addFromTemplate(从模板创建新条目)、removeFromTemplate(删除条目)
-addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profile），后续用 replace/delta 正常更新。
-没有变化则不输出 mvu 代码块。` },
+addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profile），后续用 replace/delta 正常更新。` },
   ],
 
   buildMessages(conversation) {
@@ -695,7 +712,10 @@ addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profil
     if (conversation.mvu?.schema) {
       schemaDesc = '【状态栏字段】\n';
       for (const [k, d] of Object.entries(conversation.mvu.schema)) {
-        schemaDesc += `- ${k} (${d.label}): type=${d.type}${d.max ? ', max=' + d.max : ''}\n`;
+        let line = `- ${k} (${d.label}): type=${d.type}`;
+        if (d.max) line += `, max=${d.max}`;
+        if (d.rule) line += ` | rule: ${d.rule}`;
+        schemaDesc += line + '\n';
       }
     }
 
@@ -768,7 +788,19 @@ addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profil
       const m = recent[i];
       // Insert MVU state before the last message
       if (i === recent.length - 1 && conversation.mvu?.state && Object.keys(conversation.mvu.state).length > 0) {
-        msgs.push({ role: 'user', content: '【当前状态栏数据】\n' + JSON.stringify(conversation.mvu.state, null, 2) });
+        let stateContent = '【当前状态栏数据】\n';
+        const schema = conversation.mvu.schema || {};
+        const state = conversation.mvu.state;
+        for (const [k, v] of Object.entries(state)) {
+          const def = schema[k];
+          const label = def?.label || k;
+          const displayVal = Array.isArray(v) ? JSON.stringify(v) : v;
+          let line = `${k}(${label}): ${displayVal}`;
+          if (def?.max) line += ` / max:${def.max}`;
+          if (def?.rule) line += ` 【${def.rule}】`;
+          stateContent += line + '\n';
+        }
+        msgs.push({ role: 'user', content: stateContent });
       }
       const content = m.role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(m.content)) : m.content;
       msgs.push({ role: m.role, content });
