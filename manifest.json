@@ -1,6 +1,6 @@
 {
-  "name": "AIRP",
-  "short_name": "AIRP",
+  "name": "入卷",
+  "short_name": "入卷",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f0c08",

@@ -1,10 +1,32 @@
 /**
- * AIRP - AI Interactive Roleplay Novel
+ * 入卷 - AI 互动小说
  * Common Module v2.0 (Clean Rewrite)
  */
 
 const DEBUG = true;
-function log(...a) { if (DEBUG) console.log('[AIRP]', ...a); }
+function log(...a) { if (DEBUG) console.log('[入卷]', ...a); }
+
+// ============================================================
+// Config (public mode detection)
+// ============================================================
+const Config = {
+  mode: 'local',
+  provider: 'openai',
+  defaultModel: '',
+  loaded: false,
+  async load() {
+    try {
+      const res = await fetch('/api/config');
+      if (!res.ok) return;
+      const data = await res.json();
+      this.mode = data.mode || 'local';
+      this.provider = data.provider || 'openai';
+      this.defaultModel = data.defaultModel || '';
+      this.loaded = true;
+    } catch { /* local mode fallback */ }
+  },
+  isPublic() { return this.mode === 'public'; },
+};
 
 // ============================================================
 // Icons
@@ -41,17 +63,30 @@ const Storage = {
   _get(key, fb = null) { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fb; } catch { return fb; } },
   _set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } },
 
+  // ---- Auth token (public mode) ----
+  _authToken: null,
+  getAuthToken() { return this._authToken || localStorage.getItem('airp_token') || ''; },
+  setAuthToken(t) { this._authToken = t; localStorage.setItem('airp_token', t); },
+  clearAuthToken() { this._authToken = null; localStorage.removeItem('airp_token'); },
+
+  _authHeaders() {
+    const h = {};
+    const t = this.getAuthToken();
+    if (t) h['Authorization'] = 'Bearer ' + t;
+    return h;
+  },
+
   // ---- Server sync helpers ----
   _apiBase: '',  // auto-detected, same origin
   _syncToServer(endpoint, data, method = 'PUT') {
     fetch(this._apiBase + endpoint, {
-      method, headers: { 'Content-Type': 'application/json' },
+      method, headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
       body: method !== 'DELETE' ? JSON.stringify(data) : undefined,
     }).catch(e => log('Server sync failed:', endpoint, e.message));
   },
   async _fetchFromServer(endpoint) {
     try {
-      const res = await fetch(this._apiBase + endpoint);
+      const res = await fetch(this._apiBase + endpoint, { headers: this._authHeaders() });
       if (!res.ok) return null;
       return await res.json();
     } catch { return null; }
@@ -242,6 +277,10 @@ const API = {
   async sendChat({ apiProfileId, model, systemPrompt, messages }) {
     const p = Storage.getApiProfile(apiProfileId);
     if (!p) return { success: false, error: 'API配置不存在' };
+    // Server proxy mode
+    if (p.provider === 'server-proxy') {
+      return this._sendViaProxy({ model, systemPrompt, messages });
+    }
     try {
       const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return { success: false, error: e.error?.message || `HTTP ${res.status}` }; }
@@ -292,6 +331,12 @@ const API = {
     const controller = new AbortController();
     const p = Storage.getApiProfile(apiProfileId);
     if (!p) { onError?.('API配置不存在', 0); return controller; }
+
+    // Server proxy mode
+    if (p.provider === 'server-proxy') {
+      this._streamViaProxy({ model, systemPrompt, messages, onChunk, onDone, onError, onStatus, controller });
+      return controller;
+    }
 
     const prov = this._detect(p, model);
     const url = this._buildUrl(p, model, true);
@@ -430,6 +475,140 @@ const API = {
     else if (data.candidates) text = (data.candidates[0]?.content?.parts || []).map(pt => pt.text || '').join('');
     else if (data.choices) text = data.choices[0]?.message?.content || '';
     return { content: text, usage };
+  },
+
+  // ---- Server proxy methods (public mode) ----
+  async _sendViaProxy({ model, systemPrompt, messages }) {
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...Storage._authHeaders() },
+        body: JSON.stringify({ model, systemPrompt, messages }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        return { success: false, error: e.error || `HTTP ${res.status}` };
+      }
+      const data = await res.json();
+      return { success: true, content: data.content || '', usage: data.usage || { input: 0, output: 0 } };
+    } catch (e) { return { success: false, error: e.message }; }
+  },
+
+  _streamViaProxy({ model, systemPrompt, messages, onChunk, onDone, onError, onStatus, controller }) {
+    const prov = Config.provider || 'openai';
+    const CONNECT_TIMEOUT = 30000;
+    const IDLE_TIMEOUT = 20000;
+
+    const doStream = async () => {
+      let connectTimer = null;
+      let idleTimer = null;
+      let gotFirstChunk = false;
+      let timeoutErrorHandled = false;
+
+      const clearTimers = () => {
+        if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
+        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+      };
+
+      const resetIdleTimer = () => {
+        if (idleTimer) clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => {
+          timeoutErrorHandled = true;
+          controller.abort();
+          clearTimers();
+          onError?.('IDLE_TIMEOUT', 0);
+        }, IDLE_TIMEOUT);
+      };
+
+      connectTimer = setTimeout(() => {
+        if (!gotFirstChunk) {
+          timeoutErrorHandled = true;
+          controller.abort();
+          clearTimers();
+          onError?.('CONNECT_TIMEOUT', 0);
+        }
+      }, CONNECT_TIMEOUT);
+
+      try {
+        onStatus?.('connecting');
+        const res = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...Storage._authHeaders() },
+          body: JSON.stringify({ model, systemPrompt, messages }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          clearTimers();
+          const errBody = await res.text();
+          let errMsg = `HTTP ${res.status}`;
+          try { const j = JSON.parse(errBody); errMsg = j.error || errMsg; } catch {}
+          onError?.(errMsg, res.status);
+          return;
+        }
+
+        onStatus?.('streaming');
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '', fullText = '', usage = { input: 0, output: 0 };
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            if (!gotFirstChunk) {
+              gotFirstChunk = true;
+              if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
+            }
+            resetIdleTimer();
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const raw = line.slice(6).trim();
+              if (raw === '[DONE]') continue;
+              try {
+                const data = JSON.parse(raw);
+                let chunk = '';
+                if (prov === 'claude') {
+                  if (data.type === 'content_block_delta' && data.delta?.text) chunk = data.delta.text;
+                  if (data.type === 'message_delta' && data.usage) usage.output = data.usage.output_tokens || 0;
+                  if (data.type === 'message_start' && data.message?.usage) usage.input = data.message.usage.input_tokens || 0;
+                } else if (prov === 'google') {
+                  const parts = data.candidates?.[0]?.content?.parts || [];
+                  for (const pt of parts) if (pt.text) chunk += pt.text;
+                  if (data.usageMetadata) { usage.input = data.usageMetadata.promptTokenCount || 0; usage.output = data.usageMetadata.candidatesTokenCount || 0; }
+                } else {
+                  const delta = data.choices?.[0]?.delta;
+                  if (delta?.content) chunk = delta.content;
+                  if (data.usage) { usage.input = data.usage.prompt_tokens || 0; usage.output = data.usage.completion_tokens || 0; }
+                }
+                if (chunk) { fullText += chunk; onChunk?.(chunk, fullText); }
+              } catch {}
+            }
+          }
+        } finally {
+          reader.releaseLock();
+        }
+
+        clearTimers();
+        onDone?.(fullText, usage);
+      } catch (e) {
+        clearTimers();
+        if (e.name === 'AbortError') {
+          if (timeoutErrorHandled) return;
+          onError?.('AbortError', 0);
+        } else {
+          onError?.(e.message, 0);
+        }
+      }
+    };
+
+    doStream();
   },
 
   async fetchModels(apiProfileId) {

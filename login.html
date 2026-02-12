@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="入卷">
+  <link rel="manifest" href="manifest.json">
+  <title>入卷</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
+  <script src="common.js?v=9"></script>
+  <style>
+    body {
+      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .login-container {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+    }
+
+    .login-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 40px 32px;
+      text-align: center;
+    }
+
+    .login-title {
+      font-family: var(--font-display);
+      font-size: 48px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: 8px;
+      margin-bottom: 6px;
+      text-shadow: 0 0 40px rgba(201, 164, 76, 0.25);
+    }
+
+    .login-subtitle {
+      font-family: var(--font-display);
+      font-size: 13px;
+      color: var(--text-muted);
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 32px;
+    }
+
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .login-form input {
+      text-align: center;
+      font-size: 15px;
+      padding: 12px 16px;
+    }
+
+    .login-form input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .login-btn {
+      font-family: var(--font-ui);
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px 24px;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      background: linear-gradient(135deg, var(--accent), #d4b05c);
+      color: #1a1510;
+      transition: all var(--transition);
+      margin-top: 8px;
+    }
+
+    .login-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .login-error {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--danger);
+      min-height: 20px;
+      margin-top: 4px;
+    }
+
+    .login-ornament {
+      display: block;
+      margin: 0 auto 20px;
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+
+    @media (max-width: 600px) {
+      .login-card {
+        padding: 32px 20px;
+      }
+      .login-title {
+        font-size: 36px;
+        letter-spacing: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="login-container">
+  <div class="login-card">
+    <span class="login-ornament"></span>
+    <h1 class="login-title">入卷</h1>
+    <p class="login-subtitle">AI 互动小说</p>
+
+    <div class="login-form">
+      <input type="text" id="username" placeholder="Your Name" autocomplete="off" autofocus>
+      <input type="text" id="inviteCode" placeholder="Invite Code (new user only)" autocomplete="off">
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">Enter</button>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // If already logged in, redirect
+  (async function checkAuth() {
+    const token = Storage.getAuthToken();
+    if (token) {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (data.ok) {
+          location.href = 'index.html?v=9';
+          return;
+        }
+      } catch {}
+      // Token invalid, clear it
+      Storage.clearAuthToken();
+    }
+  })();
+
+  // Handle Enter key
+  document.getElementById('username').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('inviteCode').focus();
+  });
+  document.getElementById('inviteCode').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const inviteCode = document.getElementById('inviteCode').value.trim();
+    const username = document.getElementById('username').value.trim();
+    const errorEl = document.getElementById('loginError');
+    const btn = document.getElementById('loginBtn');
+
+    errorEl.textContent = '';
+
+    if (!username) {
+      errorEl.textContent = 'Please enter your name';
+      document.getElementById('username').focus();
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '...';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode, username }),
+      });
+      const data = await res.json();
+
+      if (data.ok && data.token) {
+        Storage.setAuthToken(data.token);
+        location.href = 'index.html?v=9';
+      } else {
+        errorEl.textContent = data.error || 'Login failed';
+        btn.disabled = false;
+        btn.textContent = 'Enter';
+      }
+    } catch (e) {
+      errorEl.textContent = 'Network error';
+      btn.disabled = false;
+      btn.textContent = 'Enter';
+    }
+  }
+</script>
+
+</body>
+</html>

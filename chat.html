@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="AIRP">
+  <meta name="apple-mobile-web-app-title" content="入卷">
   <link rel="manifest" href="manifest.json">
-  <title>AIRP - Story</title>
+  <title>入卷</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
   <script src="common.js?v=9"></script>
@@ -418,8 +418,8 @@
     }
     .option-tag {
       font-family: var(--font-ui);
-      font-size: 13px;
-      padding: 7px 16px;
+      font-size: 12px;
+      padding: 5px 12px;
       background: var(--bg-elevated);
       border: 1px solid var(--border);
       border-radius: 20px;
@@ -428,7 +428,7 @@
       transition: all var(--transition);
       display: inline-flex;
       align-items: center;
-      gap: 6px;
+      gap: 4px;
       max-width: 480px;
     }
     .option-tag:hover {
@@ -442,9 +442,9 @@
       transform: translateY(0);
     }
     .option-type {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 600;
-      padding: 1px 6px;
+      padding: 1px 5px;
       border-radius: 8px;
       background: var(--accent-dim);
       color: var(--accent);
@@ -1181,6 +1181,10 @@
         justify-content: center;
         min-height: 44px;
       }
+      .options-bar {
+        padding: 4px 14px 2px;
+        gap: 6px;
+      }
       /* Mobile: disable all backdrop-filter to prevent GPU blur artifacts */
       .topbar,
       .message.user .message-bubble,
@@ -1250,10 +1254,10 @@
 
       <!-- Edit Mode Bar (hidden by default) -->
       <div class="edit-mode-bar" id="editModeBar" style="display:none;">
-        <span class="edit-mode-label">Status Bar Edit Mode</span>
+        <span class="edit-mode-label">状态栏编辑模式</span>
         <div class="edit-mode-actions">
-          <button class="btn btn-secondary" onclick="exitEditMvuMode(false)">Discard</button>
-          <button class="btn btn-primary" onclick="exitEditMvuMode(true)">Apply</button>
+          <button class="btn btn-secondary" onclick="exitEditMvuMode(false)">放弃</button>
+          <button class="btn btn-primary" onclick="exitEditMvuMode(true)">应用</button>
         </div>
       </div>
 
@@ -1358,6 +1362,16 @@ let lastFailedUserMsgId = null;
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+  await Config.load();
+  if (Config.isPublic()) {
+    const token = Storage.getAuthToken();
+    if (!token) { location.href = 'login.html'; return; }
+    try {
+      const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+      const me = await res.json();
+      if (!me.ok) { Storage.clearAuthToken(); location.href = 'login.html'; return; }
+    } catch { Storage.clearAuthToken(); location.href = 'login.html'; return; }
+  }
   // Sync from server before loading conversation
   await Storage.syncFromServer();
 
@@ -1437,7 +1451,7 @@ function goBack() {
 function renderTitle() {
   const el = document.getElementById('storyTitle');
   el.value = conversation.name || '新故事';
-  document.title = `AIRP - ${conversation.name || '新故事'}`;
+  document.title = `入卷 - ${conversation.name || '新故事'}`;
 }
 
 function saveTitle() {
@@ -1447,7 +1461,7 @@ function saveTitle() {
   if (conversation.name !== newName) {
     conversation.name = newName;
     Storage.saveConversation(conversation);
-    document.title = `AIRP - ${newName}`;
+    document.title = `入卷 - ${newName}`;
   }
 }
 
@@ -1815,6 +1829,9 @@ async function handleSend() {
   textarea.value = '';
   resetTextareaHeight();
   clearOptionsBar();
+
+  // User just sent a message, reset scroll state so we follow the new output
+  userScrolledUp = false;
 
   // Push user message
   const userMsg = {
@@ -2711,8 +2728,8 @@ function enterEditMvuMode() {
   list.innerHTML = `
     <div class="empty-state">
       <div class="empty-state-icon">${Icons.edit}</div>
-      <h3>Status Bar Edit Mode</h3>
-      <p>Describe the changes you want to make to the status bar or story setting. You can have a multi-round conversation with the AI.</p>
+      <h3>状态栏编辑模式</h3>
+      <p>描述你想对状态栏或故事设定做的修改，可以和 AI 进行多轮对话。</p>
     </div>`;
 
   // Show edit mode bar
