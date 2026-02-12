@@ -18,7 +18,7 @@ from datetime import date
 
 _port_env = os.environ.get('PORT', '').strip()
 PORT = int(_port_env) if _port_env.isdigit() else (int(sys.argv[1]) if len(sys.argv) > 1 else 8080)
-print(f'[startup] PORT env={repr(os.environ.get("PORT"))}, resolved={PORT}', flush=True)
+print(f'[startup] PORT={PORT}, MODE={os.environ.get("AIRP_MODE","local")}', flush=True)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get('AIRP_DATA_DIR') or os.path.join(BASE_DIR, 'data')
 CONV_DIR = os.path.join(DATA_DIR, 'conversations')
@@ -623,9 +623,12 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
 
+print('[startup] module loaded OK', flush=True)
+
 # ── Main ────────────────────────────────────────────────────
 if __name__ == '__main__':
     try:
+        print('[startup] entering __main__', flush=True)
         ensure_dirs()
 
         if PUBLIC_MODE:
