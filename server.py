@@ -16,7 +16,7 @@ import threading
 import urllib.parse
 from datetime import date
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
+PORT = int(os.environ.get('PORT', 0)) or (int(sys.argv[1]) if len(sys.argv) > 1 else 8080)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.environ.get('AIRP_DATA_DIR') or os.path.join(BASE_DIR, 'data')
 CONV_DIR = os.path.join(DATA_DIR, 'conversations')
