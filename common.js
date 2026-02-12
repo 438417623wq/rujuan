@@ -541,6 +541,13 @@ const PromptBuilder = {
   "schema": {
     "字段名": { "type": "bar|number|text|list|tag", "label": "显示名", "max": 100, "value": "初始值", "color": "#颜色（可选）" }
   },
+  "templates": {
+    "模板名": {
+      "fields": { "字段名": { "type": "类型", "label": "显示名", "max": 100 } },
+      "html": "单个实例的HTML模板，用 \${id} 和 \${name} 占位",
+      "container": "#容器选择器"
+    }
+  },
   "html": "状态栏HTML",
   "css": "状态栏CSS"
 }
@@ -548,10 +555,18 @@ const PromptBuilder = {
 
 schema 类型：bar(进度条,需max)、number(数字)、text(文本)、list(数组)、tag(标签)
 
+templates（模板）用于RP阶段动态添加同类条目（如新遇到的角色）：
+- fields：该模板每个实例会创建的字段定义，实际字段名为 \${id}_字段名
+- html：单个实例的HTML片段，其中 \${id} 替换为实例ID，\${name} 替换为显示名。用 data-tpl-id="\${id}" 标记根元素，用 data-field="\${id}_字段名" 绑定数据
+- container：实例插入到主HTML中哪个容器（CSS选择器）
+- 初始就存在的角色直接写在 schema 中；模板只用于RP阶段可能新增的同类条目
+- 预设角色（如开局同伴）应同时写在 schema 里并在 HTML 中直接写好卡片，不要用模板
+
 状态栏 HTML/CSS 要求：
 - 容器宽度 360px，内容可滚动
 - 建议使用 <details><summary> 折叠菜单组织不同模块（如概览/角色/物品/任务），默认展开最常用的模块，其余折叠，避免面板过长
 - 角色各自独立卡片
+- 如果使用了角色模板，在HTML中放置对应容器元素（如 <div id="mvu-characters"></div>）
 - 可更新元素用 data-field="字段名"，进度条用 data-field-bar="字段名"，列表用 data-field-list="字段名"
 - 视觉风格自由设计，配色和氛围应与故事题材匹配，可用 Google Fonts
 - CSS 类名用 .mvu- 前缀
@@ -650,11 +665,14 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
     {"op": "replace", "path": "/字段名", "value": 新值},
     {"op": "delta", "path": "/数值字段", "value": -15},
     {"op": "add", "path": "/列表字段/-", "value": "新增项"},
-    {"op": "remove", "path": "/列表字段", "value": "要删除的项"}
+    {"op": "remove", "path": "/列表字段", "value": "要删除的项"},
+    {"op": "addFromTemplate", "template": "模板名", "id": "实例ID", "name": "显示名", "values": {"字段": "初始值"}},
+    {"op": "removeFromTemplate", "template": "模板名", "id": "实例ID"}
   ]
 }
 \`\`\`
-操作：replace(替换)、delta(数值增量,如-15)、add(列表添加)、remove(列表删除)
+操作：replace(替换)、delta(数值增量,如-15)、add(列表添加)、remove(列表删除)、addFromTemplate(从模板创建新条目)、removeFromTemplate(删除条目)
+addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profile），后续用 replace/delta 正常更新。
 没有变化则不输出 mvu 代码块。` },
   ],
 
@@ -838,6 +856,7 @@ const MVU = {
     const patches = Array.isArray(patchData) ? patchData : (patchData.patches || []);
     const s = JSON.parse(JSON.stringify(state));
     for (const p of patches) {
+      if (p.op === 'addFromTemplate' || p.op === 'removeFromTemplate') continue; // handled separately
       const path = p.path.replace(/^\//, '');
       const parts = path.split('/');
       const field = parts[0];
@@ -847,6 +866,63 @@ const MVU = {
       else if (p.op === 'remove') { if (Array.isArray(s[field])) { const idx = s[field].indexOf(p.value); if (idx >= 0) s[field].splice(idx, 1); } }
     }
     return s;
+  },
+
+  /**
+   * Handle addFromTemplate / removeFromTemplate ops.
+   * Mutates mvu.schema, mvu.state, and inserts/removes DOM elements.
+   */
+  applyTemplateOps(mvu, patchData, container) {
+    const patches = Array.isArray(patchData) ? patchData : (patchData.patches || []);
+    const templates = mvu.templates || {};
+    for (const p of patches) {
+      if (p.op === 'addFromTemplate') {
+        const tpl = templates[p.template];
+        if (!tpl) { log('Template not found:', p.template); continue; }
+        const id = p.id;
+        if (!mvu.templateInstances) mvu.templateInstances = [];
+        // Register schema fields with prefix
+        for (const [key, def] of Object.entries(tpl.fields)) {
+          const fieldName = id + '_' + key;
+          mvu.schema[fieldName] = { ...def, label: (p.name || id) + ' - ' + def.label };
+        }
+        // Set initial state values
+        const values = p.values || {};
+        for (const [key, def] of Object.entries(tpl.fields)) {
+          const fieldName = id + '_' + key;
+          mvu.state[fieldName] = values[key] !== undefined ? values[key]
+            : def.type === 'bar' || def.type === 'number' ? 0
+            : def.type === 'list' ? [] : '';
+        }
+        // Record instance for persistence (re-render on page load)
+        if (!mvu.templateInstances.find(i => i.id === id)) {
+          mvu.templateInstances.push({ template: p.template, id, name: p.name || id });
+        }
+        // Clone template HTML and insert into container
+        this._insertTemplateHtml(tpl, id, p.name || id, container);
+        log('Template added:', p.template, id, Object.keys(values));
+      } else if (p.op === 'removeFromTemplate') {
+        const tpl = templates[p.template];
+        if (!tpl) continue;
+        const id = p.id;
+        // Remove schema fields and state
+        for (const key of Object.keys(tpl.fields)) {
+          const fieldName = id + '_' + key;
+          delete mvu.schema[fieldName];
+          delete mvu.state[fieldName];
+        }
+        // Remove instance record
+        if (mvu.templateInstances) {
+          mvu.templateInstances = mvu.templateInstances.filter(i => i.id !== id);
+        }
+        // Remove DOM element
+        if (container) {
+          const el = container.querySelector(`[data-tpl-id="${id}"]`);
+          if (el) el.remove();
+        }
+        log('Template removed:', p.template, id);
+      }
+    }
   },
 
   updateDOM(container, state, schema) {
@@ -862,12 +938,29 @@ const MVU = {
     }
   },
 
+  _insertTemplateHtml(tpl, id, name, container) {
+    if (!tpl.html || !container) return;
+    const html = tpl.html.replace(/\$\{id\}/g, id).replace(/\$\{name\}/g, name);
+    const target = container.querySelector(tpl.container || '[data-tpl-container]');
+    if (target) {
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      while (div.firstChild) target.appendChild(div.firstChild);
+    }
+  },
+
   render(container, mvuData) {
     if (!container || !mvuData) return;
     let styleEl = document.getElementById('mvu-custom-style');
     if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'mvu-custom-style'; document.head.appendChild(styleEl); }
     styleEl.textContent = mvuData.css || '';
     container.innerHTML = mvuData.html || '<div class="mvu-empty">状态栏未初始化</div>';
+    // Re-render template instances (persisted across page loads)
+    const templates = mvuData.templates || {};
+    for (const inst of (mvuData.templateInstances || [])) {
+      const tpl = templates[inst.template];
+      if (tpl) this._insertTemplateHtml(tpl, inst.id, inst.name, container);
+    }
     if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema);
   },
 };
