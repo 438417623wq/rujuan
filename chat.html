@@ -2164,6 +2164,13 @@ async function streamAIResponse(retryAttempt = 0) {
         return;
       }
 
+      // If we already received substantial content, treat as successful completion
+      if (aiMsg.content && aiMsg.content.length > 50) {
+        log('Error after content received, treating as done:', error);
+        handleStreamStopped(aiMsg);
+        return;
+      }
+
       const classified = API.classifyError(httpStatus || 0, error);
       log('API Error:', classified, { apiProfileId, model, phase: conversation.phase, attempt: retryAttempt });
 

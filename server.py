@@ -502,9 +502,10 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
             self.send_header('Cache-Control', 'no-cache')
-            self.send_header('Connection', 'keep-alive')
+            self.send_header('Connection', 'close')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
+            self.close_connection = True
 
             while True:
                 chunk = upstream_res.read(4096)

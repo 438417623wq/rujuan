@@ -516,7 +516,7 @@ const API = {
           timeoutErrorHandled = true;
           controller.abort();
           clearTimers();
-          onError?.('IDLE_TIMEOUT', 0);
+          if (fullText) { onDone?.(fullText, usage); } else { onError?.('IDLE_TIMEOUT', 0); }
         }, IDLE_TIMEOUT);
       };
 
@@ -601,9 +601,9 @@ const API = {
         clearTimers();
         if (e.name === 'AbortError') {
           if (timeoutErrorHandled) return;
-          onError?.('AbortError', 0);
+          if (fullText) { onDone?.(fullText, usage); } else { onError?.('AbortError', 0); }
         } else {
-          onError?.(e.message, 0);
+          if (fullText) { onDone?.(fullText, usage); } else { onError?.(e.message, 0); }
         }
       }
     };
