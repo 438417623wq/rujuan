@@ -2118,7 +2118,6 @@ async function streamAIResponse(retryAttempt = 0) {
       aiMsg.content = fullText;
       updateAssistantBubble(aiMsg.id, fullText, true);
       updateStreamStatusText(`生成中 (${fullText.length}字)`);
-      scrollToBottom(false);
     },
 
     onDone(fullText, usage) {
