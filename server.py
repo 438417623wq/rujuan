@@ -502,6 +502,7 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
             self.send_header('Cache-Control', 'no-cache')
+            self.send_header('X-Accel-Buffering', 'no')
             self.send_header('Connection', 'close')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
