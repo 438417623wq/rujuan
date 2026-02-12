@@ -1091,6 +1091,70 @@
       display: none;
     }
 
+    /* ---- Mobile Options FAB ---- */
+    .options-fab {
+      display: none;
+      position: fixed;
+      z-index: 150;
+      bottom: 80px;
+      right: 16px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--bg-elevated);
+      color: var(--accent);
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+      touch-action: none;
+      user-select: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .options-fab svg {
+      width: 20px;
+      height: 20px;
+      pointer-events: none;
+    }
+    .options-fab.has-options {
+      border-color: var(--accent);
+      box-shadow: 0 2px 16px rgba(201, 164, 76, 0.3);
+    }
+    .options-fab.pulse {
+      animation: optionsPulse 0.6s ease 3;
+    }
+    @keyframes optionsPulse {
+      0%, 100% { box-shadow: 0 2px 12px rgba(201, 164, 76, 0.3); }
+      50% { box-shadow: 0 0 20px rgba(201, 164, 76, 0.6), 0 0 40px rgba(201, 164, 76, 0.2); }
+    }
+    .options-fab-panel {
+      display: none;
+      position: fixed;
+      z-index: 149;
+      bottom: 70px;
+      left: 12px;
+      right: 12px;
+      flex-direction: column;
+      gap: 8px;
+      padding: 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+      max-height: 50vh;
+      overflow-y: auto;
+    }
+    .options-fab-panel.open {
+      display: flex;
+    }
+    .options-fab-panel .option-tag {
+      max-width: none;
+      white-space: normal;
+      justify-content: flex-start;
+      text-align: left;
+    }
+
     /* ---- Responsive ---- */
     @media (max-width: 768px) {
       .sidebar-close-btn {
@@ -1185,6 +1249,16 @@
         padding: 4px 14px 2px;
         gap: 6px;
       }
+      /* Mobile: hide default options bar, use floating icon instead */
+      .options-bar {
+        display: none !important;
+      }
+      .options-fab {
+        display: flex;
+      }
+      .options-fab-panel {
+        display: flex;
+      }
       /* Mobile: disable all backdrop-filter to prevent GPU blur artifacts */
       .topbar,
       .message.user .message-bubble,
@@ -1273,8 +1347,16 @@
         </svg>
       </button>
 
-      <!-- Options Bar -->
+      <!-- Options Bar (desktop) -->
       <div class="options-bar" id="optionsBar" style="display:none;"></div>
+
+      <!-- Options FAB (mobile) -->
+      <div class="options-fab" id="optionsFab" onclick="toggleOptionsFabPanel()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </div>
+      <div class="options-fab-panel" id="optionsFabPanel"></div>
 
       <!-- Input Area -->
       <div class="input-area" id="inputArea">
@@ -1627,8 +1709,7 @@ function renderOptionsBar(rawContent) {
   }
 
   _optionActions = [];
-  bar.innerHTML = options.map((opt, i) => {
-    // Parse "1.(类型)：行动描述" or "1.(类型): 行动描述" or plain text
+  const optionsHtml = options.map((opt, i) => {
     const match = opt.match(/^\d+\.\s*\(([^)]+)\)\s*[：:]\s*(.+)$/);
     if (match) {
       _optionActions.push(match[2]);
@@ -1637,19 +1718,35 @@ function renderOptionsBar(rawContent) {
         <span class="option-text">${Utils.escapeHtml(match[2])}</span>
       </button>`;
     }
-    // Plain text fallback
     const plain = opt.replace(/^\d+\.\s*/, '');
     _optionActions.push(plain);
     return `<button class="option-tag" onclick="selectOption(${i})">
       <span class="option-text">${Utils.escapeHtml(plain)}</span>
     </button>`;
   }).join('');
+
+  // Desktop: show in options bar
+  bar.innerHTML = optionsHtml;
   bar.style.display = 'flex';
+
+  // Mobile FAB: populate panel and show icon
+  const fab = document.getElementById('optionsFab');
+  const panel = document.getElementById('optionsFabPanel');
+  if (fab && panel) {
+    panel.innerHTML = optionsHtml;
+    fab.classList.add('has-options');
+    fab.classList.remove('pulse');
+    void fab.offsetWidth; // force reflow
+    fab.classList.add('pulse');
+  }
 }
 
 function selectOption(idx) {
   const text = _optionActions[idx];
   if (!text) return;
+  // Close mobile panel if open
+  const panel = document.getElementById('optionsFabPanel');
+  if (panel) panel.classList.remove('open');
   document.getElementById('inputTextarea').value = text;
   handleSend();
 }
@@ -1657,7 +1754,76 @@ function selectOption(idx) {
 function clearOptionsBar() {
   const bar = document.getElementById('optionsBar');
   if (bar) { bar.style.display = 'none'; bar.innerHTML = ''; }
+  // Clear mobile FAB
+  const fab = document.getElementById('optionsFab');
+  const panel = document.getElementById('optionsFabPanel');
+  if (fab) { fab.classList.remove('has-options', 'pulse'); }
+  if (panel) { panel.classList.remove('open'); panel.innerHTML = ''; }
 }
+
+// Mobile options FAB toggle & drag
+function toggleOptionsFabPanel() {
+  const panel = document.getElementById('optionsFabPanel');
+  if (panel) panel.classList.toggle('open');
+}
+
+(function setupOptionsFabDrag() {
+  document.addEventListener('DOMContentLoaded', () => {
+    const fab = document.getElementById('optionsFab');
+    if (!fab) return;
+    let dragging = false, startX, startY, fabX, fabY, moved;
+
+    fab.addEventListener('touchstart', (e) => {
+      dragging = true;
+      moved = false;
+      const t = e.touches[0];
+      const rect = fab.getBoundingClientRect();
+      startX = t.clientX;
+      startY = t.clientY;
+      fabX = rect.left;
+      fabY = rect.top;
+      fab.style.transition = 'none';
+    }, { passive: true });
+
+    document.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      const t = e.touches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
+      if (!moved) return;
+      const newX = Math.max(0, Math.min(window.innerWidth - 44, fabX + dx));
+      const newY = Math.max(0, Math.min(window.innerHeight - 44, fabY + dy));
+      fab.style.left = newX + 'px';
+      fab.style.top = newY + 'px';
+      fab.style.right = 'auto';
+      fab.style.bottom = 'auto';
+    }, { passive: true });
+
+    document.addEventListener('touchend', () => {
+      if (!dragging) return;
+      dragging = false;
+      fab.style.transition = '';
+      if (moved) {
+        // Snap to nearest edge
+        const rect = fab.getBoundingClientRect();
+        const midX = rect.left + 22;
+        if (midX < window.innerWidth / 2) {
+          fab.style.left = '16px';
+          fab.style.right = 'auto';
+        } else {
+          fab.style.left = 'auto';
+          fab.style.right = '16px';
+        }
+      }
+    });
+
+    // Suppress click if dragged
+    fab.addEventListener('click', (e) => {
+      if (moved) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  });
+})();
 
 // ============================================================
 // MVU Sidebar
