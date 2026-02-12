@@ -5,6 +5,7 @@ COPY . .
 
 ENV AIRP_DATA_DIR=/app/data
 ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 CMD ["python3", "server.py"]

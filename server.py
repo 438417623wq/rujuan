@@ -625,22 +625,27 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
 
 # ── Main ────────────────────────────────────────────────────
 if __name__ == '__main__':
-    ensure_dirs()
-
-    if PUBLIC_MODE:
-        server = http.server.ThreadingHTTPServer(('0.0.0.0', PORT), AirpHandler)
-        print(f'AIRP Server running in PUBLIC mode on http://0.0.0.0:{PORT}')
-        print(f'  Provider: {API_PROVIDER}')
-        print(f'  Model: {API_MODEL}')
-        print(f'  Daily limit: {DAILY_LIMIT}/user')
-        print(f'  Invite codes: {len(INVITE_CODES)}')
-    else:
-        server = http.server.HTTPServer(('0.0.0.0', PORT), AirpHandler)
-        print(f'AIRP Server running in LOCAL mode on http://0.0.0.0:{PORT}')
-
-    print(f'Data directory: {DATA_DIR}')
     try:
+        ensure_dirs()
+
+        if PUBLIC_MODE:
+            server = http.server.ThreadingHTTPServer(('0.0.0.0', PORT), AirpHandler)
+            print(f'Server running in PUBLIC mode on http://0.0.0.0:{PORT}')
+            print(f'  Provider: {API_PROVIDER}')
+            print(f'  Model: {API_MODEL}')
+            print(f'  Daily limit: {DAILY_LIMIT}/user')
+            print(f'  Invite codes: {len(INVITE_CODES)}')
+        else:
+            server = http.server.HTTPServer(('0.0.0.0', PORT), AirpHandler)
+            print(f'Server running in LOCAL mode on http://0.0.0.0:{PORT}')
+
+        print(f'Data directory: {DATA_DIR}')
         server.serve_forever()
     except KeyboardInterrupt:
         print('\nShutdown.')
         server.server_close()
+    except Exception as e:
+        import traceback
+        print(f'[FATAL] Server failed to start: {e}')
+        traceback.print_exc()
+        sys.exit(1)
