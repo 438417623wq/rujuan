@@ -1253,10 +1253,7 @@
       .options-bar {
         display: none !important;
       }
-      .options-fab {
-        display: flex;
-      }
-      .options-fab-panel {
+      .options-fab.has-options {
         display: flex;
       }
       /* Mobile: disable all backdrop-filter to prevent GPU blur artifacts */
@@ -1762,7 +1759,10 @@ function clearOptionsBar() {
 }
 
 // Mobile options FAB toggle & drag
+let _optionsFabMoved = false;
+
 function toggleOptionsFabPanel() {
+  if (_optionsFabMoved) return;
   const panel = document.getElementById('optionsFabPanel');
   if (panel) panel.classList.toggle('open');
 }
@@ -1771,11 +1771,11 @@ function toggleOptionsFabPanel() {
   document.addEventListener('DOMContentLoaded', () => {
     const fab = document.getElementById('optionsFab');
     if (!fab) return;
-    let dragging = false, startX, startY, fabX, fabY, moved;
+    let dragging = false, startX, startY, fabX, fabY;
 
     fab.addEventListener('touchstart', (e) => {
       dragging = true;
-      moved = false;
+      _optionsFabMoved = false;
       const t = e.touches[0];
       const rect = fab.getBoundingClientRect();
       startX = t.clientX;
@@ -1790,8 +1790,8 @@ function toggleOptionsFabPanel() {
       const t = e.touches[0];
       const dx = t.clientX - startX;
       const dy = t.clientY - startY;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) moved = true;
-      if (!moved) return;
+      if (Math.abs(dx) > 8 || Math.abs(dy) > 8) _optionsFabMoved = true;
+      if (!_optionsFabMoved) return;
       const newX = Math.max(0, Math.min(window.innerWidth - 44, fabX + dx));
       const newY = Math.max(0, Math.min(window.innerHeight - 44, fabY + dy));
       fab.style.left = newX + 'px';
@@ -1804,8 +1804,7 @@ function toggleOptionsFabPanel() {
       if (!dragging) return;
       dragging = false;
       fab.style.transition = '';
-      if (moved) {
-        // Snap to nearest edge
+      if (_optionsFabMoved) {
         const rect = fab.getBoundingClientRect();
         const midX = rect.left + 22;
         if (midX < window.innerWidth / 2) {
@@ -1817,11 +1816,6 @@ function toggleOptionsFabPanel() {
         }
       }
     });
-
-    // Suppress click if dragged
-    fab.addEventListener('click', (e) => {
-      if (moved) { e.stopPropagation(); e.preventDefault(); }
-    }, true);
   });
 })();
 
