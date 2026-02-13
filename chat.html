@@ -2533,9 +2533,12 @@ function rejectMvuInit() {
 // ============================================================
 // Big Summary
 // ============================================================
+let _isMerging = false;
 async function checkBigSummaryTrigger() {
+  if (_isMerging) return;
   if (!Summary.shouldTriggerMerge(conversation)) return;
 
+  _isMerging = true;
   const unmergedCount = Summary.countUnmergedAbstracts(conversation);
   log('Triggering summary merge, unmerged abstracts:', unmergedCount);
   UI.showToast(`正在合并 ${unmergedCount} 条摘要...`, 'info');
@@ -2555,6 +2558,8 @@ async function checkBigSummaryTrigger() {
   } catch (e) {
     log('Summary merge failed:', e);
     UI.showToast('摘要合并失败', 'error');
+  } finally {
+    _isMerging = false;
   }
 }
 
@@ -3049,9 +3054,10 @@ function processEditMvuResponse(text) {
   const updateData = MVU.parseMvuUpdate(text);
   if (updateData) {
     if (updateData.schema) {
-      conversation.mvu.schema = updateData.schema;
-      // Re-initialize state for new schema fields
+      // Merge into existing schema (AI only sends modified fields)
       for (const [key, def] of Object.entries(updateData.schema)) {
+        conversation.mvu.schema[key] = def;
+        // Initialize state only for genuinely new fields
         if (conversation.mvu.state[key] === undefined) {
           if (def.value !== undefined) {
             conversation.mvu.state[key] = def.value;
@@ -3062,12 +3068,6 @@ function processEditMvuResponse(text) {
           } else {
             conversation.mvu.state[key] = '';
           }
-        }
-      }
-      // Remove state keys that are no longer in schema
-      for (const key of Object.keys(conversation.mvu.state)) {
-        if (!updateData.schema[key]) {
-          delete conversation.mvu.state[key];
         }
       }
     }

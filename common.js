@@ -897,6 +897,18 @@ addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profil
         schemaDesc += line + '\n';
       }
     }
+    if (conversation.mvu?.templates && Object.keys(conversation.mvu.templates).length > 0) {
+      schemaDesc += '\n【可用模板（用 addFromTemplate 动态添加新条目）】\n';
+      for (const [name, tpl] of Object.entries(conversation.mvu.templates)) {
+        schemaDesc += `模板 "${name}"：\n`;
+        for (const [k, def] of Object.entries(tpl.fields)) {
+          let line = `  - ${k} (${def.label}): type=${def.type}`;
+          if (def.max) line += `, max=${def.max}`;
+          schemaDesc += line + '\n';
+        }
+        schemaDesc += `  用法: {"op":"addFromTemplate","template":"${name}","id":"唯一ID","name":"显示名","values":{${Object.keys(tpl.fields).map(k => '"' + k + '":初始值').join(',')}}}\n`;
+      }
+    }
 
     // Build system prompt from entries
     const systemParts = [];
