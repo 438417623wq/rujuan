@@ -992,20 +992,26 @@ addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profil
     for (let i = 0; i < recent.length; i++) {
       const m = recent[i];
       // Insert MVU state before the last message
-      if (i === recent.length - 1 && conversation.mvu?.state && Object.keys(conversation.mvu.state).length > 0) {
-        let stateContent = '【当前状态栏数据】\n';
-        const schema = conversation.mvu.schema || {};
-        const state = conversation.mvu.state;
-        for (const [k, v] of Object.entries(state)) {
-          const def = schema[k];
-          const label = def?.label || k;
-          const displayVal = Array.isArray(v) ? JSON.stringify(v) : v;
-          let line = `${k}(${label}): ${displayVal}`;
-          if (def?.max) line += ` / max:${def.max}`;
-          if (def?.rule) line += ` 【${def.rule}】`;
-          stateContent += line + '\n';
+      if (i === recent.length - 1 && conversation.mvu) {
+        let mvuContext = '';
+        // Schema + template definitions
+        if (schemaDesc) mvuContext += schemaDesc + '\n';
+        // Current state values
+        if (conversation.mvu.state && Object.keys(conversation.mvu.state).length > 0) {
+          mvuContext += '【当前状态栏数据】\n';
+          const schema = conversation.mvu.schema || {};
+          const state = conversation.mvu.state;
+          for (const [k, v] of Object.entries(state)) {
+            const def = schema[k];
+            const label = def?.label || k;
+            const displayVal = Array.isArray(v) ? JSON.stringify(v) : v;
+            let line = `${k}(${label}): ${displayVal}`;
+            if (def?.max) line += ` / max:${def.max}`;
+            if (def?.rule) line += ` 【${def.rule}】`;
+            mvuContext += line + '\n';
+          }
         }
-        msgs.push({ role: 'user', content: stateContent });
+        if (mvuContext) msgs.push({ role: 'user', content: mvuContext });
       }
       const content = m.role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(m.content)) : m.content;
       msgs.push({ role: m.role, content });
