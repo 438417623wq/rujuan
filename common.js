@@ -745,12 +745,21 @@ templates（模板）用于RP阶段动态添加同类条目（如新遇到的角
 - html：单个实例的HTML片段，其中 \${id} 替换为实例ID，\${name} 替换为显示名。用 data-tpl-id="\${id}" 标记根元素，用 data-field="\${id}_字段名" 绑定数据
 - container：实例插入到主HTML中哪个容器（CSS选择器）
 - 初始就存在的角色直接写在 schema 中；模板只用于RP阶段可能新增的同类条目
-- 预设角色（如开局同伴）应同时写在 schema 里并在 HTML 中直接写好卡片，不要用模板
+- 预设角色（如开局同伴）应同时写在 schema 里并在 HTML 中直接写好 Tab 面板，不要用模板
+- 模板的 html 也应输出为 Tab 面板格式（包含 data-tab-panel），并将 Tab 按钮插入对应的 .mvu-tabs 容器
 
 状态栏 HTML/CSS 要求：
 - 容器宽度 360px，内容可滚动
-- 建议使用 <details><summary> 折叠菜单组织不同模块（如概览/角色/物品/任务），默认展开最常用的模块，其余折叠，避免面板过长
-- 角色各自独立卡片
+- 建议使用 <details><summary> 折叠菜单组织不同模块（如概览/物品/任务），默认展开最常用的模块，其余折叠，避免面板过长
+- 同类多项内容推荐使用 Tab 切换结构，避免面板过长。适用场景举例：
+  · 多个角色之间切换：[莉莉丝] [莉雅] [米娅]
+  · 角色内部的装备部位：[头部] [上身] [下身] [武器]
+  · 技能分类：[战斗] [辅助] [被动]
+  Tab HTML 结构：
+  <div class="mvu-tabs"><span class="mvu-tab" data-tab="id1">标签1</span><span class="mvu-tab" data-tab="id2">标签2</span></div>
+  <div data-tab-panel="id1">内容1...</div>
+  <div data-tab-panel="id2">内容2...</div>
+  系统自动处理切换逻辑，data-tab 与 data-tab-panel 值一一对应即可，默认显示第一个。Tab 可嵌套使用（外层切角色，内层切装备部位）。
 - 如果使用了角色模板，在HTML中放置对应容器元素（如 <div id="mvu-characters"></div>）
 - 可更新元素用 data-field="字段名"，进度条用 data-field-bar="字段名"，列表用 data-field-list="字段名"
 - 视觉风格自由设计，配色和氛围应与故事题材匹配，可用 Google Fonts
@@ -1185,6 +1194,48 @@ const MVU = {
       if (tpl) this._insertTemplateHtml(tpl, inst.id, inst.name, container);
     }
     if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema);
+    // Tab component: bind click events for data-tab / data-tab-panel pairs
+    this._bindTabs(container);
+  },
+  _bindTabs(container) {
+    const tabs = container.querySelectorAll('[data-tab]');
+    if (!tabs.length) return;
+    // Group by parent .mvu-tabs (or fallback: all tabs in container)
+    const groups = new Map();
+    for (const tab of tabs) {
+      const group = tab.closest('.mvu-tabs') || container;
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(tab);
+    }
+    for (const [group, groupTabs] of groups) {
+      // Activate first tab by default if none is active
+      const hasActive = groupTabs.some(t => t.classList.contains('active'));
+      if (!hasActive && groupTabs.length > 0) {
+        groupTabs[0].classList.add('active');
+        const firstPanel = container.querySelector(`[data-tab-panel="${groupTabs[0].dataset.tab}"]`);
+        if (firstPanel) firstPanel.style.display = '';
+        // Hide other panels
+        for (let i = 1; i < groupTabs.length; i++) {
+          const panel = container.querySelector(`[data-tab-panel="${groupTabs[i].dataset.tab}"]`);
+          if (panel) panel.style.display = 'none';
+        }
+      }
+      // Bind click
+      for (const tab of groupTabs) {
+        tab.addEventListener('click', () => {
+          // Deactivate all tabs in group
+          for (const t of groupTabs) {
+            t.classList.remove('active');
+            const p = container.querySelector(`[data-tab-panel="${t.dataset.tab}"]`);
+            if (p) p.style.display = 'none';
+          }
+          // Activate clicked tab
+          tab.classList.add('active');
+          const panel = container.querySelector(`[data-tab-panel="${tab.dataset.tab}"]`);
+          if (panel) panel.style.display = '';
+        });
+      }
+    }
   },
 };
 
