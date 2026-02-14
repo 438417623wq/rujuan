@@ -2432,6 +2432,8 @@ function previewMvuInit() {
     state: {},
     html: pendingMvuInit.html,
     css: pendingMvuInit.css,
+    templates: pendingMvuInit.templates || {},
+    templateInstances: [],
   };
 
   // Initialize state from schema
@@ -2468,6 +2470,8 @@ function confirmMvuInit() {
     state: {},
     html: pendingMvuInit.html,
     css: pendingMvuInit.css,
+    templates: pendingMvuInit.templates || {},
+    templateInstances: [],
   };
 
   // Initialize state from schema defaults
@@ -3000,14 +3004,23 @@ function buildEditMvuPrompt() {
 
 你需要根据玩家的需要对状态栏结构和/或故事设定进行更新。
 - 不要随意修改目前变量的值，除非玩家明确要求
-- 可以修改的内容包括：schema字段定义、HTML模板、CSS样式、故事设定
+- 可以修改的内容包括：schema字段定义、HTML模板、CSS样式、templates模板定义、故事设定
 - 回复中用自然语言解释你做了什么修改
 
 如果需要修改状态栏，请输出：
 \`\`\`json:mvu_update
-{ "schema": {...}, "html": "...", "css": "..." }
+{ "schema": {...}, "html": "...", "css": "...", "templates": {...} }
 \`\`\`
 其中只包含需要修改的字段，不需要修改的可以省略。
+
+templates（模板）用于RP阶段动态添加新角色/NPC等。定义格式：
+"模板名": {
+  "fields": { "字段名": { "type": "类型", "label": "显示名", "max": 100 } },
+  "html": "面板HTML片段，用 \${id} 和 \${name} 占位，根元素加 data-tpl-id=\\"\${id}\\"，字段用 data-field=\\"\${id}_字段名\\" 绑定",
+  "container": "面板插入容器的CSS选择器",
+  "tabContainer": "Tab按钮栏的CSS选择器（设置后系统自动创建Tab按钮和切换）"
+}
+HTML中需放置对应容器元素，如 <div class="mvu-tabs" id="xxx-tabs"></div> 和 <div id="xxx-panels"></div>。
 
 如果需要修改故事设定，请输出：
 \`\`\`text:story_setting
@@ -3019,6 +3032,9 @@ function buildEditMvuPrompt() {
   if (conversation.mvu) {
     systemPrompt += 'Schema:\n```json\n' + JSON.stringify(conversation.mvu.schema, null, 2) + '\n```\n\n';
     systemPrompt += 'State:\n```json\n' + JSON.stringify(conversation.mvu.state, null, 2) + '\n```\n\n';
+    if (conversation.mvu.templates && Object.keys(conversation.mvu.templates).length > 0) {
+      systemPrompt += 'Templates:\n```json\n' + JSON.stringify(conversation.mvu.templates, null, 2) + '\n```\n\n';
+    }
     systemPrompt += 'HTML:\n```html\n' + (conversation.mvu.html || '') + '\n```\n\n';
     systemPrompt += 'CSS:\n```css\n' + (conversation.mvu.css || '') + '\n```\n';
   }
@@ -3073,8 +3089,12 @@ function processEditMvuResponse(text) {
     }
     if (updateData.html) conversation.mvu.html = updateData.html;
     if (updateData.css) conversation.mvu.css = updateData.css;
+    if (updateData.templates) {
+      if (!conversation.mvu.templates) conversation.mvu.templates = {};
+      Object.assign(conversation.mvu.templates, updateData.templates);
+    }
     changed = true;
-    log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, html: !!updateData.html, css: !!updateData.css });
+    log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, html: !!updateData.html, css: !!updateData.css, templates: !!updateData.templates });
   }
 
   // Parse story_setting

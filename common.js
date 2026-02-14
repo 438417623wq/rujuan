@@ -745,9 +745,10 @@ templates（模板）——【必须创建】用于RP阶段动态添加新遇到
 - 即使 init 时已有预设角色，也必须创建模板供后续新角色使用
 - fields：该模板每个实例会创建的字段定义，实际字段名为 \${id}_字段名
 - html：单个实例的HTML片段，其中 \${id} 替换为实例ID，\${name} 替换为显示名。用 data-tpl-id="\${id}" 标记根元素，用 data-field="\${id}_字段名" 绑定数据
-- container：实例插入到主HTML中哪个容器（CSS选择器）
+- container：面板内容插入到主HTML中哪个容器（CSS选择器）
+- tabContainer（推荐）：指定 Tab 按钮栏的容器选择器。设置后系统自动在该容器中创建 Tab 按钮，无需在 html 中手写按钮。面板会自动绑定 data-tab-panel="\${id}"
 - 预设角色（如开局同伴）应同时写在 schema 里并在 HTML 中直接写好 Tab 面板，不要用模板
-- 模板的 html 也应输出为 Tab 面板格式（包含 data-tab-panel），并将 Tab 按钮插入对应的 .mvu-tabs 容器
+- 模板 html 只需写面板内容（用 data-tpl-id="\${id}" 标记根元素），配合 tabContainer 即可自动生成 Tab 切换
 
 状态栏 HTML/CSS 要求：
 - 容器宽度 360px，内容可滚动
@@ -1159,14 +1160,15 @@ const MVU = {
         if (mvu.templateInstances) {
           mvu.templateInstances = mvu.templateInstances.filter(i => i.id !== id);
         }
-        // Remove DOM element
+        // Remove DOM elements (panel + tab button)
         if (container) {
-          const el = container.querySelector(`[data-tpl-id="${id}"]`);
-          if (el) el.remove();
+          container.querySelectorAll(`[data-tpl-id="${id}"]`).forEach(el => el.remove());
         }
         log('Template removed:', p.template, id);
       }
     }
+    // Re-bind tabs after DOM changes
+    if (container) this._bindTabs(container);
   },
 
   updateDOM(container, state, schema) {
@@ -1189,7 +1191,23 @@ const MVU = {
     if (target) {
       const div = document.createElement('div');
       div.innerHTML = html;
+      // Auto-add data-tab-panel to root element when tabContainer is used
+      if (tpl.tabContainer && div.firstElementChild) {
+        div.firstElementChild.dataset.tabPanel = id;
+      }
       while (div.firstChild) target.appendChild(div.firstChild);
+    }
+    // Auto-create tab button if tabContainer is specified
+    if (tpl.tabContainer) {
+      const tabTarget = container.querySelector(tpl.tabContainer);
+      if (tabTarget) {
+        const btn = document.createElement('span');
+        btn.className = 'mvu-tab';
+        btn.dataset.tab = id;
+        btn.dataset.tplId = id;
+        btn.textContent = name;
+        tabTarget.appendChild(btn);
+      }
     }
   },
 
