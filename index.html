@@ -10,7 +10,7 @@
   <title>入卷 - AI 互动小说</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
-  <script src="common.js?v=9"></script>
+  <script src="common.js?v=10"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -719,7 +719,7 @@
   <button class="btn-header-icon" onclick="openSettings()" title="设置" id="btn-settings-pub" style="display:none;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
-  <a class="btn-settings" href="settings.html?v=9" id="btn-settings">
+  <a class="btn-settings" href="settings.html?v=10" id="btn-settings">
     <span class="icon" style="width:16px;height:16px;"></span>
     设置
   </a>
@@ -1032,7 +1032,7 @@
     // If no API profiles configured, redirect to settings
     if (profileList.length === 0) {
       UI.showToast('请先配置API接口', 'error');
-      setTimeout(() => { window.location.href = 'settings.html?v=9'; }, 800);
+      setTimeout(() => { window.location.href = 'settings.html?v=10'; }, 800);
       return;
     }
 
@@ -1160,7 +1160,7 @@
 
     Storage.saveConversation(conv);
     UI.closeModal();
-    window.location.href = `chat.html?v=9&id=${id}&new=true`;
+    window.location.href = `chat.html?v=10&id=${id}&new=true`;
   }
 
   // ── Open Conversation ──────────────────────────
@@ -1169,7 +1169,7 @@
     if (event.target.closest('.conv-card-actions') || event.target.closest('.conv-card-rename')) {
       return;
     }
-    window.location.href = `chat.html?v=9&id=${id}`;
+    window.location.href = `chat.html?v=10&id=${id}`;
   }
 
   // ── Rename (inline) ───────────────────────────
