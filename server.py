@@ -68,12 +68,23 @@ def _get_db():
 
 
 def _init_db():
-    """Create tables if they don't exist. Returns True on success."""
+    """Create tables if they don't exist. Retries on connection failure (Neon cold start)."""
     global _db_params
     if not DATABASE_URL:
         return False
     _db_params = _parse_database_url(DATABASE_URL)
-    conn = _get_db()
+    import time
+    for attempt in range(5):
+        try:
+            conn = _get_db()
+            break
+        except Exception as e:
+            if attempt < 4:
+                wait = (attempt + 1) * 3
+                print(f'[db] Connection attempt {attempt+1} failed, retrying in {wait}s... ({e})', flush=True)
+                time.sleep(wait)
+            else:
+                raise
     try:
         cur = conn.cursor()
         cur.execute('''
