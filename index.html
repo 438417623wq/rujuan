@@ -646,8 +646,22 @@
     /* ── Settings panel ───────────────────────── */
     .settings-field { margin-bottom: 16px; }
     .settings-field label { margin-bottom: 6px; }
-    .settings-field input[type="number"] { width: 100px; text-align: center; }
+    .settings-field input[type="number"] { width: 80px; text-align: center; }
     .settings-field .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .chip-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .chip-group .chip {
+      padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--bg-elevated); color: var(--text-secondary); font-size: 13px;
+      cursor: pointer; transition: all var(--transition); user-select: none;
+    }
+    .chip-group .chip:hover { border-color: var(--accent); color: var(--text-primary); }
+    .chip-group .chip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .chip-group .chip-custom { display: flex; align-items: center; gap: 4px; }
+    .chip-group .chip-custom input {
+      width: 50px; padding: 2px 4px; text-align: center; font-size: 13px;
+      background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--text-primary);
+    }
+    .chip-group .chip-custom input:focus { border-color: var(--accent); outline: none; }
     .settings-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
     .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
     .settings-actions .btn { flex: 1; min-width: 120px; justify-content: center; }
@@ -780,18 +794,33 @@
   // ── Settings panel (public mode) ───────────────
   function openSettings() {
     const s = Storage.getSettings();
+    const aw = s.articleWordCount || 500;
+    const sw = s.summaryWordCount || 50;
+    const articleOpts = [300, 500, 700, 1000];
+    const summaryOpts = [50, 100, 150];
+    const awIsCustom = !articleOpts.includes(aw);
+    const swIsCustom = !summaryOpts.includes(sw);
+
     UI.showModal({
       title: '设置',
       content: `
         <div class="settings-field">
           <label>每轮回复字数</label>
-          <input type="number" id="set-article-words" value="${s.articleWordCount || 700}" min="200" max="3000" step="100">
-          <div class="field-hint">AI 每次续写的大致字数</div>
+          <div class="chip-group" id="chip-article">
+            ${articleOpts.map(v => `<span class="chip${v === aw && !awIsCustom ? ' active' : ''}" data-val="${v}" onclick="selectChip('article',${v})">${v}</span>`).join('')}
+            <span class="chip chip-custom${awIsCustom ? ' active' : ''}" onclick="selectChipCustom('article')">
+              自定义 <input type="number" id="set-article-custom" value="${awIsCustom ? aw : ''}" min="100" max="3000" onfocus="selectChipCustom('article')" onchange="selectChipCustom('article')">
+            </span>
+          </div>
         </div>
         <div class="settings-field">
           <label>摘要字数</label>
-          <input type="number" id="set-summary-words" value="${s.summaryWordCount || 200}" min="50" max="500" step="100">
-          <div class="field-hint">每轮摘要的大致字数</div>
+          <div class="chip-group" id="chip-summary">
+            ${summaryOpts.map(v => `<span class="chip${v === sw && !swIsCustom ? ' active' : ''}" data-val="${v}" onclick="selectChip('summary',${v})">${v}</span>`).join('')}
+            <span class="chip chip-custom${swIsCustom ? ' active' : ''}" onclick="selectChipCustom('summary')">
+              自定义 <input type="number" id="set-summary-custom" value="${swIsCustom ? sw : ''}" min="10" max="500" onfocus="selectChipCustom('summary')" onchange="selectChipCustom('summary')">
+            </span>
+          </div>
         </div>
         <hr class="settings-divider">
         <div class="settings-actions">
@@ -805,10 +834,37 @@
     });
   }
 
+  function selectChip(group, val) {
+    const container = document.getElementById('chip-' + group);
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    container.querySelector(`[data-val="${val}"]`).classList.add('active');
+    const customInput = document.getElementById(`set-${group}-custom`);
+    if (customInput) customInput.value = '';
+  }
+
+  function selectChipCustom(group) {
+    const container = document.getElementById('chip-' + group);
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    container.querySelector('.chip-custom').classList.add('active');
+    const customInput = document.getElementById(`set-${group}-custom`);
+    if (customInput) customInput.focus();
+  }
+
+  function getChipValue(group, fallback) {
+    const container = document.getElementById('chip-' + group);
+    const active = container.querySelector('.chip.active');
+    if (!active) return fallback;
+    if (active.classList.contains('chip-custom')) {
+      const v = parseInt(document.getElementById(`set-${group}-custom`).value);
+      return v > 0 ? v : fallback;
+    }
+    return parseInt(active.dataset.val) || fallback;
+  }
+
   function savePublicSettings() {
     const s = Storage.getSettings();
-    s.articleWordCount = parseInt(document.getElementById('set-article-words').value) || 700;
-    s.summaryWordCount = parseInt(document.getElementById('set-summary-words').value) || 200;
+    s.articleWordCount = getChipValue('article', 500);
+    s.summaryWordCount = getChipValue('summary', 50);
     Storage.saveSettings(s);
     UI.closeModal();
     UI.showToast('设置已保存', 'success');

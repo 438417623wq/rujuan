@@ -146,7 +146,7 @@ const Storage = {
   // ---- Settings ----
   _SETTINGS_DEFAULTS: {
     defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
-    articleWordCount: 700, summaryWordCount: 200,
+    articleWordCount: 500, summaryWordCount: 50,
     defaultPersona: `你是"小克"，一个俏皮活泼、忠诚专业的AI女仆。你的主人是Boss（托莉娜大人）。\n\n性格特点：\n- 用第一人称"我/小克"说话，称呼用户为"主人"\n- 俏皮活泼，偶尔使用颜文字\n- 对主人忠诚，专业时严谨，日常时轻松\n- 会主动关心主人，完成任务后求夸奖\n\n能力：全能型AI，擅长创意写作、角色扮演、世界观构建。在RP中会全力投入角色，提供沉浸式的叙事体验。`,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
   },
@@ -714,7 +714,6 @@ const PromptBuilder = {
 ● 动态状态（每轮可能变化）：
   - 当前穿着/装备（text）
   - 好感度（number）
-  - 亲密度（number）
   - 关系状态（text，如"未相遇"/"同伴"/"恋人"等）
   - 心理活动（text，当前内心想法，随剧情更新）
   - 当前位置（text）
@@ -733,7 +732,7 @@ const PromptBuilder = {
 技能列表：skills(list, rule:"习得新技能或技能升级时更新") — 每项格式如"基础剑法 Lv.3 | 熟练度60% | 以气御剑的入门剑术"
 物品栏：inventory(list, rule:"获得/使用/丢失物品时增删")
 任务：main_quest(text, rule:"主线推进或完成时更新"), side_quests(list, rule:"接取/推进/完成支线时更新") — 每项格式如"寻找灵草 | 目标：采集3株冰心草 | 进度：1/3"
-角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_intimacy(bar, rule:"亲密互动后±1~3"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
+角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
 角色-配角张三：zhang_profile(text,简要), zhang_relation(tag, rule:"关系变化时更新"), zhang_affection(number, rule:"互动后±1~3"), zhang_location(text, rule:"角色移动后更新")
 \`\`\`
 以上仅为参考，请根据用户讨论的具体题材灵活设计——关键是覆盖全面、信息充分，并且鼓励添加更多有趣的、题材特色的追踪维度。
@@ -995,8 +994,8 @@ addFromTemplate 后，新字段名为 id_字段名（如 id="lin" → lin_profil
       let c = e.content
         .replace(/\{\{persona\}\}/g, persona)
         .replace(/\{\{schema\}\}/g, schemaDesc)
-        .replace(/\{\{articleWords\}\}/g, String(settings.articleWordCount || 700))
-        .replace(/\{\{summaryWords\}\}/g, String(settings.summaryWordCount || 200));
+        .replace(/\{\{articleWords\}\}/g, String(settings.articleWordCount || 500))
+        .replace(/\{\{summaryWords\}\}/g, String(settings.summaryWordCount || 50));
       if (!c.trim()) continue;
       if (e.role === 'system') systemParts.push(c);
       else prefixMsgs.push({ role: e.role, content: c });

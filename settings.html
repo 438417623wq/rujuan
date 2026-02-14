@@ -1409,7 +1409,7 @@
   // ── Word Count Selectors ─────────────────────────
   function renderArticleWordSelector() {
     const presets = [300, 500, 700, 1000];
-    const current = settings.articleWordCount || 700;
+    const current = settings.articleWordCount || 500;
     const container = document.getElementById('articleWordSelector');
     const isCustom = !presets.includes(current);
 
@@ -1426,7 +1426,7 @@
   }
 
   function promptCustomArticleWords() {
-    const val = prompt('输入自定义字数:', settings.articleWordCount || 700);
+    const val = prompt('输入自定义字数:', settings.articleWordCount || 500);
     if (val !== null) {
       const n = parseInt(val);
       if (n > 0) {
@@ -1439,7 +1439,7 @@
 
   function renderSummaryWordSelector() {
     const presets = [50, 100, 150, 200];
-    const current = settings.summaryWordCount || 200;
+    const current = settings.summaryWordCount || 50;
     const container = document.getElementById('summaryWordSelector');
 
     container.innerHTML = presets.map(n =>
