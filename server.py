@@ -383,8 +383,8 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                     'defaultPersona': DEFAULT_PERSONA,
                     'summaryInterval': 100,
                     'exportFormat': 'md',
-                    'articleWordCount': 700,
-                    'summaryWordCount': 200,
+                    'articleWordCount': 500,
+                    'summaryWordCount': 50,
                 })
             else:
                 self._json_response(read_json(os.path.join(DATA_DIR, 'settings.json'), {}))

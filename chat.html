@@ -30,7 +30,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 16px;
+      padding: calc(10px + env(safe-area-inset-top, 0px)) 16px 10px;
       background: var(--bg-glass);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
@@ -458,7 +458,7 @@
     /* ---- Input Area ---- */
     .input-area {
       flex-shrink: 0;
-      padding: 12px 20px 16px;
+      padding: 12px 20px calc(16px + env(safe-area-inset-bottom, 0px));
       background: linear-gradient(to top, var(--bg-glass) 80%, transparent);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
@@ -1441,6 +1441,19 @@ let lastFailedUserMsgId = null;
 // Initialization
 // ============================================================
 document.addEventListener('DOMContentLoaded', init);
+
+// iOS keyboard bounce-back fix
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', () => {
+    document.documentElement.style.height = window.visualViewport.height + 'px';
+  });
+  window.visualViewport.addEventListener('scroll', () => {
+    document.documentElement.style.height = window.visualViewport.height + 'px';
+  });
+}
+document.addEventListener('focusout', () => {
+  setTimeout(() => window.scrollTo(0, 0), 100);
+});
 
 async function init() {
   await Config.load();
