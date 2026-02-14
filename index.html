@@ -38,7 +38,7 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 14px;
+      padding: 14px 20px;
       background: linear-gradient(180deg, rgba(15,12,8,0.9) 0%, rgba(15,12,8,0.6) 60%, transparent 100%);
       pointer-events: none;
     }
@@ -608,13 +608,6 @@
       color: var(--text-secondary); cursor: pointer; transition: all var(--transition);
     }
     .btn-header-icon:hover { color: var(--accent); border-color: var(--border-strong); background: var(--bg-glass-light); }
-    .user-chip {
-      display: none; align-items: center; gap: 5px;
-      padding: 5px 12px; height: 34px;
-      background: var(--bg-glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      border: 1px solid var(--border); border-radius: var(--radius);
-      color: var(--text-secondary); font-size: 12px; letter-spacing: 0.5px;
-    }
 
     /* ── Guide overlay ────────────────────────── */
     .guide-overlay {
@@ -712,7 +705,6 @@
 
 <!-- ── Fixed Header Bar ─────────────────────── -->
 <div class="header-bar">
-  <span class="user-chip" id="user-chip"></span>
   <button class="btn-header-icon" onclick="showGuide()" title="使用指南" id="btn-guide">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
   </button>
@@ -891,9 +883,6 @@
         const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
         const me = await res.json();
         if (!me.ok) { Storage.clearAuthToken(); location.href = 'login.html'; return; }
-        const chip = document.getElementById('user-chip');
-        chip.textContent = me.username;
-        chip.style.display = 'inline-flex';
       } catch { Storage.clearAuthToken(); location.href = 'login.html'; return; }
       // Hide full settings link, show simplified settings button
       document.getElementById('btn-settings').style.display = 'none';
