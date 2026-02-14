@@ -597,12 +597,106 @@
         font-size: 16px;
       }
     }
+
+    /* ── Header icon buttons ──────────────────── */
+    .header-bar { gap: 8px; }
+    .btn-header-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px;
+      background: var(--bg-glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text-secondary); cursor: pointer; transition: all var(--transition);
+    }
+    .btn-header-icon:hover { color: var(--accent); border-color: var(--border-strong); background: var(--bg-glass-light); }
+
+    /* ── Guide overlay ────────────────────────── */
+    .guide-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+      display: none; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.3s ease;
+    }
+    .guide-overlay.visible { opacity: 1; }
+    .guide-box {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); max-width: 480px; width: 90%;
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .guide-header { padding: 20px 24px 12px; text-align: center; }
+    .guide-header h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 3px; margin-bottom: 4px; }
+    .guide-header p { font-size: 12px; color: var(--text-muted); letter-spacing: 1px; }
+    .guide-body { padding: 8px 24px 20px; }
+    .guide-step { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .guide-step:last-child { border-bottom: none; }
+    .guide-num {
+      flex-shrink: 0; width: 24px; height: 24px; margin-top: 1px;
+      border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent);
+      color: var(--accent); font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .guide-text { font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); }
+    .guide-text strong { color: var(--text-primary); font-weight: 600; }
+    .guide-text .guide-example {
+      display: block; margin-top: 6px; padding: 6px 10px;
+      background: var(--bg-elevated); border-radius: var(--radius);
+      color: var(--text-muted); font-size: 12.5px; font-style: italic;
+    }
+    .guide-footer { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: center; }
+
+    /* ── Settings panel ───────────────────────── */
+    .settings-field { margin-bottom: 16px; }
+    .settings-field label { margin-bottom: 6px; }
+    .settings-field input[type="number"] { width: 100px; text-align: center; }
+    .settings-field .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .settings-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .settings-actions .btn { flex: 1; min-width: 120px; justify-content: center; }
   </style>
 </head>
 <body>
 
+<!-- ── Guide Overlay ──────────────────────────── -->
+<div class="guide-overlay" id="guideOverlay">
+  <div class="guide-box">
+    <div class="guide-header">
+      <h2>入卷指南</h2>
+      <p>AI 互动小说</p>
+    </div>
+    <div class="guide-body">
+      <div class="guide-step">
+        <span class="guide-num">1</span>
+        <div class="guide-text">
+          <strong>新建故事</strong>后，先和 AI 聊聊你想要的世界。可以详细描述，也可以一句话概括，AI 会帮你完善。
+          <span class="guide-example">"帮我做一个修仙流、废柴逆袭的世界观，第三人称视角"</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <span class="guide-num">2</span>
+        <div class="guide-text">
+          讨论完毕后，AI 会花约 <strong>1-2 分钟</strong>生成世界观和状态栏。在右侧预览，满意后点击<strong>「确认」</strong>即可开始游玩。
+        </div>
+      </div>
+      <div class="guide-step">
+        <span class="guide-num">3</span>
+        <div class="guide-text">
+          游玩中，AI 每轮会输出故事、更新状态栏，并给出 <strong>4 个选项</strong>。请等选项全部出现后再操作。点击右上角可随时查看状态栏。
+        </div>
+      </div>
+    </div>
+    <div class="guide-footer">
+      <button class="btn btn-primary" onclick="closeGuide()" style="min-width:140px">知道了</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Fixed Header Bar ─────────────────────── -->
 <div class="header-bar">
+  <button class="btn-header-icon" onclick="showGuide()" title="使用指南" id="btn-guide">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  </button>
+  <button class="btn-header-icon" onclick="openSettings()" title="设置" id="btn-settings-pub" style="display:none;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
   <a class="btn-settings" href="settings.html?v=9" id="btn-settings">
     <span class="icon" style="width:16px;height:16px;"></span>
     设置
@@ -671,6 +765,55 @@
     btnImport.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入数据`;
   })();
 
+  // ── Guide ──────────────────────────────────────
+  function showGuide() {
+    const el = document.getElementById('guideOverlay');
+    el.style.display = 'flex';
+    requestAnimationFrame(() => el.classList.add('visible'));
+  }
+  function closeGuide() {
+    const el = document.getElementById('guideOverlay');
+    el.classList.remove('visible');
+    setTimeout(() => el.style.display = 'none', 300);
+  }
+
+  // ── Settings panel (public mode) ───────────────
+  function openSettings() {
+    const s = Storage.getSettings();
+    UI.showModal({
+      title: '设置',
+      content: `
+        <div class="settings-field">
+          <label>每轮回复字数</label>
+          <input type="number" id="set-article-words" value="${s.articleWordCount || 700}" min="200" max="3000" step="100">
+          <div class="field-hint">AI 每次续写的大致字数</div>
+        </div>
+        <div class="settings-field">
+          <label>摘要字数</label>
+          <input type="number" id="set-summary-words" value="${s.summaryWordCount || 200}" min="50" max="500" step="100">
+          <div class="field-hint">每轮摘要的大致字数</div>
+        </div>
+        <hr class="settings-divider">
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick="exportAllData()">导出数据</button>
+          <button class="btn btn-secondary" onclick="triggerImport()">导入数据</button>
+        </div>`,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: '保存', class: 'btn-primary', onclick: 'savePublicSettings()' },
+      ],
+    });
+  }
+
+  function savePublicSettings() {
+    const s = Storage.getSettings();
+    s.articleWordCount = parseInt(document.getElementById('set-article-words').value) || 700;
+    s.summaryWordCount = parseInt(document.getElementById('set-summary-words').value) || 200;
+    Storage.saveSettings(s);
+    UI.closeModal();
+    UI.showToast('设置已保存', 'success');
+  }
+
   // ── State ──────────────────────────────────────
   let conversations = [];
 
@@ -685,14 +828,16 @@
         const me = await res.json();
         if (!me.ok) { Storage.clearAuthToken(); location.href = 'login.html'; return; }
       } catch { Storage.clearAuthToken(); location.href = 'login.html'; return; }
-      // Hide settings button
-      const settingsBtn = document.getElementById('btn-settings');
-      if (settingsBtn) settingsBtn.style.display = 'none';
-      // Hide import/export in public mode
-      const btnExport = document.getElementById('btn-export');
-      const btnImport = document.getElementById('btn-import');
-      if (btnExport) btnExport.style.display = 'none';
-      if (btnImport) btnImport.style.display = 'none';
+      // Hide full settings link, show simplified settings button
+      document.getElementById('btn-settings').style.display = 'none';
+      document.getElementById('btn-settings-pub').style.display = '';
+      // Hide footer import/export (moved into settings panel)
+      document.getElementById('btn-export').style.display = 'none';
+      document.getElementById('btn-import').style.display = 'none';
+    } else {
+      // Local mode: hide guide and public settings buttons
+      document.getElementById('btn-guide').style.display = 'none';
+      document.getElementById('btn-settings-pub').style.display = 'none';
     }
     await Storage.syncFromServer();
     loadConversations();

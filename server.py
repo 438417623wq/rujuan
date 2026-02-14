@@ -2,6 +2,7 @@
 """
 AIRP Server - Static files + JSON storage API
 Supports local mode (default) and public mode (AIRP_MODE=public)
+Public mode with DATABASE_URL uses PostgreSQL for persistent storage.
 Usage: python3 server.py [port]
 """
 
@@ -36,6 +37,68 @@ DEFAULT_PERSONA = os.environ.get('AIRP_DEFAULT_PERSONA',
     '你是一个专业的互动小说AI助手。你擅长创意写作、角色扮演、世界观构建。'
     '在RP中会全力投入角色，提供沉浸式的叙事体验。')
 
+# ── Database (public mode + DATABASE_URL) ──────────────────
+DATABASE_URL = os.environ.get('DATABASE_URL', '')
+USE_DB = PUBLIC_MODE and bool(DATABASE_URL)
+_db_params = None
+
+
+def _parse_database_url(url):
+    """Parse DATABASE_URL into pg8000 connect kwargs."""
+    parsed = urllib.parse.urlparse(url)
+    params = {
+        'host': parsed.hostname,
+        'port': parsed.port or 5432,
+        'user': parsed.username,
+        'password': parsed.password,
+        'database': parsed.path.lstrip('/'),
+    }
+    qs = urllib.parse.parse_qs(parsed.query)
+    if qs.get('sslmode', [''])[0] in ('require', 'verify-full', 'verify-ca'):
+        params['ssl_context'] = ssl.create_default_context()
+    return params
+
+
+def _get_db():
+    """Get a new database connection. Caller must close it."""
+    import pg8000
+    conn = pg8000.connect(**_db_params)
+    conn.autocommit = True
+    return conn
+
+
+def _init_db():
+    """Create tables if they don't exist. Returns True on success."""
+    global _db_params
+    if not DATABASE_URL:
+        return False
+    _db_params = _parse_database_url(DATABASE_URL)
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                invite_code TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                created_at DATE DEFAULT CURRENT_DATE
+            )
+        ''')
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS conversations (
+                id TEXT NOT NULL,
+                username TEXT NOT NULL,
+                data JSONB NOT NULL,
+                updated_at TIMESTAMP DEFAULT NOW(),
+                PRIMARY KEY (id, username)
+            )
+        ''')
+        print('[db] Tables ready', flush=True)
+        return True
+    finally:
+        conn.close()
+
+
 # ── Thread-safe data ────────────────────────────────────────
 _users_lock = threading.Lock()
 _rate_lock = threading.Lock()
@@ -53,10 +116,10 @@ def _default_api_base():
     return defaults.get(API_PROVIDER, 'https://api.openai.com/v1')
 
 
-# ── Helpers ─────────────────────────────────────────────────
+# ── File helpers (local mode) ──────────────────────────────
 def ensure_dirs():
     os.makedirs(CONV_DIR, exist_ok=True)
-    if PUBLIC_MODE:
+    if PUBLIC_MODE and not USE_DB:
         os.makedirs(os.path.join(DATA_DIR, 'u'), exist_ok=True)
 
 
@@ -75,7 +138,6 @@ def write_json(path, data):
 
 
 def _user_data_dir(user_id):
-    """Return data dir for a user in public mode."""
     return os.path.join(DATA_DIR, 'u', user_id)
 
 
@@ -84,19 +146,21 @@ def _user_conv_dir(user_id):
 
 
 # ── Auth helpers ────────────────────────────────────────────
-def _load_users():
-    return read_json(os.path.join(DATA_DIR, 'users.json'), {})
-
-
-def _save_users(users):
-    write_json(os.path.join(DATA_DIR, 'users.json'), users)
-
-
 def _find_user_by_token(token):
     """Return username if token valid, else None."""
     if not token:
         return None
-    users = _load_users()
+    if USE_DB:
+        conn = _get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT username FROM users WHERE token = %s', (token,))
+            row = cur.fetchone()
+            return row[0] if row else None
+        finally:
+            conn.close()
+    # File fallback
+    users = read_json(os.path.join(DATA_DIR, 'users.json'), {})
     for username, info in users.items():
         if info.get('token') == token:
             return username
@@ -109,7 +173,6 @@ def _check_rate_limit(user_id):
     today = date.today().isoformat()
     with _rate_lock:
         user_limits = _rate_limits.setdefault(user_id, {})
-        # Reset if new day
         if today not in user_limits:
             user_limits.clear()
             user_limits[today] = 0
@@ -212,18 +275,63 @@ def _parse_non_stream_response(data):
     return text, usage
 
 
+# ── DB conversation helpers ─────────────────────────────────
+def _db_get_conversation(username, conv_id):
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT data FROM conversations WHERE id = %s AND username = %s', (conv_id, username))
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def _db_get_all_conversations(username):
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT id, data FROM conversations WHERE username = %s', (username,))
+        result = {}
+        for row in cur.fetchall():
+            data = row[1]
+            if isinstance(data, str):
+                data = json.loads(data)
+            result[row[0]] = data
+        return result
+    finally:
+        conn.close()
+
+
+def _db_save_conversation(username, conv_id, data):
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('''
+            INSERT INTO conversations (id, username, data, updated_at)
+            VALUES (%s, %s, %s, NOW())
+            ON CONFLICT (id, username) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+        ''', (conv_id, username, json.dumps(data, ensure_ascii=False)))
+    finally:
+        conn.close()
+
+
+def _db_delete_conversation(username, conv_id):
+    conn = _get_db()
+    try:
+        cur = conn.cursor()
+        cur.execute('DELETE FROM conversations WHERE id = %s AND username = %s', (conv_id, username))
+    finally:
+        conn.close()
+
+
 # ── Handler ─────────────────────────────────────────────────
 class AirpHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files and handles /api/* routes."""
 
-    def _get_data_dir(self, user_id=None):
-        """Return the appropriate data dir. Public mode uses per-user dirs."""
-        if PUBLIC_MODE and user_id:
-            return _user_data_dir(user_id)
-        return DATA_DIR
-
     def _get_conv_dir(self, user_id=None):
-        if PUBLIC_MODE and user_id:
+        """File-based conv dir (local mode or public without DB)."""
+        if PUBLIC_MODE and user_id and not USE_DB:
             d = _user_conv_dir(user_id)
             os.makedirs(d, exist_ok=True)
             return d
@@ -258,7 +366,6 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             if not user_id:
                 return
             if PUBLIC_MODE:
-                # Return server-preset settings (read-only)
                 self._json_response({
                     'defaultApiProfileId': '__server__',
                     'defaultModel': API_MODEL,
@@ -291,14 +398,20 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             user_id = self._auth_required()
             if not user_id:
                 return
-            self._json_response(self._get_all_conversations(user_id))
+            if USE_DB:
+                self._json_response(_db_get_all_conversations(user_id))
+            else:
+                self._json_response(self._get_all_conversations_file(user_id))
         elif path.startswith('/api/conversations/'):
             user_id = self._auth_required()
             if not user_id:
                 return
             conv_id = path.split('/')[-1]
-            conv_dir = self._get_conv_dir(user_id)
-            data = read_json(os.path.join(conv_dir, f'{conv_id}.json'))
+            if USE_DB:
+                data = _db_get_conversation(user_id, conv_id)
+            else:
+                conv_dir = self._get_conv_dir(user_id)
+                data = read_json(os.path.join(conv_dir, f'{conv_id}.json'))
             if data:
                 self._json_response(data)
             else:
@@ -344,8 +457,11 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                 self._json_response({'ok': True})
         elif path.startswith('/api/conversations/'):
             conv_id = path.split('/')[-1]
-            conv_dir = self._get_conv_dir(user_id)
-            write_json(os.path.join(conv_dir, f'{conv_id}.json'), body)
+            if USE_DB:
+                _db_save_conversation(user_id, conv_id, body)
+            else:
+                conv_dir = self._get_conv_dir(user_id)
+                write_json(os.path.join(conv_dir, f'{conv_id}.json'), body)
             self._json_response({'ok': True})
         else:
             self._json_response({'error': 'not found'}, 404)
@@ -360,12 +476,15 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
 
         if path.startswith('/api/conversations/'):
             conv_id = path.split('/')[-1]
-            conv_dir = self._get_conv_dir(user_id)
-            filepath = os.path.join(conv_dir, f'{conv_id}.json')
-            try:
-                os.remove(filepath)
-            except FileNotFoundError:
-                pass
+            if USE_DB:
+                _db_delete_conversation(user_id, conv_id)
+            else:
+                conv_dir = self._get_conv_dir(user_id)
+                filepath = os.path.join(conv_dir, f'{conv_id}.json')
+                try:
+                    os.remove(filepath)
+                except FileNotFoundError:
+                    pass
             self._json_response({'ok': True})
         else:
             self._json_response({'error': 'not found'}, 404)
@@ -402,31 +521,57 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             return
         username = safe
 
+        if USE_DB:
+            self._handle_login_db(username, invite_code)
+        else:
+            self._handle_login_file(username, invite_code)
+
+    def _handle_login_db(self, username, invite_code):
+        conn = _get_db()
+        try:
+            cur = conn.cursor()
+            # Check existing user
+            cur.execute('SELECT token FROM users WHERE username = %s', (username,))
+            row = cur.fetchone()
+            if row:
+                self._json_response({'ok': True, 'token': row[0], 'username': username})
+                return
+
+            # New user: need invite code
+            if not invite_code:
+                self._json_response({'error': '新用户请填写邀请码'}, 403)
+                return
+            if invite_code not in INVITE_CODES:
+                self._json_response({'error': '邀请码无效'}, 403)
+                return
+
+            token = secrets.token_hex(32)
+            cur.execute(
+                'INSERT INTO users (username, invite_code, token) VALUES (%s, %s, %s)',
+                (username, invite_code, token)
+            )
+            self._json_response({'ok': True, 'token': token, 'username': username})
+        finally:
+            conn.close()
+
+    def _handle_login_file(self, username, invite_code):
         with _users_lock:
-            users = _load_users()
+            users = read_json(os.path.join(DATA_DIR, 'users.json'), {})
             if username in users:
-                # Existing user: just return token (no invite code needed)
                 token = users[username]['token']
             elif invite_code:
-                # New user registration: need valid & unused invite code
                 if invite_code not in INVITE_CODES:
                     self._json_response({'error': '邀请码无效'}, 403)
                     return
-                # Check invite code not already used by another user
-                for u, info in users.items():
-                    if info.get('inviteCode') == invite_code:
-                        self._json_response({'error': '该邀请码已被使用'}, 403)
-                        return
                 token = secrets.token_hex(32)
                 users[username] = {
                     'inviteCode': invite_code,
                     'token': token,
                     'createdAt': date.today().isoformat(),
                 }
-                _save_users(users)
+                write_json(os.path.join(DATA_DIR, 'users.json'), users)
                 os.makedirs(_user_conv_dir(username), exist_ok=True)
             else:
-                # No invite code and user doesn't exist
                 self._json_response({'error': '新用户请填写邀请码'}, 403)
                 return
 
@@ -581,8 +726,8 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self._json_response({'error': f'Proxy error: {str(e)}'}, 502)
 
-    # ── Conversation helpers ───────────────────────────────
-    def _get_all_conversations(self, user_id=None):
+    # ── Conversation helpers (file mode) ───────────────────
+    def _get_all_conversations_file(self, user_id=None):
         conv_dir = self._get_conv_dir(user_id)
         result = {}
         if not os.path.isdir(conv_dir):
@@ -633,6 +778,12 @@ if __name__ == '__main__':
         print('[startup] entering __main__', flush=True)
         ensure_dirs()
 
+        if USE_DB:
+            _init_db()
+            print(f'[startup] Database: connected (Neon/PostgreSQL)', flush=True)
+        elif PUBLIC_MODE:
+            print(f'[startup] WARNING: Public mode without DATABASE_URL — data will NOT persist across restarts!', flush=True)
+
         if PUBLIC_MODE:
             server = http.server.ThreadingHTTPServer(('0.0.0.0', PORT), AirpHandler)
             print(f'Server running in PUBLIC mode on http://0.0.0.0:{PORT}')
@@ -640,6 +791,7 @@ if __name__ == '__main__':
             print(f'  Model: {API_MODEL}')
             print(f'  Daily limit: {DAILY_LIMIT}/user')
             print(f'  Invite codes: {len(INVITE_CODES)}')
+            print(f'  Storage: {"PostgreSQL" if USE_DB else "filesystem (ephemeral!)"}')
         else:
             server = http.server.HTTPServer(('0.0.0.0', PORT), AirpHandler)
             print(f'Server running in LOCAL mode on http://0.0.0.0:{PORT}')
