@@ -95,7 +95,9 @@ Prompts are built from **prompt entries** (array in settings). Default entries:
 4. `options_req` - 4 branching choices format
 5. `mvu_req` - state patch format and instructions
 
-**Important**: If user has saved custom `promptEntries` in settings, code changes to `DEFAULT_PROMPT_ENTRIES` won't take effect. User must "reset to defaults" to pick up changes.
+**Preset constants**: `MINIMAL_PRESET_ENTRIES` (default for new users), `DEFAULT_PROMPT_ENTRIES` (Lulu), `X2_PRESET_ENTRIES`, `MUJICA_PRESET_ENTRIES`. New presets and resets use `MINIMAL_PRESET_ENTRIES`. SillyTavern import uses `DEFAULT_PROMPT_ENTRIES` for AIRP-specific entries.
+
+**Important**: If user has saved custom presets, code changes to preset constants won't take effect. User must "reset to defaults" to pick up changes.
 
 **Important**: Do NOT modify prompts without notifying the user first. Prompt content is primarily the user's responsibility.
 

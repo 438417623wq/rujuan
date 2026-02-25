@@ -7,9 +7,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="入卷">
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
   <title>入卷</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
   <script src="common.js?v=12"></script>
   <style>
     /* ============================================================
@@ -30,7 +32,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 10px 16px;
+      padding: calc(10px + env(safe-area-inset-top, var(--sat, 0px))) 16px 10px;
       background: var(--bg-glass);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
@@ -585,7 +587,7 @@
       overflow-y: scroll;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-y;
-      padding: 16px;
+      padding: calc(16px + env(safe-area-inset-top, var(--sat, 0px))) 16px 16px;
       transform: translateX(0);
       transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
                   opacity 0.35s ease,
@@ -643,7 +645,7 @@
       border-left: 1px solid var(--border);
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      padding: 16px;
+      padding: calc(16px + env(safe-area-inset-top, var(--sat, 0px))) 16px 16px;
       transform: translateX(0);
       transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
                   opacity 0.35s ease,
@@ -756,7 +758,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 16px;
+      padding: calc(8px + env(safe-area-inset-top, var(--sat, 0px))) 16px 8px;
       background: rgba(201, 164, 76, 0.1);
       border-bottom: 1px solid rgba(201, 164, 76, 0.25);
       flex-shrink: 0;
@@ -1453,6 +1455,7 @@
     <div class="edit-panel-actions">
       <button class="btn btn-secondary" onclick="closeEdit()">取消</button>
       <button class="btn btn-primary" onclick="confirmEdit()">保存</button>
+      <button class="btn btn-primary" id="editResendBtn" onclick="confirmEditAndResend()" style="display:none;">保存并重新发送</button>
     </div>
   </div>
 </div>
@@ -1722,9 +1725,9 @@ function createMessageElement(msg, idx) {
       <button class="btn-icon" title="编辑" onclick="editMessage('${msgIdAttr}')">
         <span class="icon" style="width:14px;height:14px;">${Icons.edit}</span>
       </button>
-      <button class="btn-icon" title="${msg.hidden ? '显示' : '隐藏'}" onclick="toggleHideMessage('${msgIdAttr}')">
-        <span class="icon" style="width:14px;height:14px;">${msg.hidden ? Icons.eye : Icons.eyeOff}</span>
-      </button>
+      ${msg.role === 'user' ? `<button class="btn-icon" title="重新发送" onclick="retryMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${Icons.retry}</span>
+      </button>` : ''}
       ${conversation.phase === 'rp' ? `<button class="btn-icon" title="回档到此" onclick="revertToMessage('${msgIdAttr}')">
         <span class="icon" style="width:14px;height:14px;">${Icons.rewind}</span>
       </button>` : ''}
@@ -2400,37 +2403,42 @@ async function streamAIResponse(retryAttempt = 0) {
 }
 
 function handleStreamStopped(aiMsg) {
-  if (aiMsg.content) {
-    // Keep partial content
-    updateAssistantBubble(aiMsg.id, aiMsg.content, false);
-    // Add interrupted marker
-    const wrapper = document.getElementById(`msg-${aiMsg.id}`);
-    if (wrapper) {
-      const contentEl = wrapper.querySelector('.message-content');
-      if (contentEl) {
-        contentEl.insertAdjacentHTML('beforeend', '<span class="stream-interrupted">— 已停止</span>');
+  try {
+    if (aiMsg.content) {
+      // Keep partial content
+      updateAssistantBubble(aiMsg.id, aiMsg.content, false);
+      // Add interrupted marker
+      const wrapper = document.getElementById(`msg-${aiMsg.id}`);
+      if (wrapper) {
+        const contentEl = wrapper.querySelector('.message-content');
+        if (contentEl) {
+          contentEl.insertAdjacentHTML('beforeend', '<span class="stream-interrupted">— 已停止</span>');
+        }
       }
-    }
-    if (editMvuMode) {
-      processEditMvuResponse(aiMsg.content);
+      if (editMvuMode) {
+        processEditMvuResponse(aiMsg.content);
+      } else {
+        aiMsg.abstract = Summary.parseAbstract(aiMsg.content);
+        processMvuFromResponse(aiMsg.content, aiMsg);
+        processWritingAdvice(aiMsg.content);
+        Storage.saveConversation(conversation);
+      }
     } else {
-      aiMsg.abstract = Summary.parseAbstract(aiMsg.content);
-      processMvuFromResponse(aiMsg.content, aiMsg);
-      processWritingAdvice(aiMsg.content);
-      Storage.saveConversation(conversation);
+      // No content, remove placeholder
+      if (editMvuMode) {
+        editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
+      } else {
+        conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+        Storage.saveConversation(conversation);
+      }
+      const el = document.getElementById(`msg-${aiMsg.id}`);
+      if (el) el.remove();
     }
-  } else {
-    // No content, remove placeholder
-    if (editMvuMode) {
-      editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
-    } else {
-      conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
-      Storage.saveConversation(conversation);
-    }
-    const el = document.getElementById(`msg-${aiMsg.id}`);
-    if (el) el.remove();
+  } catch (e) {
+    console.error('handleStreamStopped error:', e);
   }
 
+  // Cleanup always runs
   isStreaming = false;
   streamAborted = false;
   currentAbortController = null;
@@ -2861,6 +2869,56 @@ function copyMessage(msgId) {
   });
 }
 
+function retryMessage(msgId) {
+  if (isStreaming) return;
+  const msgIdx = conversation.messages.findIndex(m => m.id === msgId);
+  if (msgIdx < 0) return;
+  const msg = conversation.messages[msgIdx];
+  if (msg.role !== 'user') return;
+
+  // Check what's after this user message
+  const afterMessages = conversation.messages.slice(msgIdx + 1);
+
+  if (afterMessages.length === 0) {
+    // Nothing after — just re-send
+    streamAIResponse();
+  } else if (afterMessages.length === 1 && afterMessages[0].role === 'assistant') {
+    // Single AI reply right after — remove it and re-send
+    const aiMsg = afterMessages[0];
+    const el = document.getElementById(`msg-${aiMsg.id}`);
+    if (el) el.remove();
+    conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+    Storage.saveConversation(conversation);
+    streamAIResponse();
+  } else {
+    // Multiple turns after — revert to this user message then re-send
+    conversation.messages = conversation.messages.slice(0, msgIdx + 1);
+
+    // Restore MVU snapshot from nearest earlier AI message
+    let snapshot = null;
+    for (let i = msgIdx; i >= 0; i--) {
+      const m = conversation.messages[i];
+      if (m.role === 'assistant' && m.mvuSnapshot) {
+        snapshot = { state: m.mvuSnapshot, templates: m.templateSnapshot || [] };
+        break;
+      }
+    }
+    if (snapshot) {
+      conversation.mvu.state = JSON.parse(JSON.stringify(snapshot.state));
+      conversation.mvu.templateInstances = JSON.parse(JSON.stringify(snapshot.templates));
+    }
+
+    if (conversation.summary && conversation.summary.lastMergedIdx > conversation.messages.length) {
+      conversation.summary.lastMergedIdx = conversation.messages.length;
+    }
+
+    Storage.saveConversation(conversation);
+    renderAllMessages();
+    renderMvuSidebar();
+    streamAIResponse();
+  }
+}
+
 function editMessage(msgId) {
   const msg = findMessage(msgId);
   if (!msg) return;
@@ -2869,6 +2927,11 @@ function editMessage(msgId) {
   const overlay = document.getElementById('editOverlay');
   const textarea = document.getElementById('editTextarea');
   textarea.value = msg.content;
+
+  // Show "保存并重新发送" only for user messages
+  const resendBtn = document.getElementById('editResendBtn');
+  resendBtn.style.display = msg.role === 'user' ? '' : 'none';
+
   overlay.classList.add('visible');
   setTimeout(() => textarea.focus(), 100);
 }
@@ -2919,6 +2982,34 @@ function confirmEdit() {
   } else {
     UI.showToast('消息已更新', 'success');
   }
+}
+
+function confirmEditAndResend() {
+  if (!editingMsgId) return;
+  const msg = findMessage(editingMsgId);
+  if (!msg || msg.role !== 'user') return;
+
+  const textarea = document.getElementById('editTextarea');
+  const newContent = textarea.value.trim();
+  if (!newContent) return;
+
+  // Save the edit
+  msg.content = newContent;
+  Storage.saveConversation(conversation);
+
+  // Re-render the message
+  const el = document.getElementById(`msg-${editingMsgId}`);
+  if (el) {
+    const idx = conversation.messages.indexOf(msg);
+    const newEl = createMessageElement(msg, idx);
+    el.replaceWith(newEl);
+  }
+
+  const savedMsgId = editingMsgId;
+  closeEdit();
+
+  // Trigger retry on the edited message
+  retryMessage(savedMsgId);
 }
 
 function toggleHideMessage(msgId) {
@@ -3174,8 +3265,9 @@ function setupScrollDetection() {
   const isMobile = window.matchMedia('(max-width: 768px)').matches;
   if (isMobile) {
     area.addEventListener('click', (e) => {
-      const bubble = e.target.closest('.message-bubble');
-      const msg = bubble && bubble.closest('.message');
+      // Recognize both user (.message-bubble) and AI (.message-content) messages
+      const target = e.target.closest('.message-bubble') || e.target.closest('.message-content');
+      const msg = target && target.closest('.message');
       if (!msg) {
         // Tapped outside any message: hide all
         area.querySelectorAll('.message.show-actions').forEach(el => el.classList.remove('show-actions'));

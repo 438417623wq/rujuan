@@ -7,9 +7,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="入卷">
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
   <title>入卷 - AI 互动小说</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
   <script src="common.js?v=12"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
@@ -38,7 +40,7 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
-      padding: 14px 20px;
+      padding: calc(14px + env(safe-area-inset-top, var(--sat, 0px))) 20px 14px;
       background: linear-gradient(180deg, rgba(15,12,8,0.9) 0%, rgba(15,12,8,0.6) 60%, transparent 100%);
       pointer-events: none;
     }

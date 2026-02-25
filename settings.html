@@ -7,9 +7,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="入卷">
   <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
   <title>入卷 - 设置</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
   <script src="common.js?v=12"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
@@ -32,7 +34,7 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 24px 0 28px;
+      padding: calc(24px + env(safe-area-inset-top, var(--sat, 0px))) 0 28px;
       border-bottom: 1px solid var(--border);
       margin-bottom: 24px;
     }
@@ -1228,65 +1230,35 @@
       const legacyEntries = settings.promptEntries
         ? JSON.parse(JSON.stringify(settings.promptEntries))
         : null;
-      settings.promptPresets = {
-        'default': {
-          name: '默认预设',
-          entries: legacyEntries,
-          initPrompt: settings.promptInit || '',
-          summaryPrompt: settings.promptSummaryGen || '',
-        },
-        'minimal': {
-          name: '初始预设',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        },
-        'x2': {
-          name: 'X-2.0',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        },
-        'mujica': {
-          name: '威能',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        }
-      };
+      if (legacyEntries) {
+        // Existing user with legacy entries — migrate to 'lulu' + create default
+        settings.promptPresets = {
+          'default': {
+            name: '默认预设',
+            entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+            initPrompt: '',
+            summaryPrompt: '',
+          },
+          'lulu': {
+            name: 'Lulu',
+            entries: legacyEntries,
+            initPrompt: settings.promptInit || '',
+            summaryPrompt: settings.promptSummaryGen || '',
+          },
+        };
+      } else {
+        // New user — only default preset
+        settings.promptPresets = {
+          'default': {
+            name: '默认预设',
+            entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+            initPrompt: '',
+            summaryPrompt: '',
+          },
+        };
+      }
       settings.activePresetId = 'default';
       Storage.saveSettings(settings);
-    } else {
-      // Add missing presets for existing users
-      let changed = false;
-      if (!settings.promptPresets['x2']) {
-        settings.promptPresets['x2'] = {
-          name: 'X-2.0',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        };
-        changed = true;
-      }
-      if (!settings.promptPresets['minimal']) {
-        settings.promptPresets['minimal'] = {
-          name: '初始预设',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        };
-        changed = true;
-      }
-      if (!settings.promptPresets['mujica']) {
-        settings.promptPresets['mujica'] = {
-          name: '威能',
-          entries: JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES)),
-          initPrompt: '',
-          summaryPrompt: '',
-        };
-        changed = true;
-      }
-      if (changed) Storage.saveSettings(settings);
     }
   }
 
@@ -1337,7 +1309,7 @@
     ensurePresets();
     settings.promptPresets[id] = {
       name: name.trim(),
-      entries: JSON.parse(JSON.stringify(PromptBuilder.DEFAULT_PROMPT_ENTRIES)),
+      entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
       initPrompt: '',
       summaryPrompt: '',
     };
@@ -1402,7 +1374,7 @@
 
   function getEntries() {
     const preset = getActivePresetObj();
-    const entries = preset.entries || PromptBuilder.DEFAULT_PROMPT_ENTRIES;
+    const entries = preset.entries || PromptBuilder.MINIMAL_PRESET_ENTRIES;
     return JSON.parse(JSON.stringify(entries));
   }
 
@@ -1438,8 +1410,8 @@
             <div class="prompt-entry-name">${Utils.escapeHtml(entry.name || entry.slot)}</div>
             <span class="prompt-entry-slot-badge">SLOT</span>
             <div class="prompt-entry-actions">
-              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('chevronDown', 14)}</button>`.replace('points="6 9 12 15 18 9"', 'points="6 15 12 9 18 15"') : ''}
-              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('chevronDown', 14)}</button>` : ''}
+              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('arrowUp', 14)}</button>` : ''}
+              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('arrowDown', 14)}</button>` : ''}
             </div>
           </div>
         </div>`;
@@ -1472,8 +1444,8 @@
                     onclick="event.stopPropagation(); cycleRole(${i})"
                     title="切换角色">${roleLabel}</button>
             <div class="prompt-entry-actions">
-              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('chevronDown', 14)}</button>`.replace('points="6 9 12 15 18 9"', 'points="6 15 12 9 18 15"') : ''}
-              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('chevronDown', 14)}</button>` : ''}
+              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('arrowUp', 14)}</button>` : ''}
+              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('arrowDown', 14)}</button>` : ''}
               <button class="btn-icon" onclick="event.stopPropagation(); deleteEntry(${i})" title="删除">
                 ${getIcon('trash', 14)}
               </button>
@@ -1599,16 +1571,8 @@
       onConfirm: () => {
         const preset = getActivePresetObj();
         const activeId = getActivePresetId();
-        // Reset to appropriate default entries based on preset type
-        if (activeId === 'x2') {
-          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES));
-        } else if (activeId === 'minimal') {
-          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES));
-        } else if (activeId === 'mujica') {
-          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES));
-        } else {
-          preset.entries = null; // falls back to DEFAULT_PROMPT_ENTRIES
-        }
+        // Reset to default entries
+        preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES));
         Storage.saveSettings(settings);
         expandedEntryId = null;
         renderPromptEntries();
