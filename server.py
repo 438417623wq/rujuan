@@ -33,9 +33,6 @@ API_BASE_URL = os.environ.get('AIRP_API_BASE_URL', '')
 API_MODEL = os.environ.get('AIRP_API_MODEL', '')
 API_MAX_TOKENS = int(os.environ.get('AIRP_API_MAX_TOKENS', '20000'))
 DAILY_LIMIT = int(os.environ.get('AIRP_DAILY_LIMIT', '300'))
-DEFAULT_PERSONA = os.environ.get('AIRP_DEFAULT_PERSONA',
-    '你是一个专业的互动小说AI助手。你擅长创意写作、角色扮演、世界观构建。'
-    '在RP中会全力投入角色，提供沉浸式的叙事体验。')
 
 # ── Database (public mode + DATABASE_URL) ──────────────────
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
@@ -340,6 +337,16 @@ def _db_delete_conversation(username, conv_id):
 class AirpHandler(http.server.SimpleHTTPRequestHandler):
     """Serves static files and handles /api/* routes."""
 
+    def end_headers(self):
+        """Add no-cache headers for HTML/JS files to prevent stale code on devices."""
+        if hasattr(self, 'path'):
+            p = self.path.split('?')[0]
+            if p.endswith(('.html', '.js')) or p == '/':
+                self.send_header('Cache-Control', 'no-cache, no-store, must-revalidate')
+                self.send_header('Pragma', 'no-cache')
+                self.send_header('Expires', '0')
+        super().end_headers()
+
     def _get_conv_dir(self, user_id=None):
         """File-based conv dir (local mode or public without DB)."""
         if PUBLIC_MODE and user_id and not USE_DB:
@@ -380,7 +387,6 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                 self._json_response({
                     'defaultApiProfileId': '__server__',
                     'defaultModel': API_MODEL,
-                    'defaultPersona': DEFAULT_PERSONA,
                     'summaryInterval': 100,
                     'exportFormat': 'md',
                     'articleWordCount': 700,
@@ -409,8 +415,12 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             user_id = self._auth_required()
             if not user_id:
                 return
+            qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            meta_only = 'meta' in qs
             if USE_DB:
                 self._json_response(_db_get_all_conversations(user_id))
+            elif meta_only:
+                self._json_response(self._get_conversations_meta_file(user_id))
             else:
                 self._json_response(self._get_all_conversations_file(user_id))
         elif path.startswith('/api/conversations/'):
@@ -748,6 +758,22 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                 data = read_json(os.path.join(conv_dir, fname))
                 if data and 'id' in data:
                     result[data['id']] = data
+        return result
+
+    def _get_conversations_meta_file(self, user_id=None):
+        """Return lightweight metadata for all conversations (no messages/mvu)."""
+        conv_dir = self._get_conv_dir(user_id)
+        result = {}
+        if not os.path.isdir(conv_dir):
+            return result
+        META_FIELDS = ('id', 'name', 'phase', 'createdAt', 'updatedAt', 'apiProfileId', 'model')
+        for fname in os.listdir(conv_dir):
+            if fname.endswith('.json'):
+                data = read_json(os.path.join(conv_dir, fname))
+                if data and 'id' in data:
+                    meta = {k: data.get(k) for k in META_FIELDS}
+                    meta['msgCount'] = len([m for m in data.get('messages', []) if not m.get('hidden')])
+                    result[data['id']] = meta
         return result
 
     # ── JSON / body helpers ────────────────────────────────

@@ -10,7 +10,7 @@
   <title>入卷 - 设置</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
-  <script src="common.js?v=10"></script>
+  <script src="common.js?v=12"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -193,13 +193,6 @@
       background: var(--accent-dim);
     }
 
-    .persona-textarea {
-      font-family: var(--font-body);
-      font-size: 14px;
-      min-height: 180px;
-      line-height: 1.8;
-    }
-
     .special-textarea {
       font-family: var(--font-ui);
       font-size: 13px;
@@ -302,6 +295,29 @@
 
     .api-card:hover .api-card-actions {
       opacity: 1;
+    }
+
+    /* ── Preset Selector ─────────────────────────── */
+    .preset-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .preset-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+
+    .preset-actions {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
     }
 
     /* ── Prompt Entry Cards ───────────────────────── */
@@ -464,6 +480,28 @@
       font-family: 'SF Mono', 'Fira Code', var(--font-ui), monospace;
     }
 
+    /* ── Slot Entry (marker) ────────────────────── */
+    .prompt-entry.is-slot {
+      background: rgba(201, 164, 76, 0.04);
+      border-style: dashed;
+    }
+
+    .prompt-entry.is-slot .prompt-entry-header {
+      cursor: default;
+    }
+
+    .prompt-entry-slot-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      letter-spacing: 0.5px;
+    }
+
     /* ── Interval Selector ────────────────────────── */
     .interval-selector {
       display: flex;
@@ -547,7 +585,8 @@
     }
 
     /* ── Hidden file input ────────────────────────── */
-    #importFileInput {
+    #importFileInput,
+    #importPresetInput {
       display: none;
     }
 
@@ -608,7 +647,7 @@
 
   <!-- ── Header ──────────────────────────────── -->
   <header class="settings-header">
-    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=10'" title="返回">
+    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=12'" title="返回">
       <!-- icon injected by JS -->
     </button>
     <div>
@@ -640,15 +679,15 @@
 
     <div class="form-group">
       <label>默认 API 配置</label>
-      <select id="selDefaultApi" onchange="onDefaultsChange()"></select>
+      <select id="selDefaultApi" onchange="onDefaultsChange('api')"></select>
     </div>
 
     <div class="form-group">
       <label>默认模型</label>
       <div class="input-row">
-        <input type="text" id="inputDefaultModel" list="dlDefaultModels"
+        <select id="selDefaultModel" onchange="onDefaultsChange()" style="display:none;"></select>
+        <input type="text" id="inputDefaultModel"
                placeholder="如 claude-sonnet-4-20250514" oninput="onDefaultsChange()">
-        <datalist id="dlDefaultModels"></datalist>
         <button class="btn btn-secondary" id="btnFetchDefaultModels" onclick="fetchDefaultModels()">
           <!-- icon injected --> 拉取
         </button>
@@ -681,35 +720,27 @@
   </div>
 
   <!-- ══════════════════════════════════════════ -->
-  <!-- Section 3: Persona                         -->
-  <!-- ══════════════════════════════════════════ -->
-  <div class="section" id="sectionPersona">
-    <div class="section-title" id="titlePersona">
-      <!-- icon injected --> 默认人设
-    </div>
-    <div class="form-group">
-      <textarea id="taPersona" class="persona-textarea"
-                placeholder="输入默认角色人设 (System Prompt 基础部分)..."
-                oninput="onDefaultsChange()"></textarea>
-    </div>
-  </div>
-
-  <!-- ══════════════════════════════════════════ -->
-  <!-- Section 4: Prompt Entries (RP Phase)       -->
+  <!-- Section 3: Prompt Entries (RP Phase)       -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionPromptEntries">
     <div class="section-title" id="titlePromptEntries">
-      <!-- icon injected --> RP Prompt 列表
+      <!-- icon injected --> Prompt 预设
     </div>
+    <div class="preset-bar" id="presetBar"></div>
     <p class="section-desc">
-      RP 阶段发送给 AI 的指令条目，按顺序组装为 System Prompt。支持拖拽排序、开关、角色切换。<br>
-      <code>{{persona}}</code> = 人设 &nbsp;&nbsp;
-      <code>{{schema}}</code> = 状态栏字段定义
+      切换预设会同时更改下方的 RP 条目和特殊 Prompt。支持拖拽排序、开关、角色切换。<br>
+      <code>{{schema}}</code> = 状态栏字段定义 &nbsp;&nbsp;
+      <code>{{articleWords}}</code> = 正文字数 &nbsp;&nbsp;
+      <code>{{summaryWords}}</code> = 摘要字数<br>
+      <span style="color:var(--text-muted)">SLOT = 动态内容插槽（故事设定/总结/对话历史/状态栏）。对话历史之后的条目处于 jailbreak 位置。</span>
     </p>
     <div id="promptEntryList"></div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="btn btn-secondary" id="btnAddEntry" onclick="addPromptEntry()" style="flex:1;justify-content:center;">
         <!-- icon injected --> 添加条目
+      </button>
+      <button class="btn btn-secondary" onclick="addSlotEntry()" style="justify-content:center;">
+        添加 Slot
       </button>
       <button class="btn btn-secondary" onclick="resetPromptEntries()" style="justify-content:center;">
         恢复默认
@@ -725,7 +756,7 @@
       <!-- icon injected --> 特殊 Prompt
     </div>
     <p class="section-desc">
-      初始化阶段和大总结生成使用独立的 Prompt，不走上方条目列表。留空则使用内置默认模板。
+      初始化阶段和大总结生成使用独立的 Prompt，属于当前预设。留空则使用内置默认模板。
     </p>
 
     <div class="form-group">
@@ -770,6 +801,7 @@
     </div>
     <div class="data-size-label" id="dataSizeLabel"></div>
     <input type="file" id="importFileInput" accept=".json" onchange="handleImportFile(event)">
+    <input type="file" id="importPresetInput" accept=".json" onchange="handleImportPresetFile(event)">
   </div>
 
 </div>
@@ -803,8 +835,7 @@
     const titleIcons = {
       titleApi: 'settings',
       titleDefaults: 'edit',
-      titlePersona: 'book',
-      titlePromptEntries: 'menu',
+      titlePromptEntries: 'menu',  // Prompt 预设
       titleSpecialPrompts: 'edit',
       titleData: 'download',
     };
@@ -831,7 +862,7 @@
   function loadAllSections() {
     renderApiProfileList();
     renderDefaultSettings();
-    renderPersona();
+    renderPresetSelector();
     renderPromptEntries();
     renderSpecialPrompts();
     renderIntervalSelector();
@@ -883,7 +914,7 @@
               ${Utils.escapeHtml(p.name || '未命名')}
               ${isDefault ? '<span class="default-tag">default</span>' : ''}
             </div>
-            <div class="api-card-meta">${Utils.escapeHtml(providerLabel)} &middot; ${Utils.escapeHtml(maskedKey)} &middot; max ${p.maxTokens || 8192} tokens</div>
+            <div class="api-card-meta">${Utils.escapeHtml(providerLabel)} &middot; ${Utils.escapeHtml(maskedKey)}</div>
           </div>
           <div class="api-card-actions">
             <button class="btn-icon" onclick="event.stopPropagation(); openProfileEditor('${p.id}')" title="编辑">
@@ -946,10 +977,6 @@
             </button>
           </div>
         </div>
-        <div class="form-group">
-          <label>Max Tokens</label>
-          <input type="number" id="edMaxTokens" value="${profile?.maxTokens || 8192}" min="1" step="1">
-        </div>
         <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
           <label>快速测试：拉取模型列表</label>
           <div class="input-row">
@@ -992,10 +1019,6 @@
 
   async function fetchEditorModels() {
     const apiKey = document.getElementById('edApiKey').value.trim();
-    if (!apiKey) {
-      UI.showToast('请先填写 API Key', 'error');
-      return;
-    }
 
     const btn = document.getElementById('btnEdFetchModels');
     btn.classList.add('is-loading');
@@ -1006,8 +1029,7 @@
       id: '_temp_editor_fetch',
       provider: document.getElementById('edProvider').value,
       baseUrl: document.getElementById('edBaseUrl').value.trim(),
-      apiKey: apiKey,
-      maxTokens: 100,
+      apiKey: apiKey || '',
     };
     Storage.saveApiProfile(tempProfile);
 
@@ -1042,12 +1064,6 @@
     const provider = document.getElementById('edProvider').value;
     const baseUrl = document.getElementById('edBaseUrl').value.trim();
     const apiKey = document.getElementById('edApiKey').value.trim();
-    const maxTokens = parseInt(document.getElementById('edMaxTokens').value) || 8192;
-
-    if (!apiKey) {
-      UI.showToast('请填写 API Key', 'error');
-      return;
-    }
 
     const profile = {
       id: editId || Utils.generateId('api'),
@@ -1055,7 +1071,6 @@
       provider,
       baseUrl,
       apiKey,
-      maxTokens,
     };
 
     Storage.saveApiProfile(profile);
@@ -1097,6 +1112,7 @@
   function renderDefaultSettings() {
     renderDefaultApiSelect();
     document.getElementById('inputDefaultModel').value = settings.defaultModel || '';
+    document.getElementById('selDefaultModel').style.display = 'none';
     document.getElementById('selExportFormat').value = settings.exportFormat || 'md';
   }
 
@@ -1109,12 +1125,72 @@
       ).join('');
   }
 
-  function onDefaultsChange() {
-    settings.defaultApiProfileId = document.getElementById('selDefaultApi').value;
-    settings.defaultModel = document.getElementById('inputDefaultModel').value.trim();
-    settings.defaultPersona = document.getElementById('taPersona').value;
+  function getSelectedModel() {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    return sel.style.display !== 'none' ? sel.value : input.value.trim();
+  }
+
+  function setModelValue(model) {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    if (sel.style.display !== 'none') {
+      sel.value = model;
+    }
+    input.value = model;
+  }
+
+  function onDefaultsChange(source) {
+    const newApiId = document.getElementById('selDefaultApi').value;
+    const currentModel = getSelectedModel();
+
+    // If API profile changed, save current model to old profile and load new profile's model
+    if (source === 'api' && newApiId !== settings.defaultApiProfileId) {
+      // Save current model to old profile
+      if (settings.defaultApiProfileId && currentModel) {
+        const oldProfile = Storage.getApiProfile(settings.defaultApiProfileId);
+        if (oldProfile) {
+          oldProfile.defaultModel = currentModel;
+          Storage.saveApiProfile(oldProfile);
+        }
+      }
+      // Load new profile's default model
+      const newProfile = Storage.getApiProfile(newApiId);
+      const newModel = newProfile?.defaultModel || '';
+      setModelValue(newModel);
+      settings.defaultModel = newModel;
+      // Reset to input mode since model list is per-API
+      showModelInput();
+    } else {
+      settings.defaultModel = currentModel;
+      // Also save model to current profile
+      if (newApiId && currentModel) {
+        const profile = Storage.getApiProfile(newApiId);
+        if (profile) {
+          profile.defaultModel = currentModel;
+          Storage.saveApiProfile(profile);
+        }
+      }
+    }
+
+    settings.defaultApiProfileId = newApiId;
     settings.exportFormat = document.getElementById('selExportFormat').value;
     Storage.saveSettings(settings);
+  }
+
+  function showModelInput() {
+    document.getElementById('selDefaultModel').style.display = 'none';
+    document.getElementById('inputDefaultModel').style.display = '';
+  }
+
+  function showModelSelect(models, currentModel) {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    sel.innerHTML = models.map(m =>
+      `<option value="${Utils.escapeHtml(m)}" ${m === currentModel ? 'selected' : ''}>${Utils.escapeHtml(m)}</option>`
+    ).join('');
+    sel.style.display = '';
+    input.style.display = 'none';
   }
 
   async function fetchDefaultModels() {
@@ -1131,10 +1207,9 @@
     try {
       const result = await API.fetchModels(apiId);
       if (result.success && result.models.length > 0) {
-        const datalist = document.getElementById('dlDefaultModels');
-        datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        const currentModel = getSelectedModel();
+        showModelSelect(result.models, currentModel);
         UI.showToast(`成功获取 ${result.models.length} 个模型`, 'success');
-        document.getElementById('inputDefaultModel').focus();
       } else {
         UI.showToast('拉取失败，请检查 API 配置', 'error');
       }
@@ -1146,19 +1221,189 @@
   }
 
   // ================================================================
-  // Section 3: Persona
+  // Section 3: Prompt Presets & Entries
   // ================================================================
-  function renderPersona() {
-    document.getElementById('taPersona').value = settings.defaultPersona || '';
+  function ensurePresets() {
+    if (!settings.promptPresets) {
+      const legacyEntries = settings.promptEntries
+        ? JSON.parse(JSON.stringify(settings.promptEntries))
+        : null;
+      settings.promptPresets = {
+        'default': {
+          name: '默认预设',
+          entries: legacyEntries,
+          initPrompt: settings.promptInit || '',
+          summaryPrompt: settings.promptSummaryGen || '',
+        },
+        'minimal': {
+          name: '初始预设',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        },
+        'x2': {
+          name: 'X-2.0',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        },
+        'mujica': {
+          name: '威能',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        }
+      };
+      settings.activePresetId = 'default';
+      Storage.saveSettings(settings);
+    } else {
+      // Add missing presets for existing users
+      let changed = false;
+      if (!settings.promptPresets['x2']) {
+        settings.promptPresets['x2'] = {
+          name: 'X-2.0',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        };
+        changed = true;
+      }
+      if (!settings.promptPresets['minimal']) {
+        settings.promptPresets['minimal'] = {
+          name: '初始预设',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        };
+        changed = true;
+      }
+      if (!settings.promptPresets['mujica']) {
+        settings.promptPresets['mujica'] = {
+          name: '威能',
+          entries: JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES)),
+          initPrompt: '',
+          summaryPrompt: '',
+        };
+        changed = true;
+      }
+      if (changed) Storage.saveSettings(settings);
+    }
   }
 
-  // ================================================================
-  // Section 4: Prompt Entries
-  // ================================================================
+  function getActivePresetId() {
+    ensurePresets();
+    return settings.activePresetId && settings.promptPresets[settings.activePresetId]
+      ? settings.activePresetId
+      : Object.keys(settings.promptPresets)[0];
+  }
+
+  function getActivePresetObj() {
+    ensurePresets();
+    return settings.promptPresets[getActivePresetId()];
+  }
+
+  function renderPresetSelector() {
+    ensurePresets();
+    const container = document.getElementById('presetBar');
+    const activeId = getActivePresetId();
+
+    const pills = Object.entries(settings.promptPresets).map(([id, preset]) =>
+      `<button class="interval-pill ${id === activeId ? 'active' : ''}" onclick="switchPreset('${Utils.escapeHtml(id)}')">${Utils.escapeHtml(preset.name)}</button>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="preset-pills">${pills}</div>
+      <div class="preset-actions">
+        <button class="btn-icon" onclick="addPreset()" title="新建预设">${getIcon('plus', 14)}</button>
+        <button class="btn-icon" onclick="copyPreset()" title="复制当前">${getIcon('copy', 14)}</button>
+        <button class="btn-icon" onclick="renamePreset()" title="重命名">${getIcon('edit', 14)}</button>
+        <button class="btn-icon" onclick="deletePreset()" title="删除当前">${getIcon('trash', 14)}</button>
+        <button class="btn-icon" onclick="triggerImportPreset()" title="导入酒馆预设"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span></button>
+      </div>`;
+  }
+
+  function switchPreset(id) {
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+  }
+
+  function addPreset() {
+    const name = prompt('预设名称:', '新预设');
+    if (!name || !name.trim()) return;
+    const id = Utils.generateId('preset');
+    ensurePresets();
+    settings.promptPresets[id] = {
+      name: name.trim(),
+      entries: JSON.parse(JSON.stringify(PromptBuilder.DEFAULT_PROMPT_ENTRIES)),
+      initPrompt: '',
+      summaryPrompt: '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast('预设已创建', 'success');
+  }
+
+  function copyPreset() {
+    const preset = getActivePresetObj();
+    const name = prompt('新预设名称:', (preset.name || '默认') + ' (副本)');
+    if (!name || !name.trim()) return;
+    const id = Utils.generateId('preset');
+    settings.promptPresets[id] = {
+      name: name.trim(),
+      entries: preset.entries ? JSON.parse(JSON.stringify(preset.entries)) : null,
+      initPrompt: preset.initPrompt || '',
+      summaryPrompt: preset.summaryPrompt || '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast('预设已复制', 'success');
+  }
+
+  function renamePreset() {
+    const preset = getActivePresetObj();
+    const name = prompt('重命名预设:', preset.name);
+    if (!name || !name.trim()) return;
+    preset.name = name.trim();
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+  }
+
+  function deletePreset() {
+    const activeId = getActivePresetId();
+    const keys = Object.keys(settings.promptPresets);
+    if (keys.length <= 1) {
+      UI.showToast('至少需要保留一个预设', 'error');
+      return;
+    }
+    const preset = getActivePresetObj();
+    UI.showConfirm({
+      title: '删除预设',
+      message: `确定删除「${Utils.escapeHtml(preset.name)}」吗？`,
+      onConfirm: () => {
+        delete settings.promptPresets[activeId];
+        settings.activePresetId = Object.keys(settings.promptPresets)[0];
+        Storage.saveSettings(settings);
+        renderPresetSelector();
+        renderPromptEntries();
+        renderSpecialPrompts();
+        UI.showToast('预设已删除', 'success');
+      },
+    });
+  }
+
   function getEntries() {
-    return settings.promptEntries
-      ? JSON.parse(JSON.stringify(settings.promptEntries))
-      : JSON.parse(JSON.stringify(PromptBuilder.DEFAULT_PROMPT_ENTRIES));
+    const preset = getActivePresetObj();
+    const entries = preset.entries || PromptBuilder.DEFAULT_PROMPT_ENTRIES;
+    return JSON.parse(JSON.stringify(entries));
   }
 
   function renderPromptEntries() {
@@ -1171,10 +1416,38 @@
     }
 
     container.innerHTML = promptEntries.map((entry, i) => {
-      const isExpanded = entry.id === expandedEntryId;
       const disabledClass = entry.enabled ? '' : ' is-disabled';
-      const expandedClass = isExpanded ? ' is-expanded' : '';
       const toggleClass = entry.enabled ? ' is-on' : '';
+
+      // Slot entries — simplified display (no expand, no edit)
+      if (entry.slot) {
+        return `
+        <div class="prompt-entry is-slot${disabledClass}" data-idx="${i}"
+             draggable="true"
+             ondragstart="onDragStart(event,${i})"
+             ondragover="onDragOver(event,${i})"
+             ondragend="onDragEnd(event)"
+             ondrop="onDrop(event,${i})">
+          <div class="prompt-entry-header">
+            <div class="prompt-entry-grip">&#x2807;</div>
+            <button class="prompt-entry-toggle${toggleClass}"
+                    onclick="event.stopPropagation(); toggleEntryEnabled(${i})"
+                    title="${entry.enabled ? '禁用' : '启用'}">
+              ${getIcon('check', 12)}
+            </button>
+            <div class="prompt-entry-name">${Utils.escapeHtml(entry.name || entry.slot)}</div>
+            <span class="prompt-entry-slot-badge">SLOT</span>
+            <div class="prompt-entry-actions">
+              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('chevronDown', 14)}</button>`.replace('points="6 9 12 15 18 9"', 'points="6 15 12 9 18 15"') : ''}
+              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('chevronDown', 14)}</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // Normal entries — expandable with edit body
+      const isExpanded = entry.id === expandedEntryId;
+      const expandedClass = isExpanded ? ' is-expanded' : '';
 
       const roleLabels = { system: 'SYS', user: 'USR', assistant: 'AST' };
       const roleLabel = roleLabels[entry.role] || 'SYS';
@@ -1299,12 +1572,43 @@
     }, 50);
   }
 
+  function addSlotEntry() {
+    const slots = ['story_setting', 'summaries', 'chat_history', 'mvu_state', 'user_input'];
+    const slotNames = { story_setting: '故事设定', summaries: '故事总结', chat_history: '对话历史', mvu_state: '状态栏', user_input: '用户输入' };
+    const existing = new Set(promptEntries.filter(e => e.slot).map(e => e.slot));
+    const available = slots.filter(s => !existing.has(s));
+    if (available.length === 0) {
+      UI.showToast('所有 Slot 类型已存在', 'info');
+      return;
+    }
+    const slot = available[0];
+    promptEntries.push({
+      id: 'slot_' + slot,
+      name: slotNames[slot] || slot,
+      slot,
+      enabled: true,
+    });
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
   function resetPromptEntries() {
     UI.showConfirm({
       title: '恢复默认',
-      message: '将重置所有 RP Prompt 条目为默认值，当前自定义条目将丢失。确定继续？',
+      message: '将重置当前预设的 RP Prompt 条目为默认值。确定继续？',
       onConfirm: () => {
-        settings.promptEntries = null;
+        const preset = getActivePresetObj();
+        const activeId = getActivePresetId();
+        // Reset to appropriate default entries based on preset type
+        if (activeId === 'x2') {
+          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.X2_PRESET_ENTRIES));
+        } else if (activeId === 'minimal') {
+          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES));
+        } else if (activeId === 'mujica') {
+          preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MUJICA_PRESET_ENTRIES));
+        } else {
+          preset.entries = null; // falls back to DEFAULT_PROMPT_ENTRIES
+        }
         Storage.saveSettings(settings);
         expandedEntryId = null;
         renderPromptEntries();
@@ -1314,7 +1618,8 @@
   }
 
   function savePromptEntries() {
-    settings.promptEntries = promptEntries;
+    const preset = getActivePresetObj();
+    preset.entries = promptEntries;
     Storage.saveSettings(settings);
   }
 
@@ -1356,11 +1661,12 @@
   // Section 5: Special Prompts
   // ================================================================
   function renderSpecialPrompts() {
+    const preset = getActivePresetObj();
     const initEl = document.getElementById('taPromptInit');
     const summaryEl = document.getElementById('taPromptSummaryGen');
 
-    initEl.value = settings.promptInit || '';
-    summaryEl.value = settings.promptSummaryGen || '';
+    initEl.value = preset.initPrompt || '';
+    summaryEl.value = preset.summaryPrompt || '';
 
     // Set placeholders with the default templates
     initEl.placeholder = PromptBuilder.DEFAULT_INIT_PROMPT.substring(0, 200) + '...';
@@ -1368,20 +1674,22 @@
   }
 
   function onSpecialPromptsChange() {
-    settings.promptInit = document.getElementById('taPromptInit').value;
-    settings.promptSummaryGen = document.getElementById('taPromptSummaryGen').value;
+    const preset = getActivePresetObj();
+    preset.initPrompt = document.getElementById('taPromptInit').value;
+    preset.summaryPrompt = document.getElementById('taPromptSummaryGen').value;
     Storage.saveSettings(settings);
   }
 
   function resetSpecialPrompt(type) {
+    const preset = getActivePresetObj();
     if (type === 'init') {
       const val = PromptBuilder.DEFAULT_INIT_PROMPT;
       document.getElementById('taPromptInit').value = val;
-      settings.promptInit = val;
+      preset.initPrompt = val;
     } else if (type === 'summaryGen') {
       const val = PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT;
       document.getElementById('taPromptSummaryGen').value = val;
-      settings.promptSummaryGen = val;
+      preset.summaryPrompt = val;
     }
     Storage.saveSettings(settings);
     UI.showToast('已恢复默认模板', 'success');
@@ -1522,6 +1830,252 @@
         setTimeout(() => location.reload(), 600);
       },
     });
+  }
+
+  // ================================================================
+  // Import SillyTavern Preset
+  // ================================================================
+  function triggerImportPreset() {
+    document.getElementById('importPresetInput').click();
+  }
+
+  function handleImportPresetFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        const defaultName = file.name.replace(/\.json$/i, '');
+        importSillyTavernPreset(json, defaultName);
+      } catch (err) {
+        UI.showToast('文件解析失败: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function importSillyTavernPreset(json, defaultName) {
+    // Step 1: Validate
+    if (!json.prompts || !Array.isArray(json.prompts)) {
+      UI.showToast('不是有效的酒馆预设格式（缺少 prompts 数组）', 'error');
+      return;
+    }
+
+    // Step 2: Build lookup map
+    const lookup = {};
+    for (const p of json.prompts) {
+      if (p.identifier) lookup[p.identifier] = p;
+    }
+
+    // Step 3: Collect {{setvar::key::value}} from enabled prompts
+    const varMap = {};
+    for (const p of json.prompts) {
+      if (!p.content) continue;
+      const setvarRe = /\{\{setvar::([^:}]+)::([^}]*)\}\}/g;
+      let m;
+      while ((m = setvarRe.exec(p.content)) !== null) {
+        varMap[m[1]] = m[2];
+      }
+    }
+
+    // Step 4: Find prompt_order (not character_id 100000)
+    let orderArr = null;
+    if (Array.isArray(json.prompt_order)) {
+      for (const po of json.prompt_order) {
+        if (po.character_id !== 100000 && Array.isArray(po.order)) {
+          orderArr = po.order;
+          break;
+        }
+      }
+      // Fallback: if only character_id 100000 exists, use it
+      if (!orderArr) {
+        for (const po of json.prompt_order) {
+          if (Array.isArray(po.order)) {
+            orderArr = po.order;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!orderArr) {
+      UI.showToast('预设缺少 prompt_order 排序信息', 'error');
+      return;
+    }
+
+    // Step 5: Iterate order, filter & convert
+    const entries = [];
+    let chatHistoryIdx = -1;
+    let hasUserInput = false;
+
+    const skipIdentifiers = new Set(['SPresetSettings']);
+
+    for (const item of orderArr) {
+      const id = item.identifier;
+      const entry = lookup[id];
+
+      // Handle markers
+      if (entry && entry.marker === true) {
+        if (id === 'chatHistory') {
+          chatHistoryIdx = entries.length; // Mark position for slot insertion
+        }
+        continue;
+      }
+
+      // Skip known non-content entries
+      if (skipIdentifiers.has(id)) continue;
+      if (!entry) continue;
+
+      // Clean content
+      const rawContent = entry.content || '';
+      const cleaned = cleanSillyTavernContent(rawContent, varMap);
+
+      // Skip empty/whitespace-only or pure macro entries
+      if (!cleaned) continue;
+
+      // Check for {{lastUserMessage}} usage
+      if (rawContent.includes('{{lastMessage}}') || rawContent.includes('{{lastUserMessage}}')) {
+        hasUserInput = true;
+      }
+
+      // Map entry
+      const name = cleanEntryName(entry.name || id);
+      const role = mapRole(entry.role);
+
+      entries.push({
+        id: id || Utils.generateId('pe'),
+        name,
+        role,
+        enabled: !!item.enabled,
+        content: cleaned,
+      });
+    }
+
+    // Step 6: Insert AIRP slots at chatHistory position
+    const slots = [];
+    slots.push({ id: 'slot_story_setting', name: '故事设定', slot: 'story_setting', enabled: true });
+    slots.push({ id: 'slot_summaries', name: '故事总结', slot: 'summaries', enabled: true });
+    slots.push({ id: 'slot_chat_history', name: '对话历史', slot: 'chat_history', enabled: true });
+    slots.push({ id: 'slot_mvu_state', name: '状态栏', slot: 'mvu_state', enabled: true });
+
+    if (chatHistoryIdx >= 0) {
+      entries.splice(chatHistoryIdx, 0, ...slots);
+    } else {
+      // No chatHistory marker found — append slots at end
+      entries.push(...slots);
+    }
+
+    // Insert user_input slot if needed (after mvu_state, before jailbreak entries)
+    if (hasUserInput) {
+      const mvuIdx = entries.findIndex(e => e.slot === 'mvu_state');
+      if (mvuIdx >= 0) {
+        entries.splice(mvuIdx + 1, 0, { id: 'slot_user_input', name: '用户输入', slot: 'user_input', enabled: true });
+      }
+    }
+
+    // Also append AIRP-specific output format entries (writing_style, options_req, mvu_req, abstract_req)
+    // if none of them exist in converted entries
+    const airpIds = ['writing_style', 'options_req', 'mvu_req', 'abstract_req'];
+    const existingIds = new Set(entries.map(e => e.id));
+    const defaults = PromptBuilder.DEFAULT_PROMPT_ENTRIES;
+    for (const aid of airpIds) {
+      if (!existingIds.has(aid)) {
+        const def = defaults.find(d => d.id === aid);
+        if (def) entries.push(JSON.parse(JSON.stringify(def)));
+      }
+    }
+
+    // Step 7: Ask for name and create preset
+    const presetName = prompt('预设名称:', json.name || defaultName || '导入预设');
+    if (!presetName || !presetName.trim()) return;
+
+    ensurePresets();
+    const id = Utils.generateId('preset');
+    settings.promptPresets[id] = {
+      name: presetName.trim(),
+      entries,
+      initPrompt: '',
+      summaryPrompt: '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+
+    const entryCount = entries.filter(e => !e.slot).length;
+    const slotCount = entries.filter(e => e.slot).length;
+    UI.showToast(`导入成功：${entryCount} 条目 + ${slotCount} 插槽`, 'success');
+  }
+
+  function cleanSillyTavernContent(text, varMap) {
+    if (!text) return '';
+    let s = text;
+
+    // Replace {{getvar::key}} with collected values
+    s = s.replace(/\{\{getvar::([^}]+)\}\}/g, (_, key) => varMap[key] || '');
+
+    // Remove {{setvar::key::value}}
+    s = s.replace(/\{\{setvar::[^}]*\}\}/g, '');
+
+    // Remove {{//...}} comments
+    s = s.replace(/\{\{\/\/[^}]*\}\}/g, '');
+
+    // Replace {{random::opt1::opt2}} → keep first option
+    s = s.replace(/\{\{random::([\s\S]*?)\}\}/g, (_, inner) => {
+      const firstOpt = inner.split('::')[0];
+      return firstOpt || '';
+    });
+    // Remove {{roll ...}} (random number generator)
+    s = s.replace(/\{\{roll[^}]*\}\}/g, '');
+
+    // Replace {{user}} / {{char}}
+    s = s.replace(/\{\{user\}\}/gi, '<user>');
+    s = s.replace(/\{\{char\}\}/gi, '<character>');
+
+    // Replace {{lastMessage}} / {{lastUserMessage}}
+    s = s.replace(/\{\{lastMessage\}\}/gi, '');
+    s = s.replace(/\{\{lastUserMessage\}\}/gi, '');
+
+    // Remove {{original}} (sometimes used in regex context)
+    s = s.replace(/\{\{original\}\}/gi, '');
+
+    // Remove other common macros that have no AIRP equivalent
+    s = s.replace(/\{\{input\}\}/gi, '');
+    s = s.replace(/\{\{personality\}\}/gi, '');
+    s = s.replace(/\{\{scenario\}\}/gi, '');
+    s = s.replace(/\{\{persona\}\}/gi, '{{persona}}'); // Keep AIRP template var
+    s = s.replace(/\{\{description\}\}/gi, '');
+    s = s.replace(/\{\{mesExamples?\}\}/gi, '');
+    s = s.replace(/\{\{charIfNotGroup\}\}/gi, '<character>');
+    s = s.replace(/\{\{groupMembers\}\}/gi, '');
+
+    // Remove <|no-trans|>
+    s = s.replace(/<\|no-trans\|>/g, '');
+
+    // Remove {{trim}} macros
+    s = s.replace(/\{\{trim\}\}/gi, '');
+
+    // Clean up excessive blank lines (3+ → 2)
+    s = s.replace(/\n{3,}/g, '\n\n');
+
+    return s.trim();
+  }
+
+  function cleanEntryName(name) {
+    if (!name) return '未命名';
+    // Remove leading emoji characters (common in SillyTavern preset names)
+    return name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]+\s*/u, '').trim() || name.trim();
+  }
+
+  function mapRole(role) {
+    if (role === 0 || role === 'system') return 'system';
+    if (role === 1 || role === 'user') return 'user';
+    if (role === 2 || role === 'assistant') return 'assistant';
+    return 'system';
   }
 
   // ================================================================

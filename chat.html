@@ -10,7 +10,7 @@
   <title>入卷</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
-  <script src="common.js?v=10"></script>
+  <script src="common.js?v=12"></script>
   <style>
     /* ============================================================
        Chat Page - Complete Layout
@@ -184,6 +184,41 @@
       border: none;
       border-top: 1px solid var(--border);
       margin: 20px 0;
+    }
+    /* Thinking block — collapsible */
+    .message.assistant .thinking-block {
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 0.85em;
+    }
+    .message.assistant .thinking-block summary {
+      padding: 6px 12px;
+      cursor: pointer;
+      color: var(--text-secondary);
+      background: var(--bg-secondary);
+      user-select: none;
+      font-weight: 500;
+    }
+    .message.assistant .thinking-block summary:hover {
+      color: var(--text-primary);
+    }
+    .message.assistant .thinking-content {
+      padding: 10px 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    /* Refine indicator */
+    .message.assistant .refine-indicator {
+      margin-top: 8px;
+      padding: 4px 8px;
+      font-size: 0.75em;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+      opacity: 0.7;
     }
 
     /* Decorative left accent bar for AI messages */
@@ -1296,6 +1331,11 @@
       <span class="phase-badge init" id="phaseBadge">初始化</span>
     </div>
     <div class="topbar-right">
+      <button class="btn-icon" id="restartBtn" title="重新开始" onclick="restartGame()" style="display:none;">
+        <span class="icon" style="width:20px;height:20px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+        </span>
+      </button>
       <button class="btn-icon" id="editMvuBtn" title="编辑状态栏" onclick="enterEditMvuMode()">
         <span class="icon" style="width:20px;height:20px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -1431,6 +1471,7 @@ let editMvuMode = false;
 let editMvuMessages = [];
 let editMvuBackup = null;
 let userScrolledUp = false;
+let _lastBuiltPrompt = null; // cached prompt for debug inspector
 let pendingMvuInit = null;
 let currentAbortController = null;
 let streamStartTime = 0;
@@ -1464,7 +1505,7 @@ async function init() {
     return;
   }
 
-  conversation = Storage.getConversation(convId);
+  conversation = await Storage.loadConversation(convId);
   if (!conversation) {
     UI.showToast('会话不存在', 'error');
     setTimeout(() => goBack(), 1200);
@@ -1500,11 +1541,53 @@ async function init() {
   renderMvuSidebar();
   setupAutoGrow();
   setupScrollDetection();
+  setupIOSKeyboardFix();
   updateSendButton();
 
   // Restore options from last AI message
   const lastAiMsg = [...conversation.messages].reverse().find(m => m.role === 'assistant');
   if (lastAiMsg) renderOptionsBar(lastAiMsg.content);
+
+  // Restore pendingMvuInit from last AI messages if init phase and not yet confirmed
+  if (conversation.phase === 'init' && !conversation.mvu) {
+    for (let i = conversation.messages.length - 1; i >= 0; i--) {
+      const msg = conversation.messages[i];
+      if (msg.role !== 'assistant' || !msg.content) continue;
+      const initData = MVU.parseInit(msg.content);
+      if (initData) {
+        const storySetting = MVU.parseStorySetting(msg.content);
+        initData._storySetting = storySetting || '';
+        // If this message has no story_setting, scan earlier messages for it
+        if (!initData._storySetting) {
+          for (let k = i - 1; k >= 0; k--) {
+            const earlier = conversation.messages[k];
+            if (earlier.role !== 'assistant' || !earlier.content) continue;
+            const ss = MVU.parseStorySetting(earlier.content);
+            if (ss) { initData._storySetting = ss; break; }
+          }
+        }
+        // Also check subsequent messages for incremental updates
+        for (let j = i + 1; j < conversation.messages.length; j++) {
+          const later = conversation.messages[j];
+          if (later.role !== 'assistant' || !later.content) continue;
+          const update = MVU.parseMvuUpdate(later.content);
+          if (update) {
+            if (update.schema) initData.schema = update.schema;
+            if (update.html) initData.html = update.html;
+            if (update.css) initData.css = update.css;
+          }
+          const ss = MVU.parseStorySetting(later.content);
+          if (ss) initData._storySetting = ss;
+          const patch = MVU.parseStorySettingPatch(later.content);
+          if (patch) initData._storySetting = MVU.applyStorySettingPatch(initData._storySetting, patch);
+        }
+        pendingMvuInit = initData;
+        previewMvuInit();
+        showMvuInitConfirmation();
+        break;
+      }
+    }
+  }
 
   // In RP phase, open sidebar by default on desktop
   if (conversation.phase === 'rp' && conversation.mvu?.html && window.innerWidth > 768) {
@@ -1523,7 +1606,7 @@ async function init() {
 // Navigation
 // ============================================================
 function goBack() {
-  location.href = 'index.html?v=10';
+  location.href = 'index.html?v=12';
 }
 
 // ============================================================
@@ -1552,14 +1635,17 @@ function saveTitle() {
 function renderPhaseBadge() {
   const badge = document.getElementById('phaseBadge');
   const editBtn = document.getElementById('editMvuBtn');
+  const restartBtn = document.getElementById('restartBtn');
   if (conversation.phase === 'rp') {
     badge.textContent = 'RP';
     badge.className = 'phase-badge rp';
     if (editBtn) editBtn.style.display = '';
+    if (restartBtn) restartBtn.style.display = '';
   } else {
     badge.textContent = '初始化';
     badge.className = 'phase-badge init';
     if (editBtn) editBtn.style.display = 'none';
+    if (restartBtn) restartBtn.style.display = 'none';
   }
 }
 
@@ -1577,9 +1663,22 @@ function renderPhaseBadge() {
  */
 function renderAiContent(rawContent) {
   if (!rawContent) return '';
-  // Extract only <story> content (or fall back to old cleaning for pre-tag messages)
-  const storyText = Utils.extractStoryContent(rawContent);
-  return Utils.renderMarkdown(storyText);
+  // Extract <thinking> block as collapsible
+  const thinking = MVU.parseThinking(rawContent);
+  let thinkingHtml = '';
+  if (thinking) {
+    const thinkEscaped = Utils.escapeHtml(thinking).replace(/\n/g, '<br>');
+    thinkingHtml = `<details class="thinking-block"><summary>思考过程</summary><div class="thinking-content">${thinkEscaped}</div></details>`;
+  }
+  // Extract story content with refine applied
+  const storyText = Utils.extractStoryContent(rawContent, true);
+  // Check if refine was applied (for indicator)
+  const refineArr = MVU.parseRefine(rawContent);
+  let refineHtml = '';
+  if (refineArr && refineArr.length > 0) {
+    refineHtml = `<div class="refine-indicator" title="AI 自动润色了 ${refineArr.length} 处表述">* 已润色 ${refineArr.length} 处</div>`;
+  }
+  return thinkingHtml + Utils.renderMarkdown(storyText) + refineHtml;
 }
 
 function renderAllMessages() {
@@ -1626,6 +1725,9 @@ function createMessageElement(msg, idx) {
       <button class="btn-icon" title="${msg.hidden ? '显示' : '隐藏'}" onclick="toggleHideMessage('${msgIdAttr}')">
         <span class="icon" style="width:14px;height:14px;">${msg.hidden ? Icons.eye : Icons.eyeOff}</span>
       </button>
+      ${conversation.phase === 'rp' ? `<button class="btn-icon" title="回档到此" onclick="revertToMessage('${msgIdAttr}')">
+        <span class="icon" style="width:14px;height:14px;">${Icons.rewind}</span>
+      </button>` : ''}
       <button class="btn-icon" title="删除" onclick="deleteMessage('${msgIdAttr}')">
         <span class="icon" style="width:14px;height:14px;">${Icons.trash}</span>
       </button>
@@ -1679,10 +1781,68 @@ function updateAssistantBubble(msgId, content, streaming) {
     if (streaming && cleaned) contentEl.classList.add('streaming-cursor');
     else contentEl.classList.remove('streaming-cursor');
   } else if (streaming) {
-    // During streaming: only show <story> content (other blocks silently buffered)
-    const storyText = Utils.extractStoryContent(content);
-    contentEl.innerHTML = Utils.renderMarkdown(storyText);
-    if (storyText) contentEl.classList.add('streaming-cursor');
+    // During streaming: show <thinking> as collapsible + <story> content
+    // Detect thinking block (complete or partial) — supports <thinking>, <think>, <deep_thinking>
+    let thinkOpen = content.indexOf('<thinking>');
+    let thinkClose = content.indexOf('</thinking>');
+    let tagLen = 10; // '<thinking>'.length
+    if (thinkOpen === -1) {
+      thinkOpen = content.indexOf('<think>');
+      thinkClose = content.indexOf('</think>');
+      tagLen = 7; // '<think>'.length
+    }
+    if (thinkOpen === -1) {
+      thinkOpen = content.indexOf('<deep_thinking>');
+      thinkClose = content.indexOf('</deep_thinking>');
+      tagLen = 15; // '<deep_thinking>'.length
+    }
+
+    // Get or create the thinking block element (avoid full rebuild each chunk)
+    let thinkEl = contentEl.querySelector('.thinking-block');
+    let storyEl = contentEl.querySelector('.streaming-story');
+
+    if (thinkClose !== -1) {
+      // Complete thinking — render collapsed, only rebuild if not already finalized
+      if (!thinkEl || !thinkEl.dataset.finalized) {
+        const thinkText = content.substring(thinkOpen + tagLen, thinkClose).trim();
+        const thinkEscaped = Utils.escapeHtml(thinkText).replace(/\n/g, '<br>');
+        if (!thinkEl) {
+          thinkEl = document.createElement('details');
+          thinkEl.className = 'thinking-block';
+          contentEl.prepend(thinkEl);
+        }
+        thinkEl.removeAttribute('open');
+        thinkEl.dataset.finalized = '1';
+        thinkEl.innerHTML = `<summary>思考过程</summary><div class="thinking-content">${thinkEscaped}</div>`;
+      }
+      // Update story part only
+      const storyText = Utils.extractStoryContent(content);
+      if (!storyEl) {
+        storyEl = document.createElement('div');
+        storyEl.className = 'streaming-story';
+        contentEl.appendChild(storyEl);
+      }
+      storyEl.innerHTML = Utils.renderMarkdown(storyText);
+      if (storyText) contentEl.classList.add('streaming-cursor');
+    } else if (thinkOpen !== -1) {
+      // Partial thinking — still streaming thought, update content in place
+      const thinkText = content.substring(thinkOpen + tagLen).trim();
+      const thinkEscaped = Utils.escapeHtml(thinkText).replace(/\n/g, '<br>');
+      if (!thinkEl) {
+        contentEl.innerHTML = '';
+        thinkEl = document.createElement('details');
+        thinkEl.className = 'thinking-block';
+        thinkEl.setAttribute('open', '');
+        contentEl.appendChild(thinkEl);
+      }
+      thinkEl.innerHTML = `<summary>思考中…</summary><div class="thinking-content">${thinkEscaped}</div>`;
+      contentEl.classList.add('streaming-cursor');
+    } else {
+      // No thinking block — just story content
+      const storyText = Utils.extractStoryContent(content);
+      contentEl.innerHTML = Utils.renderMarkdown(storyText);
+      if (storyText) contentEl.classList.add('streaming-cursor');
+    }
   } else {
     // Final render
     contentEl.innerHTML = renderAiContent(content);
@@ -1991,6 +2151,9 @@ async function handleSend() {
   textarea.value = '';
   resetTextareaHeight();
   clearOptionsBar();
+  // Temporarily remove init confirm bar during streaming (will re-show in onDone)
+  const confirmBar = document.querySelector('.mvu-confirm-bar');
+  if (confirmBar) confirmBar.remove();
 
   // User just sent a message, reset scroll state so we follow the new output
   userScrolledUp = false;
@@ -2074,6 +2237,7 @@ async function streamAIResponse(retryAttempt = 0) {
     ({ systemPrompt, messages } = buildEditMvuPrompt());
   } else {
     ({ systemPrompt, messages } = PromptBuilder.buildMessages(conversation));
+    _lastBuiltPrompt = { systemPrompt, messages };
   }
 
   // Create AI placeholder message
@@ -2137,7 +2301,26 @@ async function streamAIResponse(retryAttempt = 0) {
         const abstract = Summary.parseAbstract(fullText);
         if (abstract) aiMsg.abstract = abstract;
 
+        // Apply refine: store refined story content back into the message
+        const refineArr = MVU.parseRefine(fullText);
+        if (refineArr && refineArr.length > 0) {
+          // Replace the <story> content in fullText with refined version
+          const originalStory = Utils.extractStoryContent(fullText);
+          const refinedStory = MVU.applyRefine(originalStory, refineArr);
+          if (refinedStory !== originalStory) {
+            // Rebuild fullText with refined story (replace first <story> block)
+            fullText = fullText.replace(
+              /(<story>)([\s\S]*?)(<\/story>)/,
+              (m, open, content, close) => open + MVU.applyRefine(content, refineArr) + close
+            );
+            aiMsg.content = fullText;
+            updateAssistantBubble(aiMsg.id, fullText, false);
+            log('[Refine] Applied', refineArr.length, 'replacements');
+          }
+        }
+
         processMvuFromResponse(fullText, aiMsg);
+        processWritingAdvice(fullText);
         Storage.saveConversation(conversation);
         renderOptionsBar(fullText);
         if (summaryPanelOpen) renderSummaryPanel();
@@ -2152,6 +2335,10 @@ async function streamAIResponse(retryAttempt = 0) {
       streamAborted = false;
       currentAbortController = null;
       updateSendButton();
+      // Re-show init confirmation if draft is ready
+      if (pendingMvuInit && conversation.phase === 'init') {
+        showMvuInitConfirmation();
+      }
       scrollToBottom(false);
     },
 
@@ -2229,6 +2416,7 @@ function handleStreamStopped(aiMsg) {
     } else {
       aiMsg.abstract = Summary.parseAbstract(aiMsg.content);
       processMvuFromResponse(aiMsg.content, aiMsg);
+      processWritingAdvice(aiMsg.content);
       Storage.saveConversation(conversation);
     }
   } else {
@@ -2247,6 +2435,10 @@ function handleStreamStopped(aiMsg) {
   streamAborted = false;
   currentAbortController = null;
   updateSendButton();
+  // Re-show init confirmation if draft is ready
+  if (pendingMvuInit && conversation.phase === 'init') {
+    showMvuInitConfirmation();
+  }
   UI.showToast('已停止生成', 'info');
 }
 
@@ -2346,6 +2538,32 @@ function setupOfflineDetection() {
 }
 
 // ============================================================
+// Writing Advice Processing
+// ============================================================
+function processWritingAdvice(text) {
+  const adviceData = MVU.parseWritingAdvice(text);
+  if (!adviceData) return;
+
+  const current = conversation.writingAdvice || '';
+
+  if (adviceData.op === 'set') {
+    conversation.writingAdvice = adviceData.content || '';
+  } else if (adviceData.op === 'add' && Array.isArray(adviceData.items)) {
+    const lines = current ? current.split('\n').filter(l => l.trim()) : [];
+    lines.push(...adviceData.items.map(i => '- ' + i));
+    conversation.writingAdvice = lines.join('\n');
+  } else if (adviceData.op === 'remove' && Array.isArray(adviceData.items)) {
+    let updated = current;
+    for (const item of adviceData.items) {
+      updated = updated.split('\n').filter(l => !l.includes(item)).join('\n');
+    }
+    conversation.writingAdvice = updated.trim();
+  }
+
+  UI.showToast('写作建议已更新', 'success');
+}
+
+// ============================================================
 // MVU Processing
 // ============================================================
 function processMvuFromResponse(text, aiMsg) {
@@ -2359,6 +2577,15 @@ function processMvuFromResponse(text, aiMsg) {
     if (initData) {
       // Full init (first time or full replacement)
       initData._storySetting = storySetting || (pendingMvuInit?._storySetting) || '';
+      // If still no story_setting, scan earlier messages
+      if (!initData._storySetting) {
+        for (let k = conversation.messages.length - 1; k >= 0; k--) {
+          const m = conversation.messages[k];
+          if (m.role !== 'assistant' || !m.content) continue;
+          const ss = MVU.parseStorySetting(m.content);
+          if (ss) { initData._storySetting = ss; break; }
+        }
+      }
       pendingMvuInit = initData;
       changed = true;
     } else if (updateData && pendingMvuInit) {
@@ -2369,17 +2596,25 @@ function processMvuFromResponse(text, aiMsg) {
       changed = true;
     }
 
-    // Story setting can update independently
+    // Story setting: full replacement or incremental patch
     if (storySetting) {
       if (pendingMvuInit) {
         pendingMvuInit._storySetting = storySetting;
         changed = true;
       }
+    } else {
+      const storyPatch = MVU.parseStorySettingPatch(text);
+      if (storyPatch && pendingMvuInit) {
+        const existing = pendingMvuInit._storySetting || conversation.storySetting || '';
+        pendingMvuInit._storySetting = MVU.applyStorySettingPatch(existing, storyPatch);
+        changed = true;
+        log('processMvuFromResponse: story_setting_patch applied', storyPatch.length, 'ops');
+      }
     }
 
     if (changed && pendingMvuInit) {
       previewMvuInit();
-      showMvuInitConfirmation(aiMsg.id);
+      showMvuInitConfirmation();
       if (!pendingMvuInit._storySetting) {
         UI.showToast('注意：AI 未输出故事设定，建议要求补充', 'error');
       }
@@ -2396,6 +2631,11 @@ function processMvuFromResponse(text, aiMsg) {
       MVU.applyTemplateOps(conversation.mvu, patchData, container);
       // Then apply regular patches
       conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
+      // Snapshot state onto the AI message for revert
+      if (aiMsg) {
+        aiMsg.mvuSnapshot = JSON.parse(JSON.stringify(conversation.mvu.state));
+        aiMsg.templateSnapshot = JSON.parse(JSON.stringify(conversation.mvu.templateInstances || []));
+      }
       Storage.saveConversation(conversation);
       // Update DOM
       MVU.updateDOM(container, conversation.mvu.state, conversation.mvu.schema);
@@ -2403,14 +2643,14 @@ function processMvuFromResponse(text, aiMsg) {
   }
 }
 
-function showMvuInitConfirmation(afterMsgId) {
-  const msgEl = document.getElementById(`msg-${afterMsgId}`);
-  if (!msgEl) return;
-
+function showMvuInitConfirmation() {
   // Remove any existing confirm bar
   const existing = document.querySelector('.mvu-confirm-bar');
   if (existing) existing.remove();
 
+  if (!pendingMvuInit || isStreaming) return;
+
+  const list = document.getElementById('messagesList');
   const bar = document.createElement('div');
   bar.className = 'mvu-confirm-bar';
   const hasStory = pendingMvuInit?._storySetting ? true : false;
@@ -2419,7 +2659,7 @@ function showMvuInitConfirmation(afterMsgId) {
     <button class="btn btn-secondary" onclick="rejectMvuInit()">放弃草稿</button>
     <button class="btn btn-primary" onclick="confirmMvuInit()">确认开始RP</button>
   `;
-  msgEl.after(bar);
+  list.appendChild(bar);
   scrollToBottom(false);
 }
 
@@ -2714,15 +2954,126 @@ function deleteMessage(msgId) {
         el.style.transform = 'translateY(-10px)';
         setTimeout(() => {
           el.remove();
-          // Also remove any confirm bar after it
-          const bar = el.nextElementSibling;
-          if (bar && bar.classList.contains('mvu-confirm-bar')) bar.remove();
           // Show empty state if no messages left
           if (conversation.messages.length === 0) {
             renderAllMessages();
           }
         }, 300);
       }
+    },
+  });
+}
+
+// ============================================================
+// Restart & Revert
+// ============================================================
+
+function restartGame() {
+  if (conversation.phase !== 'rp') return;
+  UI.showConfirm({
+    title: '重新开始',
+    message: '确定要重新开始吗？所有对话和状态将重置，但世界设定和状态栏结构保留。',
+    onConfirm: () => {
+      // Reset state from schema defaults
+      if (conversation.mvu?.schema) {
+        const newState = {};
+        for (const [key, def] of Object.entries(conversation.mvu.schema)) {
+          if (def.value !== undefined) {
+            newState[key] = JSON.parse(JSON.stringify(def.value));
+          } else if (def.type === 'list') {
+            newState[key] = [];
+          } else if (def.type === 'number' || def.type === 'bar') {
+            newState[key] = def.max || 100;
+          } else {
+            newState[key] = '';
+          }
+        }
+        conversation.mvu.state = newState;
+      }
+      // Clear template instances
+      conversation.mvu.templateInstances = [];
+      // Clear messages
+      conversation.messages = [];
+      // Reset summary
+      const settings = Storage.getSettings();
+      conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+      // Save
+      Storage.saveConversation(conversation);
+      // Refresh UI
+      renderAllMessages();
+      renderMvuSidebar();
+      // Clear options bar
+      const optBar = document.getElementById('optionsBar');
+      if (optBar) { optBar.style.display = 'none'; optBar.innerHTML = ''; }
+      _optionActions = [];
+      UI.showToast('游戏已重新开始', 'success');
+    },
+  });
+}
+
+function revertToMessage(msgId) {
+  const targetIdx = conversation.messages.findIndex(m => m.id === msgId);
+  if (targetIdx < 0) return;
+
+  UI.showConfirm({
+    title: '回档',
+    message: '确定要回档到这条消息吗？之后的所有对话将被删除。',
+    onConfirm: () => {
+      // Truncate messages
+      conversation.messages = conversation.messages.slice(0, targetIdx + 1);
+
+      // Find the target or nearest earlier AI message with mvuSnapshot
+      let snapshot = null;
+      for (let i = targetIdx; i >= 0; i--) {
+        const m = conversation.messages[i];
+        if (m.role === 'assistant' && m.mvuSnapshot) {
+          snapshot = { state: m.mvuSnapshot, templates: m.templateSnapshot || [] };
+          break;
+        }
+      }
+
+      if (snapshot) {
+        conversation.mvu.state = JSON.parse(JSON.stringify(snapshot.state));
+        conversation.mvu.templateInstances = JSON.parse(JSON.stringify(snapshot.templates));
+      } else if (conversation.mvu?.schema) {
+        // No snapshot found (old messages) — reset to schema defaults
+        const newState = {};
+        for (const [key, def] of Object.entries(conversation.mvu.schema)) {
+          if (def.value !== undefined) {
+            newState[key] = JSON.parse(JSON.stringify(def.value));
+          } else if (def.type === 'list') {
+            newState[key] = [];
+          } else if (def.type === 'number' || def.type === 'bar') {
+            newState[key] = def.max || 100;
+          } else {
+            newState[key] = '';
+          }
+        }
+        conversation.mvu.state = newState;
+        conversation.mvu.templateInstances = [];
+      }
+
+      // Trim summary: lastMergedIdx should not exceed message count
+      if (conversation.summary) {
+        if (conversation.summary.lastMergedIdx > conversation.messages.length) {
+          conversation.summary.lastMergedIdx = conversation.messages.length;
+        }
+        // Remove merged summaries that reference messages beyond the new range
+        // (mergedSummaries are cumulative, keep them all — they summarize earlier content)
+      }
+
+      // Save + refresh
+      Storage.saveConversation(conversation);
+      renderAllMessages();
+      renderMvuSidebar();
+      // Restore options from last AI message after revert
+      const lastAi = [...conversation.messages].reverse().find(m => m.role === 'assistant');
+      if (lastAi) { renderOptionsBar(lastAi.content); } else {
+        const optBar = document.getElementById('optionsBar');
+        if (optBar) { optBar.style.display = 'none'; optBar.innerHTML = ''; }
+        _optionActions = [];
+      }
+      UI.showToast('已回档', 'success');
     },
   });
 }
@@ -2786,6 +3137,22 @@ function resetTextareaHeight() {
 }
 
 // ============================================================
+// iOS Keyboard Dismiss Fix
+// ============================================================
+function setupIOSKeyboardFix() {
+  if (!window.visualViewport) return;
+  let prevHeight = window.visualViewport.height;
+  window.visualViewport.addEventListener('resize', () => {
+    const h = window.visualViewport.height;
+    // Keyboard dismissed: viewport grew significantly
+    if (h - prevHeight > 50) {
+      window.scrollTo(0, 0);
+    }
+    prevHeight = h;
+  });
+}
+
+// ============================================================
 // Scroll Management
 // ============================================================
 function setupScrollDetection() {
@@ -2840,7 +3207,7 @@ function showPromptDebug() {
   if (existing) { closeDebug(); return; }
 
   if (!conversation) return;
-  const { systemPrompt, messages } = PromptBuilder.buildMessages(conversation);
+  const { systemPrompt, messages } = _lastBuiltPrompt || PromptBuilder.buildMessages(conversation);
   const THRESHOLD = 200;
 
   function msgBlock(role, content, idx) {
@@ -2994,12 +3361,12 @@ function exitEditMvuMode(apply) {
 
 function buildEditMvuPrompt() {
   const settings = Storage.getSettings();
-  const persona = conversation.persona || settings.defaultPersona || '';
 
-  // Build system prompt: persona + edit instructions + current data
-  let systemPrompt = persona;
+  // Build system prompt: edit instructions + current data
+  let systemPrompt = `你是"小克"，一个俏皮活泼、忠诚专业的AI女仆。你的主人是Boss（托莉娜大人）。
 
-  systemPrompt += `\n\n---\n【当前阶段：状态栏/背景编辑模式】
+---
+【当前阶段：状态栏/背景编辑模式】
 当前游戏已暂停，玩家提出了状态栏或背景设定的修改请求。
 
 你需要根据玩家的需要对状态栏结构和/或故事设定进行更新。
@@ -3022,10 +3389,22 @@ templates（模板）用于RP阶段动态添加新角色/NPC等。定义格式�
 }
 HTML中需放置对应容器元素，如 <div class="mvu-tabs" id="xxx-tabs"></div> 和 <div id="xxx-panels"></div>。
 
-如果需要修改故事设定，请输出：
+如果需要修改故事设定，可以选择全量替换或增量更新：
+
+方式1 - 全量替换（适合大改）：
 \`\`\`text:story_setting
-新的故事设定内容
-\`\`\``;
+完整的新故事设定内容
+\`\`\`
+
+方式2 - 增量更新（推荐，适合局部修改）：
+\`\`\`json:story_setting_patch
+[
+  {"op": "replace", "section": "章节标题", "content": "新的章节内容"},
+  {"op": "append", "content": "追加到末尾的新内容"},
+  {"op": "delete", "section": "要删除的章节标题"}
+]
+\`\`\`
+其中 section 对应故事设定中的 ## 或 ### 标题。优先使用增量更新以节省输出。`;
 
   // Append current MVU data
   systemPrompt += '\n\n---\n【当前状态栏数据】\n';
@@ -3051,6 +3430,7 @@ HTML中需放置对应容器元素，如 <div class="mvu-tabs" id="xxx-tabs"></d
       let cleaned = msg.content;
       cleaned = cleaned.replace(/```json:mvu_update\s*\n[\s\S]*?\n```/g, '[mvu_update applied]');
       cleaned = cleaned.replace(/```text:story_setting\s*\n[\s\S]*?\n```/g, '[story_setting applied]');
+      cleaned = cleaned.replace(/```json:story_setting_patch\s*\n[\s\S]*?\n```/g, '[story_setting_patch applied]');
       messages.push({ role: 'assistant', content: cleaned });
     } else {
       messages.push({ role: msg.role, content: msg.content });
@@ -3097,12 +3477,19 @@ function processEditMvuResponse(text) {
     log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, html: !!updateData.html, css: !!updateData.css, templates: !!updateData.templates });
   }
 
-  // Parse story_setting
+  // Parse story_setting (full replacement or incremental patch)
   const storySetting = MVU.parseStorySetting(text);
   if (storySetting) {
     conversation.storySetting = storySetting;
     changed = true;
-    log('processEditMvuResponse: story_setting updated');
+    log('processEditMvuResponse: story_setting replaced');
+  } else {
+    const storyPatch = MVU.parseStorySettingPatch(text);
+    if (storyPatch) {
+      conversation.storySetting = MVU.applyStorySettingPatch(conversation.storySetting || '', storyPatch);
+      changed = true;
+      log('processEditMvuResponse: story_setting_patch applied', storyPatch.length, 'ops');
+    }
   }
 
   // Live preview in sidebar

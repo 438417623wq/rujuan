@@ -2,3 +2,5 @@ data/
 __pycache__/
 *.pyc
 start-public.sh
+.env
+.env.*

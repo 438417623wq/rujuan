@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <title>入卷</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <script src="common.js?v=10"></script>
+  <script src="common.js?v=12"></script>
   <style>
     body {
       overflow-y: auto;
@@ -237,7 +237,7 @@
     localStorage.setItem('airp_guide_shown', '1');
     const el = document.getElementById('guideOverlay');
     el.classList.remove('visible');
-    setTimeout(() => location.href = 'index.html?v=10', 300);
+    setTimeout(() => location.href = 'index.html?v=12', 300);
   }
 </script>
 
@@ -252,7 +252,7 @@
         });
         const data = await res.json();
         if (data.ok) {
-          location.href = 'index.html?v=10';
+          location.href = 'index.html?v=12';
           return;
         }
       } catch {}
@@ -299,7 +299,7 @@
         if (!localStorage.getItem('airp_guide_shown')) {
           showGuide();
         } else {
-          location.href = 'index.html?v=10';
+          location.href = 'index.html?v=12';
         }
       } else {
         errorEl.textContent = data.error || '登录失败';

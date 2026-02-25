@@ -10,7 +10,7 @@
   <title>入卷 - AI 互动小说</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
   <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%230f0c08'/><text y='75' x='15' font-size='70'>📖</text></svg>">
-  <script src="common.js?v=10"></script>
+  <script src="common.js?v=12"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -711,7 +711,7 @@
   <button class="btn-header-icon" onclick="openSettings()" title="设置" id="btn-settings-pub" style="display:none;">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
-  <a class="btn-settings" href="settings.html?v=10" id="btn-settings">
+  <a class="btn-settings" href="settings.html?v=12" id="btn-settings">
     <span class="icon" style="width:16px;height:16px;"></span>
     设置
   </a>
@@ -936,7 +936,7 @@
     const phase = conv.phase || 'init';
     const phaseLabel = phase === 'rp' ? '进行中' : '初始化';
     const phaseClass = phase === 'rp' ? 'phase-rp' : 'phase-init';
-    const msgCount = (conv.messages || []).filter(m => !m.hidden).length;
+    const msgCount = conv.msgCount !== undefined ? conv.msgCount : (conv.messages || []).filter(m => !m.hidden).length;
     const timeStr = conv.updatedAt ? Utils.formatRelative(conv.updatedAt) : '未知';
     const name = Utils.escapeHtml(conv.name || '未命名故事');
 
@@ -1021,7 +1021,7 @@
     // If no API profiles configured, redirect to settings
     if (profileList.length === 0) {
       UI.showToast('请先配置API接口', 'error');
-      setTimeout(() => { window.location.href = 'settings.html?v=10'; }, 800);
+      setTimeout(() => { window.location.href = 'settings.html?v=12'; }, 800);
       return;
     }
 
@@ -1136,7 +1136,6 @@
       id,
       name,
       phase: 'init',
-      persona: settings.defaultPersona || '',
       apiProfileId,
       model,
       messages: [],
@@ -1149,7 +1148,7 @@
 
     Storage.saveConversation(conv);
     UI.closeModal();
-    window.location.href = `chat.html?v=10&id=${id}&new=true`;
+    window.location.href = `chat.html?v=12&id=${id}&new=true`;
   }
 
   // ── Open Conversation ──────────────────────────
@@ -1158,19 +1157,19 @@
     if (event.target.closest('.conv-card-actions') || event.target.closest('.conv-card-rename')) {
       return;
     }
-    window.location.href = `chat.html?v=10&id=${id}`;
+    window.location.href = `chat.html?v=12&id=${id}`;
   }
 
   // ── Rename (inline) ───────────────────────────
   function startRename(id, event) {
     event.stopPropagation();
-    const conv = Storage.getConversation(id);
-    if (!conv) return;
+    const meta = Storage.getConversation(id);
+    if (!meta) return;
 
     const nameEl = document.getElementById(`name-${id}`);
     if (!nameEl) return;
 
-    const currentName = conv.name || '未命名故事';
+    const currentName = meta.name || '未命名故事';
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'conv-card-rename';
@@ -1180,10 +1179,19 @@
     input.focus();
     input.select();
 
-    function finishRename() {
+    let finished = false;
+    async function finishRename() {
+      if (finished) return;
+      finished = true;
       const newName = input.value.trim() || currentName;
-      conv.name = newName;
-      Storage.saveConversation(conv);
+      if (newName !== currentName) {
+        // Load full conversation from server, update name, save back
+        const conv = await Storage.loadConversation(id);
+        if (conv) {
+          conv.name = newName;
+          Storage.saveConversation(conv);
+        }
+      }
       loadConversations();
     }
 
@@ -1213,17 +1221,19 @@
   }
 
   // ── Export Single Conversation ──────────────────
-  function exportConversation(id, event) {
+  async function exportConversation(id, event) {
     event.stopPropagation();
-    const conv = Storage.getConversation(id);
-    if (!conv) return;
+    UI.showToast('正在加载对话数据...', 'info');
+    const conv = await Storage.loadConversation(id);
+    if (!conv) { UI.showToast('无法加载对话', 'error'); return; }
     Exporter.download(conv, Storage.getSettings().exportFormat || 'md');
     UI.showToast('故事已导出', 'success');
   }
 
   // ── Export All Data ────────────────────────────
-  function exportAllData() {
-    const data = Storage.exportAll();
+  async function exportAllData() {
+    UI.showToast('正在加载全部数据...', 'info');
+    const data = await Storage.exportAll();
     const json = JSON.stringify(data, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
