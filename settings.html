@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=12"></script>
+  <script src="common.js?v=13"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -719,6 +719,15 @@
         <div class="interval-selector" id="summaryWordSelector"></div>
       </div>
     </div>
+
+    <div class="form-row" style="margin-top:16px;">
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkPromptInspector" onchange="onDefaultsChange('inspector')">
+          显示 Prompt Inspector
+        </label>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════════ -->
@@ -931,10 +940,31 @@
   }
 
   function setDefaultProfile(id) {
+    // Save current model to old profile
+    const oldId = settings.defaultApiProfileId;
+    if (oldId && oldId !== id) {
+      const currentModel = getSelectedModel();
+      if (currentModel) {
+        const oldProfile = Storage.getApiProfile(oldId);
+        if (oldProfile) {
+          oldProfile.defaultModel = currentModel;
+          Storage.saveApiProfile(oldProfile);
+        }
+      }
+    }
+
     settings.defaultApiProfileId = id;
+
+    // Load new profile's model
+    const newProfile = Storage.getApiProfile(id);
+    const newModel = newProfile?.defaultModel || newProfile?.model || '';
+    settings.defaultModel = newModel;
+
     Storage.saveSettings(settings);
     renderApiProfileList();
     renderDefaultApiSelect();
+    setModelValue(newModel);
+    showModelInput();
     UI.showToast('已设为默认 API', 'success');
   }
 
@@ -1116,6 +1146,7 @@
     document.getElementById('inputDefaultModel').value = settings.defaultModel || '';
     document.getElementById('selDefaultModel').style.display = 'none';
     document.getElementById('selExportFormat').value = settings.exportFormat || 'md';
+    document.getElementById('chkPromptInspector').checked = !!settings.showPromptInspector;
   }
 
   function renderDefaultApiSelect() {
@@ -1177,6 +1208,7 @@
 
     settings.defaultApiProfileId = newApiId;
     settings.exportFormat = document.getElementById('selExportFormat').value;
+    settings.showPromptInspector = document.getElementById('chkPromptInspector').checked;
     Storage.saveSettings(settings);
   }
 

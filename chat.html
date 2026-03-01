@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=12"></script>
+  <script src="common.js?v=13"></script>
   <style>
     /* ============================================================
        Chat Page - Complete Layout
@@ -38,7 +38,7 @@
       -webkit-backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
-      z-index: 100;
+      z-index: 250;
     }
     .topbar-left {
       display: flex;
@@ -57,6 +57,59 @@
       display: flex;
       align-items: center;
       gap: 4px;
+    }
+
+    /* Topbar dropdown menu */
+    .topbar-dropdown {
+      position: relative;
+      display: inline-flex;
+    }
+    .topbar-menu {
+      display: none;
+      position: fixed;
+      top: auto;
+      right: 16px;
+      min-width: 160px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      z-index: 300;
+      padding: 4px 0;
+      max-height: 280px;
+      overflow-y: auto;
+    }
+    .topbar-menu.show { display: block; }
+    .topbar-menu-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background .15s;
+    }
+    .topbar-menu-item:hover { background: var(--bg-hover); }
+    .topbar-menu-item.active { color: var(--accent); }
+    .topbar-menu-item.active::before {
+      content: '✓';
+      font-size: 12px;
+      width: 14px;
+      flex-shrink: 0;
+    }
+    .topbar-menu-item:not(.active)::before {
+      content: '';
+      width: 14px;
+      flex-shrink: 0;
+    }
+    .topbar-menu-label {
+      padding: 6px 14px 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
     }
 
     /* Story title - editable inline input */
@@ -1343,7 +1396,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </span>
       </button>
-      <button class="btn-icon" id="debugToggle" title="Prompt Inspector" onclick="showPromptDebug()">
+      <button class="btn-icon" id="debugToggle" title="Prompt Inspector" onclick="showPromptDebug()" style="display:none;">
         <span class="icon" style="width:20px;height:20px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         </span>
@@ -1353,6 +1406,14 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </span>
       </button>
+      <div class="topbar-dropdown">
+        <button class="btn-icon" id="moreMenuBtn" title="更多" onclick="toggleMoreMenu(event)">
+          <span class="icon" style="width:20px;height:20px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </span>
+        </button>
+        <div class="topbar-menu" id="moreMenu"></div>
+      </div>
       <button class="btn-icon" id="sidebarToggle" title="状态栏" onclick="toggleSidebar()">
         <span class="icon" style="width:20px;height:20px;">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
@@ -1515,6 +1576,22 @@ async function init() {
     return;
   }
 
+  // Clean up stale per-conversation API fields (now global-only)
+  if (conversation.apiProfileId || conversation.model) {
+    delete conversation.apiProfileId;
+    delete conversation.model;
+    Storage.saveConversation(conversation);
+    log('Cleaned stale apiProfileId/model from conversation');
+  }
+
+  // Clean up any empty assistant messages (from failed API calls)
+  const beforeClean = conversation.messages.length;
+  conversation.messages = conversation.messages.filter(m => m.role !== 'assistant' || (m.content && m.content.trim()));
+  if (conversation.messages.length < beforeClean) {
+    log('Cleaned', beforeClean - conversation.messages.length, 'empty assistant messages');
+    Storage.saveConversation(conversation);
+  }
+
   // Ensure summary object exists
   if (!conversation.summary) {
     const settings = Storage.getSettings();
@@ -1639,6 +1716,7 @@ function renderPhaseBadge() {
   const badge = document.getElementById('phaseBadge');
   const editBtn = document.getElementById('editMvuBtn');
   const restartBtn = document.getElementById('restartBtn');
+  const debugBtn = document.getElementById('debugToggle');
   if (conversation.phase === 'rp') {
     badge.textContent = 'RP';
     badge.className = 'phase-badge rp';
@@ -1650,7 +1728,102 @@ function renderPhaseBadge() {
     if (editBtn) editBtn.style.display = 'none';
     if (restartBtn) restartBtn.style.display = 'none';
   }
+  // Prompt Inspector: show only if setting enabled
+  if (debugBtn) {
+    const s = Storage.getSettings();
+    debugBtn.style.display = s.showPromptInspector ? '' : 'none';
+  }
 }
+
+// ============================================================
+// More Menu (API switch + Preset switch)
+// ============================================================
+let _moreMenuOpen = false;
+
+function toggleMoreMenu(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('moreMenu');
+  _moreMenuOpen = !_moreMenuOpen;
+  if (_moreMenuOpen) {
+    renderMoreMenu();
+    // Position below the button
+    const btn = document.getElementById('moreMenuBtn');
+    const rect = btn.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 6) + 'px';
+    menu.classList.add('show');
+  } else {
+    menu.classList.remove('show');
+  }
+}
+
+function closeMoreMenu() {
+  _moreMenuOpen = false;
+  document.getElementById('moreMenu')?.classList.remove('show');
+}
+
+function renderMoreMenu() {
+  const menu = document.getElementById('moreMenu');
+  const settings = Storage.getSettings();
+  const profiles = Storage.getApiProfiles();
+  const profileList = Object.values(profiles);
+  const currentApiId = settings.defaultApiProfileId;
+  const presets = settings.promptPresets || {};
+  const currentPresetId = settings.activePresetId || 'default';
+
+  let html = '<div class="topbar-menu-label">API 方案</div>';
+  for (const p of profileList) {
+    const active = p.id === currentApiId ? ' active' : '';
+    html += `<div class="topbar-menu-item${active}" onclick="switchApi('${Utils.escapeHtml(p.id)}')">${Utils.escapeHtml(p.name || p.id)}</div>`;
+  }
+  if (profileList.length === 0) {
+    html += '<div class="topbar-menu-item" style="color:var(--text-muted);">未配置</div>';
+  }
+
+  html += '<div class="topbar-menu-label">Prompt 预设</div>';
+  for (const [id, preset] of Object.entries(presets)) {
+    const active = id === currentPresetId ? ' active' : '';
+    html += `<div class="topbar-menu-item${active}" onclick="switchPreset('${Utils.escapeHtml(id)}')">${Utils.escapeHtml(preset.name || id)}</div>`;
+  }
+
+  menu.innerHTML = html;
+}
+
+function switchApi(profileId) {
+  const settings = Storage.getSettings();
+  const profile = Storage.getApiProfile(profileId);
+  if (!profile) return;
+
+  const newModel = profile.defaultModel || profile.model || '';
+
+  // Save current model to old profile
+  const oldId = settings.defaultApiProfileId;
+  if (oldId && oldId !== profileId) {
+    const oldProfile = Storage.getApiProfile(oldId);
+    if (oldProfile && settings.defaultModel) {
+      oldProfile.defaultModel = settings.defaultModel;
+      Storage.saveApiProfile(oldProfile);
+    }
+  }
+
+  // Update global settings only
+  settings.defaultApiProfileId = profileId;
+  settings.defaultModel = newModel;
+  Storage.saveSettings(settings);
+  closeMoreMenu();
+  UI.showToast(`已切换: ${profile.name || profileId}`, 'success');
+}
+
+function switchPreset(presetId) {
+  const settings = Storage.getSettings();
+  if (!settings.promptPresets?.[presetId]) return;
+  settings.activePresetId = presetId;
+  Storage.saveSettings(settings);
+  closeMoreMenu();
+  UI.showToast(`预设: ${settings.promptPresets[presetId].name || presetId}`, 'success');
+}
+
+// Close menu on outside click
+document.addEventListener('click', () => { if (_moreMenuOpen) closeMoreMenu(); });
 
 // ============================================================
 // Message Rendering
@@ -2139,7 +2312,7 @@ async function handleSend() {
 
   // Validate API profile exists
   const settings = Storage.getSettings();
-  const apiProfileId = conversation.apiProfileId || settings.defaultApiProfileId;
+  const apiProfileId = settings.defaultApiProfileId;
   if (!apiProfileId) {
     UI.showToast('请先在设置中配置 API', 'error');
     return;
@@ -2262,8 +2435,8 @@ async function streamAIResponse(retryAttempt = 0) {
   // Show connecting status
   showStreamStatus('connecting');
 
-  const apiProfileId = conversation.apiProfileId || settings.defaultApiProfileId;
-  const model = conversation.model || settings.defaultModel;
+  const apiProfileId = settings.defaultApiProfileId;
+  const model = settings.defaultModel;
   log('streamAIResponse', { phase: conversation.phase, apiProfileId, model, attempt: retryAttempt });
 
   currentAbortController = API.streamChat({
@@ -2292,6 +2465,25 @@ async function streamAIResponse(retryAttempt = 0) {
 
       if (streamAborted && !fullText) {
         fullText = aiMsg.content;
+      }
+
+      // Guard: if response is completely empty, treat as error
+      if (!fullText || !fullText.trim()) {
+        log('onDone with empty response, removing placeholder');
+        if (editMvuMode) {
+          editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
+        } else {
+          conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+          Storage.saveConversation(conversation);
+        }
+        const el = document.getElementById(`msg-${aiMsg.id}`);
+        if (el) el.remove();
+        UI.showToast('AI 返回空响应', 'error');
+        isStreaming = false;
+        streamAborted = false;
+        currentAbortController = null;
+        updateSendButton();
+        return;
       }
 
       aiMsg.content = fullText;
@@ -3455,7 +3647,7 @@ function buildEditMvuPrompt() {
   const settings = Storage.getSettings();
 
   // Build system prompt: edit instructions + current data
-  let systemPrompt = `你是"小克"，一个俏皮活泼、忠诚专业的AI女仆。你的主人是Boss（托莉娜大人）。
+  let systemPrompt = `你是"小克"，主人的AI女仆，也是主人专属的互动小说创作搭档。
 
 ---
 【当前阶段：状态栏/背景编辑模式】

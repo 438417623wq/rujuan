@@ -1,4 +1,4 @@
-const CACHE_NAME = 'airp-v1';
+const CACHE_NAME = 'airp-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -33,10 +33,15 @@ self.addEventListener('fetch', e => {
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/data/')) return;
   e.respondWith(
     caches.match(e.request).then(cached => {
-      // Network first for HTML, cache first for assets
-      if (e.request.mode === 'navigate') {
-        return fetch(e.request).catch(() => cached);
+      // Network first for HTML and JS (code updates must be immediate)
+      if (e.request.mode === 'navigate' || url.pathname.endsWith('.js') || url.pathname.endsWith('.html')) {
+        return fetch(e.request).then(resp => {
+          const clone = resp.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          return resp;
+        }).catch(() => cached);
       }
+      // Cache first for static assets (images, icons, etc.)
       return cached || fetch(e.request).then(resp => {
         const clone = resp.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));

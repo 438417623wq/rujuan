@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=12"></script>
+  <script src="common.js?v=13"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -1016,7 +1016,6 @@
       return;
     }
 
-    const settings = Storage.getSettings();
     const profiles = Storage.getApiProfiles();
     const profileList = Object.values(profiles);
 
@@ -1027,14 +1026,6 @@
       return;
     }
 
-    const defaultProfileId = settings.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
-    const defaultModel = settings.defaultModel || '';
-
-    const profileOptions = profileList.map(p => {
-      const selected = p.id === defaultProfileId ? 'selected' : '';
-      return `<option value="${p.id}" ${selected}>${Utils.escapeHtml(p.name || p.provider)}</option>`;
-    }).join('');
-
     UI.showModal({
       title: '创建新故事',
       content: `
@@ -1042,20 +1033,6 @@
           <div class="form-group">
             <label>故事名称</label>
             <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
-          </div>
-          <div class="form-group">
-            <label>API 配置</label>
-            <select id="create-api-profile" onchange="onCreateApiProfileChange()">
-              ${profileOptions}
-            </select>
-          </div>
-          <div class="form-group">
-            <label>模型</label>
-            <div class="model-input-row">
-              <input type="text" id="create-model" list="create-model-list" value="${Utils.escapeHtml(defaultModel)}" placeholder="输入或选择模型名称">
-              <datalist id="create-model-list"></datalist>
-              <button class="btn btn-secondary" onclick="fetchCreateModels()" id="btn-fetch-models">拉取</button>
-            </div>
           </div>
         </div>`,
       buttons: [
@@ -1071,47 +1048,6 @@
     }, 100);
   }
 
-  function onCreateApiProfileChange() {
-    const profileId = document.getElementById('create-api-profile').value;
-    const profile = Storage.getApiProfile(profileId);
-    if (profile && profile.model) {
-      document.getElementById('create-model').value = profile.model;
-    }
-    // Clear the datalist when switching profiles
-    document.getElementById('create-model-list').innerHTML = '';
-  }
-
-  async function fetchCreateModels() {
-    const profileId = document.getElementById('create-api-profile').value;
-    if (!profileId) {
-      UI.showToast('请选择API配置', 'error');
-      return;
-    }
-
-    const btn = document.getElementById('btn-fetch-models');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '拉取中...';
-    }
-
-    UI.showToast('正在拉取模型列表...', 'info');
-    const result = await API.fetchModels(profileId);
-
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = '拉取';
-    }
-
-    if (result.success && result.models.length > 0) {
-      const datalist = document.getElementById('create-model-list');
-      datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
-      UI.showToast(`获取到 ${result.models.length} 个模型`, 'success');
-      document.getElementById('create-model').focus();
-    } else {
-      UI.showToast('拉取失败，请检查API配置', 'error');
-    }
-  }
-
   function doCreateConversation() {
     const name = (document.getElementById('create-name').value || '').trim() || '新的故事';
 
@@ -1120,14 +1056,13 @@
       apiProfileId = '__server__';
       model = Config.defaultModel;
     } else {
-      apiProfileId = document.getElementById('create-api-profile').value;
-      model = (document.getElementById('create-model').value || '').trim();
+      const s = Storage.getSettings();
+      const profiles = Storage.getApiProfiles();
+      const profileList = Object.values(profiles);
+      apiProfileId = s.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
+      model = s.defaultModel || '';
       if (!apiProfileId) {
-        UI.showToast('请选择API配置', 'error');
-        return;
-      }
-      if (!model) {
-        UI.showToast('请输入或选择模型', 'error');
+        UI.showToast('请先在设置中配置API', 'error');
         return;
       }
     }
