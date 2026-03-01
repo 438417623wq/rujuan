@@ -2723,6 +2723,7 @@ const UI = {
     .btn-icon { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius); color: var(--text-secondary); cursor: pointer; transition: all var(--transition); }
     .btn-icon:hover { color: var(--accent); background: var(--accent-dim); }
     input, textarea, select { font-family: var(--font-ui); font-size: 14px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; outline: none; transition: border-color var(--transition); width: 100%; }
+    input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; background: none; border: revert; border-radius: revert; cursor: pointer; }
     input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
     textarea { resize: vertical; min-height: 80px; line-height: 1.6; } select { cursor: pointer; }
     label { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; display: block; }
