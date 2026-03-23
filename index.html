@@ -11,7 +11,7 @@
   <title>入卷 - AI 互动小说</title>
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
+  <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
   <script src="common.js?v=13"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
@@ -1172,13 +1172,7 @@
     UI.showToast('正在加载全部数据...', 'info');
     const data = await Storage.exportAll();
     const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `airp-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 10)}.json`);
     UI.showToast('数据已导出', 'success');
   }
 
@@ -1198,8 +1192,9 @@
         UI.showConfirm({
           title: '导入数据',
           message: '导入将覆盖当前所有数据，确定继续吗？',
-          onConfirm: () => {
-            Storage.importAll(data);
+          onConfirm: async () => {
+            UI.showToast('正在导入...', 'info');
+            await Storage.importAll(data);
             UI.showToast('数据导入成功', 'success');
             loadConversations();
           },

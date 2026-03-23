@@ -11,7 +11,7 @@
   <title>入卷</title>
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
-  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
+  <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
   <script src="common.js?v=13"></script>
   <style>
     /* ============================================================
@@ -2554,7 +2554,8 @@ async function streamAIResponse(retryAttempt = 0) {
       }
 
       const classified = API.classifyError(httpStatus || 0, error);
-      log('API Error:', classified, { apiProfileId, model, phase: conversation.phase, attempt: retryAttempt });
+      const errDetail = `[${classified.type}] ${error}${httpStatus ? ' (HTTP ' + httpStatus + ')' : ''}`;
+      log('API Error:', errDetail, classified, { apiProfileId, model, phase: conversation.phase, attempt: retryAttempt });
 
       // Remove the failed AI placeholder
       if (editMvuMode) {
@@ -2568,7 +2569,7 @@ async function streamAIResponse(retryAttempt = 0) {
       // Auto-retry for retryable errors
       if (classified.retryable && retryAttempt < MAX_AUTO_RETRIES) {
         const delay = Math.min(1000 * Math.pow(2, retryAttempt), 8000) * (0.5 + Math.random() * 0.5);
-        showStreamStatus('retrying', `(${retryAttempt + 1}/${MAX_AUTO_RETRIES}) ${Math.round(delay / 1000)}s 后重试...`);
+        showStreamStatus('retrying', `${errDetail} — (${retryAttempt + 1}/${MAX_AUTO_RETRIES}) ${Math.round(delay / 1000)}s 后重试...`);
         setTimeout(() => {
           removeStreamStatus();
           streamAIResponse(retryAttempt + 1);
@@ -2580,7 +2581,7 @@ async function streamAIResponse(retryAttempt = 0) {
       const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
       if (lastUserMsg) {
         lastFailedUserMsgId = lastUserMsg.id;
-        showRetryBar(lastUserMsg.id, classified.userMessage);
+        showRetryBar(lastUserMsg.id, `${classified.userMessage} | ${errDetail}`);
       } else {
         UI.showToast(classified.userMessage, 'error');
       }

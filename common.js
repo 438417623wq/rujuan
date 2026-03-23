@@ -183,6 +183,18 @@ const Storage = {
       log('loadConversation: server failed, using stale cache for', id);
       return cached;
     }
+    // Fall back to import cache (from importAll when server was unreachable)
+    const importKey = 'airp_conv_import_' + id;
+    const imported = this._get(importKey, null);
+    if (imported && imported.id) {
+      log('loadConversation: using import cache for', id);
+      this._set(this.KEYS.CONV_CACHE, imported);
+      // Try to push to server in background, clean up import cache on success
+      this._putToServer(`/api/conversations/${id}`, imported).then(() => {
+        localStorage.removeItem(importKey);
+      });
+      return imported;
+    }
     return null;
   },
 
@@ -258,18 +270,29 @@ const Storage = {
     const conversations = await this._fetchFromServer('/api/conversations') || {};
     return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations };
   },
-  importAll(d) {
-    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); this._syncToServer('/api/settings', d.settings); }
-    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); this._syncToServer('/api/profiles', d.apiProfiles); }
+  async importAll(d) {
+    const promises = [];
+    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); promises.push(this._putToServer('/api/settings', d.settings)); }
+    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); promises.push(this._putToServer('/api/profiles', d.apiProfiles)); }
     if (d.conversations) {
-      // Store metadata index, push full data to server
       const index = {};
       for (const [id, conv] of Object.entries(d.conversations)) {
         index[id] = this._toMeta(conv);
-        this._syncToServer(`/api/conversations/${id}`, conv);
+        // Cache full conversation locally (fallback if server push fails)
+        this._set('airp_conv_import_' + id, conv);
+        promises.push(this._putToServer(`/api/conversations/${id}`, conv));
       }
       this._set(this.KEYS.CONVERSATIONS, index);
     }
+    await Promise.all(promises);
+  },
+  async _putToServer(endpoint, data) {
+    try {
+      await fetch(this._apiBase + endpoint, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
+        body: JSON.stringify(data),
+      });
+    } catch (e) { log('Import sync failed:', endpoint, e.message); }
   },
 };
 
@@ -329,7 +352,7 @@ const API = {
       if (msgs.length > 0 && msgs[0].role !== 'user') {
         msgs.unshift({ role: 'user', content: '(continue)' });
       }
-      return { model, max_tokens: 128000, stream, system: systemPrompt || undefined, messages: msgs };
+      return { model, max_tokens: 64000, stream, system: systemPrompt || undefined, messages: msgs };
     }
 
     if (prov === 'google') {
@@ -348,7 +371,7 @@ const API = {
     const msgs = [];
     if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
     for (const m of messages) msgs.push({ role: m.role, content: m.content });
-    return { model, messages: msgs, stream, max_tokens: 128000 };
+    return { model, messages: msgs, stream, max_tokens: 64000 };
   },
 
   async sendChat({ apiProfileId, model, systemPrompt, messages }) {
@@ -2564,10 +2587,7 @@ const Exporter = {
   download(conv, fmt = 'md') {
     const name = conv.name || '未命名故事';
     const content = this.toMarkdown(conv);
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `${name}.${fmt}`; a.click();
-    URL.revokeObjectURL(url);
+    Utils.downloadFile(content, `${name}.${fmt}`, 'text/plain;charset=utf-8');
   },
 };
 
@@ -2575,6 +2595,17 @@ const Exporter = {
 // Utils
 // ============================================================
 const Utils = {
+  /** Download a file. Uses Android JavascriptInterface in WebView, blob URL otherwise. */
+  downloadFile(content, filename, mimeType = 'application/json') {
+    if (window.AndroidBridge?.saveFile) {
+      window.AndroidBridge.saveFile(content, filename, mimeType);
+      return;
+    }
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  },
   generateId(prefix = 'id') { return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`; },
   escapeHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; },
   formatTime(ts) { return new Date(ts).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); },
