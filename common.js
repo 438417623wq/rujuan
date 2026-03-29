@@ -334,6 +334,13 @@ const API = {
     return `${base}/chat/completions`;
   },
 
+  _maxTokensForModel(model) {
+    const m = (model || '').toLowerCase();
+    if (m.includes('opus-4-6') || m.includes('opus-4.6')) return 128000;
+    if (m.includes('opus-4-1') || m.includes('opus-4.1') || m.includes('claude-3-opus')) return 32000;
+    return 64000;
+  },
+
   _buildBody(p, model, systemPrompt, messages, stream) {
     const prov = this._detect(p, model);
 
@@ -352,7 +359,7 @@ const API = {
       if (msgs.length > 0 && msgs[0].role !== 'user') {
         msgs.unshift({ role: 'user', content: '(continue)' });
       }
-      return { model, max_tokens: 64000, stream, system: systemPrompt || undefined, messages: msgs };
+      return { model, max_tokens: this._maxTokensForModel(model), stream, system: systemPrompt || undefined, messages: msgs };
     }
 
     if (prov === 'google') {
@@ -371,7 +378,7 @@ const API = {
     const msgs = [];
     if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
     for (const m of messages) msgs.push({ role: m.role, content: m.content });
-    return { model, messages: msgs, stream, max_tokens: 64000 };
+    return { model, messages: msgs, stream, max_tokens: this._maxTokensForModel(model) };
   },
 
   async sendChat({ apiProfileId, model, systemPrompt, messages }) {
@@ -802,7 +809,7 @@ const PromptBuilder = {
 字段宁多勿少，以下为必须包含的模块，其余根据题材自由发挥：
 
 【必须模块】
-1. 环境信息：日期/时间、当前位置、环境状态描述
+1. 环境信息：日期/时间、当前位置、环境状态描述。必须为故事设定一个具体的起始日期（根据世界观选择合适的历法，如"星辉历1247年·1月21日"、"2025年3月15日"等）
 2. 主角核心属性：与题材匹配的资源条（如HP/MP/体力/精神等，用bar类型，需current+max），等级/境界，货币/资源
 3. 主角能力/技能：每个技能/能力需包含名称、等级/熟练度、简要描述。这是防止叙事幻觉（使用未习得能力）的关键依据
 4. 物品栏：当前持有的物品列表
@@ -829,6 +836,8 @@ const PromptBuilder = {
   - 当前穿着/装备（text）
   - 好感度（number）
   - 关系状态（text，如"未相遇"/"同伴"/"恋人"等）
+  - 当前性格（text，初始值从基础档案的性格关键词复制，角色性格发生明显转变时更新。例："天然呆·忠诚" → 经历背叛后 → "警惕·不安·忠诚但会犹豫"）
+  - 对主角态度（text，当前对主角的态度倾向，态度发生变化时更新。例："完全信赖，撒娇依赖" → 被冷落后 → "有些委屈，试探性保持距离"）
   - 心理活动（text，当前内心想法，随剧情更新）
   - 当前位置（text）
 ● 可根据题材追加其他属性
@@ -847,7 +856,7 @@ const PromptBuilder = {
 技能列表：skills(list, rule:"习得新技能或技能升级时更新") — 每项格式如"基础剑法 Lv.3 | 熟练度60% | 以气御剑的入门剑术"
 物品栏：inventory(list, rule:"获得/使用/丢失物品时增删")
 任务：main_quest(text, rule:"主线推进或完成时更新"), side_quests(list, rule:"接取/推进/完成支线时更新") — 每项格式如"寻找灵草 | 目标：采集3株冰心草 | 进度：1/3"
-角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
+角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_personality(text, rule:"性格明显转变时更新"), lin_attitude(text, rule:"对主角态度变化时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
 角色-配角张三：zhang_profile(text,简要), zhang_relation(tag, rule:"关系变化时更新"), zhang_affection(number, rule:"互动后±1~3"), zhang_location(text, rule:"角色移动后更新")
 \`\`\`
 以上仅为参考，请根据用户讨论的具体题材灵活设计——关键是覆盖全面、信息充分，并且鼓励添加更多有趣的、题材特色的追踪维度。
@@ -869,7 +878,7 @@ const PromptBuilder = {
 }
 \`\`\`
 
-schema 类型：bar(进度条,需max,HTML中须在进度条旁显示数值如 80/100)、number(数字)、text(文本)、list(数组)、tag(标签)
+schema 类型：bar(进度条,需max,HTML中须在进度条旁显示数值如 80/100)、number(数字)、text(文本,支持换行)、list(数组)、tag(标签)
 
 rule（更新规则）：描述该字段何时更新及变化逻辑。例如：
 - bar/number 类型："战斗后±5~20，休息时缓慢恢复"
@@ -2352,7 +2361,14 @@ const MVU = {
     for (const [field, value] of Object.entries(state)) {
       const def = schema?.[field];
       const el = container.querySelector(`[data-field="${field}"]`);
-      if (el) el.textContent = Array.isArray(value) ? value.join('、') : value;
+      if (el) {
+        const text = Array.isArray(value) ? value.join('、') : String(value);
+        if (text.includes('\n')) {
+          el.innerHTML = Utils.escapeHtml(text).replace(/\n/g, '<br>');
+        } else {
+          el.textContent = text;
+        }
+      }
       const barEl = container.querySelector(`[data-field-bar="${field}"]`);
       if (barEl && def?.max) barEl.style.width = Math.max(0, Math.min(100, (value / def.max) * 100)) + '%';
       const listEl = container.querySelector(`[data-field-list="${field}"]`);
