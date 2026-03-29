@@ -64,8 +64,34 @@ function getIcon(name, size = 20) {
 // ============================================================
 const Storage = {
   KEYS: { SETTINGS: 'airp_settings', API_PROFILES: 'airp_apiProfiles', CONVERSATIONS: 'airp_conversations', CONV_CACHE: 'airp_conv_cache' },
-  _get(key, fb = null) { try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fb; } catch { return fb; } },
-  _set(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; } },
+
+  // ---- Native storage bridge (Android WebView) ----
+  _isNative: !!(window.AndroidBridge?.saveData),
+  _nativeGet(key, fb = null) {
+    try {
+      const d = window.AndroidBridge.loadData(key);
+      return d ? JSON.parse(d) : fb;
+    } catch { return fb; }
+  },
+  _nativeSet(key, val) {
+    try { return window.AndroidBridge.saveData(key, JSON.stringify(val)); } catch { return false; }
+  },
+  _nativeDelete(key) {
+    try { return window.AndroidBridge.deleteData(key); } catch { return false; }
+  },
+
+  _get(key, fb = null) {
+    if (this._isNative) return this._nativeGet(key, fb);
+    try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fb; } catch { return fb; }
+  },
+  _set(key, val) {
+    if (this._isNative) return this._nativeSet(key, val);
+    try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch { return false; }
+  },
+  _remove(key) {
+    if (this._isNative) return this._nativeDelete(key);
+    try { localStorage.removeItem(key); } catch {}
+  },
 
   // ---- Auth token (public mode) ----
   _authToken: null,
@@ -104,6 +130,8 @@ const Storage = {
    * 2. Old-format CONVERSATIONS (full data, pre-migration) — push any newer ones
    */
   async syncFromServer() {
+    // Native mode: no server to sync from, data is already in native storage
+    if (this._isNative) { log('syncFromServer: native mode, skipping'); return false; }
     const [settings, profiles, convMeta] = await Promise.all([
       this._fetchFromServer('/api/settings'),
       this._fetchFromServer('/api/profiles'),
@@ -162,6 +190,26 @@ const Storage = {
    */
   async loadConversation(id) {
     const cached = this._get(this.KEYS.CONV_CACHE, null);
+
+    // Native mode: load from native file storage
+    if (this._isNative) {
+      // Cache hit
+      if (cached && cached.id === id && cached.messages) {
+        log('loadConversation [native]: using cache for', id);
+        return cached;
+      }
+      // Load from native storage
+      const data = this._nativeGet('conv_' + id, null);
+      if (data && data.id) {
+        this._set(this.KEYS.CONV_CACHE, data);
+        log('loadConversation [native]: loaded from file for', id);
+        return data;
+      }
+      log('loadConversation [native]: not found', id);
+      return null;
+    }
+
+    // Web mode: cache-first with server fallback
     const serverMeta = this.getConversation(id); // from metadata index
     // Use cache if it matches and is not stale
     if (cached && cached.id === id && cached.messages) {
@@ -189,9 +237,8 @@ const Storage = {
     if (imported && imported.id) {
       log('loadConversation: using import cache for', id);
       this._set(this.KEYS.CONV_CACHE, imported);
-      // Try to push to server in background, clean up import cache on success
       this._putToServer(`/api/conversations/${id}`, imported).then(() => {
-        localStorage.removeItem(importKey);
+        Storage._remove(importKey);
       });
       return imported;
     }
@@ -251,40 +298,59 @@ const Storage = {
     const index = this.getConversations();
     index[c.id] = this._toMeta(c);
     this._set(this.KEYS.CONVERSATIONS, index);
-    // 3. Push full data to server
-    this._syncToServer(`/api/conversations/${c.id}`, c);
+    // 3. Native mode: save full conversation to native storage; otherwise push to server
+    if (this._isNative) {
+      this._nativeSet('conv_' + c.id, c);
+    } else {
+      this._syncToServer(`/api/conversations/${c.id}`, c);
+    }
   },
   deleteConversation(id) {
     // Clear cache if it's the deleted conversation
     const cached = this._get(this.KEYS.CONV_CACHE, null);
-    if (cached && cached.id === id) localStorage.removeItem(this.KEYS.CONV_CACHE);
+    if (cached && cached.id === id) this._remove(this.KEYS.CONV_CACHE);
     const index = this.getConversations();
     delete index[id];
     this._set(this.KEYS.CONVERSATIONS, index);
-    this._syncToServer(`/api/conversations/${id}`, null, 'DELETE');
+    if (this._isNative) {
+      this._nativeDelete('conv_' + id);
+    } else {
+      this._syncToServer(`/api/conversations/${id}`, null, 'DELETE');
+    }
   },
   getConversationList() { return Object.values(this.getConversations()).sort((a, b) => b.updatedAt - a.updatedAt); },
 
   async exportAll() {
-    // Need full conversations from server for export
+    if (this._isNative) {
+      // Native mode: load all conversations from native storage
+      const index = this.getConversations();
+      const conversations = {};
+      for (const id of Object.keys(index)) {
+        const conv = this._nativeGet('conv_' + id, null);
+        if (conv) conversations[id] = conv;
+      }
+      return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations };
+    }
+    // Web mode: fetch from server
     const conversations = await this._fetchFromServer('/api/conversations') || {};
     return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations };
   },
   async importAll(d) {
-    const promises = [];
-    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); promises.push(this._putToServer('/api/settings', d.settings)); }
-    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); promises.push(this._putToServer('/api/profiles', d.apiProfiles)); }
+    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); if (!this._isNative) this._putToServer('/api/settings', d.settings); }
+    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); if (!this._isNative) this._putToServer('/api/profiles', d.apiProfiles); }
     if (d.conversations) {
       const index = {};
       for (const [id, conv] of Object.entries(d.conversations)) {
         index[id] = this._toMeta(conv);
-        // Cache full conversation locally (fallback if server push fails)
-        this._set('airp_conv_import_' + id, conv);
-        promises.push(this._putToServer(`/api/conversations/${id}`, conv));
+        if (this._isNative) {
+          this._nativeSet('conv_' + id, conv);
+        } else {
+          this._set('airp_conv_import_' + id, conv);
+          this._putToServer(`/api/conversations/${id}`, conv);
+        }
       }
       this._set(this.KEYS.CONVERSATIONS, index);
     }
-    await Promise.all(promises);
   },
   async _putToServer(endpoint, data) {
     try {
