@@ -749,16 +749,7 @@
       <!-- Cards rendered by JS -->
     </div>
 
-    <!-- Footer: Import/Export -->
-    <div class="footer-actions" id="footer-actions" style="display:none;">
-      <button class="btn btn-ghost" onclick="exportAllData()" title="导出所有数据" id="btn-export">
-        导出数据
-      </button>
-      <button class="btn btn-ghost" onclick="triggerImport()" title="导入数据" id="btn-import">
-        导入数据
-      </button>
-    </div>
-    <input type="file" id="import-file-input" accept=".json" onchange="importData(event)">
+    <!-- Footer: Import/Export moved to settings page -->
 
   </main>
 </div>
@@ -1174,37 +1165,6 @@
     const json = JSON.stringify(data, null, 2);
     Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 10)}.json`);
     UI.showToast('数据已导出', 'success');
-  }
-
-  // ── Import Data ────────────────────────────────
-  function triggerImport() {
-    document.getElementById('import-file-input').click();
-  }
-
-  function importData(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        UI.showConfirm({
-          title: '导入数据',
-          message: '导入将覆盖当前所有数据，确定继续吗？',
-          onConfirm: async () => {
-            UI.showToast('正在导入...', 'info');
-            await Storage.importAll(data);
-            UI.showToast('数据导入成功', 'success');
-            loadConversations();
-          },
-        });
-      } catch {
-        UI.showToast('文件格式无效', 'error');
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
   }
 
   // ── Boot ───────────────────────────────────────

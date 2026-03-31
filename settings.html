@@ -1791,16 +1791,45 @@
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
-        UI.showConfirm({
-          title: '导入数据',
-          message: '导入将覆盖当前所有数据，确定继续吗？建议先导出备份。',
-          onConfirm: async () => {
-            UI.showToast('正在导入...', 'info');
-            await Storage.importAll(data);
-            UI.showToast('数据已导入', 'success');
-            setTimeout(() => location.reload(), 300);
-          },
-        });
+
+        // Auto-detect: single conversation vs full backup
+        if (data.id && data.messages) {
+          const conv = data;
+          const existing = Storage.getConversation(conv.id);
+          if (existing) {
+            UI.showConfirm({
+              title: '对话已存在',
+              message: `"${existing.name || '未命名'}" 已存在，是否覆盖？`,
+              confirmText: '覆盖',
+              cancelText: '创建副本',
+              onConfirm: () => {
+                Storage.saveConversation(conv);
+                UI.showToast('对话已覆盖导入', 'success');
+              },
+              onCancel: () => {
+                conv.id = Utils.generateId();
+                conv.name = (conv.name || '对话') + ' (副本)';
+                Storage.saveConversation(conv);
+                UI.showToast('对话已作为副本导入', 'success');
+              },
+            });
+          } else {
+            Storage.saveConversation(conv);
+            UI.showToast('对话导入成功', 'success');
+          }
+        } else {
+          // Full backup
+          UI.showConfirm({
+            title: '导入全量备份',
+            message: '导入将覆盖当前所有数据，确定继续吗？建议先导出备份。',
+            onConfirm: async () => {
+              UI.showToast('正在导入...', 'info');
+              await Storage.importAll(data);
+              UI.showToast('数据已导入', 'success');
+              setTimeout(() => location.reload(), 300);
+            },
+          });
+        }
       } catch {
         UI.showToast('文件格式无效', 'error');
       }
