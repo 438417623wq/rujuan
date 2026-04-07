@@ -1843,9 +1843,7 @@
       title: '清空全部数据',
       message: '此操作不可恢复！所有故事、API 配置和设置将被永久删除。建议先导出备份。',
       onConfirm: () => {
-        for (const key of Object.values(Storage.KEYS)) {
-          localStorage.removeItem(key);
-        }
+        Storage.clearAll();
         UI.showToast('全部数据已清空', 'success');
         setTimeout(() => location.reload(), 600);
       },

@@ -360,6 +360,27 @@ const Storage = {
       });
     } catch (e) { log('Import sync failed:', endpoint, e.message); }
   },
+
+  clearAll() {
+    // 1. Delete all conversations
+    const index = this.getConversations();
+    for (const id of Object.keys(index)) {
+      if (this._isNative) {
+        this._nativeDelete('conv_' + id);
+      } else {
+        this._syncToServer(`/api/conversations/${id}`, null, 'DELETE');
+      }
+    }
+    // 2. Clear all storage keys
+    for (const key of Object.values(this.KEYS)) {
+      this._remove(key);
+    }
+    // 3. Clear server settings/profiles
+    if (!this._isNative) {
+      this._syncToServer('/api/settings', {});
+      this._syncToServer('/api/profiles', {});
+    }
+  },
 };
 
 // ============================================================
