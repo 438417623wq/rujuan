@@ -67,6 +67,7 @@ const Storage = {
 
   // ---- Native storage bridge (Android WebView) ----
   _isNative: !!(window.AndroidBridge?.saveData),
+  _nativeMigrated: false,
   _nativeGet(key, fb = null) {
     try {
       const d = window.AndroidBridge.loadData(key);
@@ -80,8 +81,56 @@ const Storage = {
     try { return window.AndroidBridge.deleteData(key); } catch { return false; }
   },
 
+  // Migrate localStorage → native storage (one-time, on first launch after update)
+  _migrateToNative() {
+    if (this._nativeMigrated) return;
+    this._nativeMigrated = true;
+    // Check if native storage already has conversations
+    const existing = this._nativeGet(this.KEYS.CONVERSATIONS, null);
+    if (existing && Object.keys(existing).length > 0) return; // already migrated
+    // Check if localStorage has data to migrate
+    let localConvs;
+    try { const d = localStorage.getItem(this.KEYS.CONVERSATIONS); localConvs = d ? JSON.parse(d) : null; } catch { return; }
+    if (!localConvs || Object.keys(localConvs).length === 0) return;
+    log('Migrating localStorage → native storage...');
+    // Migrate settings & profiles
+    for (const key of [this.KEYS.SETTINGS, this.KEYS.API_PROFILES]) {
+      try {
+        const d = localStorage.getItem(key);
+        if (d) this._nativeSet(key, JSON.parse(d));
+      } catch {}
+    }
+    // Migrate conversation index
+    this._nativeSet(this.KEYS.CONVERSATIONS, localConvs);
+    // Migrate CONV_CACHE (may contain full conversation data)
+    try {
+      const cache = localStorage.getItem(this.KEYS.CONV_CACHE);
+      if (cache) {
+        const conv = JSON.parse(cache);
+        if (conv && conv.id) {
+          this._nativeSet(this.KEYS.CONV_CACHE, conv);
+          this._nativeSet('conv_' + conv.id, conv);
+        }
+      }
+    } catch {}
+    // Migrate any import cache entries
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('airp_conv_import_')) {
+        try {
+          const conv = JSON.parse(localStorage.getItem(key));
+          if (conv && conv.id) this._nativeSet('conv_' + conv.id, conv);
+        } catch {}
+      }
+    }
+    log('Migration complete:', Object.keys(localConvs).length, 'conversations');
+  },
+
   _get(key, fb = null) {
-    if (this._isNative) return this._nativeGet(key, fb);
+    if (this._isNative) {
+      this._migrateToNative();
+      return this._nativeGet(key, fb);
+    }
     try { const d = localStorage.getItem(key); return d ? JSON.parse(d) : fb; } catch { return fb; }
   },
   _set(key, val) {
