@@ -416,6 +416,29 @@
       box-shadow: 0 4px 28px rgba(201, 164, 76, 0.4);
     }
 
+    /* ── Footer area (import/export) ─────────────── */
+    .footer-actions {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0;
+      animation: fadeIn 0.5s ease 0.6s forwards;
+    }
+
+    .footer-actions .btn-ghost {
+      font-size: 12px;
+      color: var(--text-muted);
+      gap: 5px;
+    }
+
+    .footer-actions .btn-ghost .icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
     /* ── FAB (Floating Action Button) ─────────────── */
     .fab {
       position: fixed;
@@ -878,14 +901,17 @@
   function renderList() {
     const container = document.getElementById('conv-list');
     const toolbar = document.getElementById('toolbar');
+    const footer = document.getElementById('footer-actions');
 
     if (conversations.length === 0) {
       toolbar.style.display = 'none';
+      footer.style.display = 'none';
       container.innerHTML = renderEmptyState();
       return;
     }
 
     toolbar.style.display = '';
+    footer.style.display = '';
     document.getElementById('toolbar-count').textContent = `(${conversations.length})`;
     container.innerHTML = conversations.map((conv, i) => renderCard(conv, i)).join('');
 
