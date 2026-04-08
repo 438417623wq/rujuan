@@ -1846,9 +1846,6 @@ function renderMoreMenu() {
       ${icon('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>')}
       重新开始</div>`;
   }
-  html += `<div class="topbar-menu-item" onclick="closeMoreMenu();exportConversation()">
-    ${icon('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
-    导出本对话</div>`;
   html += `<div class="topbar-menu-item" onclick="closeMoreMenu();showPromptDebug()">
     ${icon('<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>')}
     Prompt Inspector</div>`;
@@ -1940,21 +1937,6 @@ function saveWorldSetting() {
   Storage.saveConversation(conversation);
   closeWorldSetting();
   UI.showToast('世界设定已保存', 'success');
-}
-
-// ============================================================
-// Export Single Conversation
-// ============================================================
-
-function exportConversation() {
-  if (!conversation) return;
-  const data = JSON.parse(JSON.stringify(conversation));
-  data._exportType = 'single_conversation';
-  const json = JSON.stringify(data, null, 2);
-  const name = (conversation.name || '对话').replace(/[\/\\:*?"<>|]/g, '_');
-  const date = new Date().toISOString().slice(0, 10);
-  Utils.downloadFile(json, `airp-conv-${name}-${date}.json`);
-  UI.showToast('对话已导出', 'success');
 }
 
 // ============================================================
@@ -3495,9 +3477,9 @@ function revertToMessage(msgId) {
 }
 
 // ============================================================
-// Export (Markdown — kept for settings page reference)
+// Export
 // ============================================================
-function exportConversationMd() {
+function exportConversation() {
   if (!conversation || conversation.messages.length === 0) {
     UI.showToast('没有可导出的内容', 'info');
     return;

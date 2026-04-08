@@ -2781,14 +2781,13 @@ const UI = {
     if (m) { m.classList.remove('modal-visible'); setTimeout(() => m.remove(), 200); }
   },
 
-  showConfirm({ title, message, onConfirm, onCancel, confirmText, cancelText }) {
+  showConfirm({ title, message, onConfirm }) {
     this._pendingConfirm = onConfirm;
-    this._pendingCancel = onCancel || null;
     this.showModal({
       title, content: `<p>${message}</p>`,
       buttons: [
-        { text: cancelText || '取消', class: 'btn-secondary', onclick: 'UI._execCancel()' },
-        { text: confirmText || '确认', class: 'btn-primary', onclick: 'UI._execConfirm()' },
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: '确认', class: 'btn-primary', onclick: 'UI._execConfirm()' },
       ],
     });
   },
@@ -2796,15 +2795,6 @@ const UI = {
   _execConfirm() {
     const fn = this._pendingConfirm;
     this._pendingConfirm = null;
-    this._pendingCancel = null;
-    this.closeModal();
-    if (fn) fn();
-  },
-
-  _execCancel() {
-    const fn = this._pendingCancel;
-    this._pendingConfirm = null;
-    this._pendingCancel = null;
     this.closeModal();
     if (fn) fn();
   },
