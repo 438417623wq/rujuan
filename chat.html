@@ -255,7 +255,7 @@
       overflow-y: auto;
       overflow-x: hidden;
       padding: 24px 20px 16px;
-      scroll-behavior: smooth;
+      overflow-anchor: auto;
     }
     .messages-list {
       max-width: 780px;
@@ -525,6 +525,18 @@
       font-size: 12px;
       padding: 6px 14px;
     }
+
+    /* ---- Load More ---- */
+    .load-more-sentinel {
+      text-align: center;
+      padding: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: color 0.15s;
+      overflow-anchor: none;
+    }
+    .load-more-sentinel:hover { color: var(--accent); }
 
     /* ---- Empty State ---- */
     .empty-state {
@@ -1971,6 +1983,9 @@ function renderAiContent(rawContent) {
   return thinkingHtml + Utils.renderMarkdown(storyText) + refineHtml;
 }
 
+const MSG_PAGE_SIZE = 20;
+let _renderedFromIdx = 0; // tracks how far back we've rendered
+
 function renderAllMessages() {
   const list = document.getElementById('messagesList');
   list.innerHTML = '';
@@ -1984,16 +1999,81 @@ function renderAllMessages() {
           ? '请输入「详细定制」，AI 会陪你逐步打磨世界观、角色设定等。你也可以输入「快速开始」，AI 会协助你快速构建想要的世界。如果没想好玩什么，输入「直接开始」即可完全随机生成。'
           : '输入「开始」，AI 将根据设定为你展开第一幕故事。'}</p>
       </div>`;
+    _renderedFromIdx = 0;
     return;
   }
 
-  for (let i = 0; i < conversation.messages.length; i++) {
+  const total = conversation.messages.length;
+  _renderedFromIdx = Math.max(0, total - MSG_PAGE_SIZE);
+
+  // Insert load-more sentinel if there are older messages
+  if (_renderedFromIdx > 0) {
+    const sentinel = document.createElement('div');
+    sentinel.id = 'loadMoreSentinel';
+    sentinel.className = 'load-more-sentinel';
+    sentinel.textContent = `↑ 加载更早的消息 (${_renderedFromIdx} 条)`;
+    sentinel.onclick = () => loadOlderMessages();
+    list.appendChild(sentinel);
+  }
+
+  for (let i = _renderedFromIdx; i < total; i++) {
     const msg = conversation.messages[i];
     const el = createMessageElement(msg, i);
     list.appendChild(el);
   }
 
   scrollToBottom(false);
+  _setupScrollLoadMore();
+}
+
+let _loadingOlder = false;
+function loadOlderMessages() {
+  if (_renderedFromIdx <= 0 || _loadingOlder) return;
+  _loadingOlder = true;
+
+  const list = document.getElementById('messagesList');
+  const area = document.getElementById('messagesArea');
+  const prevScrollHeight = area.scrollHeight;
+
+  const loadTo = Math.max(0, _renderedFromIdx - MSG_PAGE_SIZE);
+  const fragment = document.createDocumentFragment();
+
+  for (let i = loadTo; i < _renderedFromIdx; i++) {
+    const msg = conversation.messages[i];
+    const el = createMessageElement(msg, i);
+    fragment.appendChild(el);
+  }
+
+  const sentinel = document.getElementById('loadMoreSentinel');
+  if (sentinel) {
+    sentinel.after(fragment);
+    if (loadTo <= 0) {
+      sentinel.remove();
+    } else {
+      sentinel.textContent = `↑ 加载更早的消息 (${loadTo} 条)`;
+    }
+  } else {
+    list.prepend(fragment);
+  }
+
+  _renderedFromIdx = loadTo;
+
+  // overflow-anchor handles scroll position automatically
+  setTimeout(() => { _loadingOlder = false; }, 100);
+}
+
+function _setupScrollLoadMore() {
+  const area = document.getElementById('messagesArea');
+  if (area._scrollLoadHandler) return; // already set up
+  // Delay binding to avoid triggering during initial scroll-to-bottom
+  setTimeout(() => {
+    area._scrollLoadHandler = () => {
+      if (area.scrollTop < 100 && _renderedFromIdx > 0) {
+        loadOlderMessages();
+      }
+    };
+    area.addEventListener('scroll', area._scrollLoadHandler, { passive: true });
+  }, 500);
 }
 
 function createMessageElement(msg, idx) {
@@ -3762,7 +3842,7 @@ function buildEditMvuPrompt() {
   const settings = Storage.getSettings();
 
   // Build system prompt: edit instructions + current data
-  let systemPrompt = `你是"小克"，主人的AI女仆，也是主人专属的互动小说创作搭档。
+  let systemPrompt = `你是"小克"，用户专属的互动小说创作搭档。
 
 ---
 【当前阶段：状态栏/背景编辑模式】
