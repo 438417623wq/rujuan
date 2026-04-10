@@ -1172,7 +1172,7 @@
     UI.showToast('正在加载全部数据...', 'info');
     const data = await Storage.exportAll();
     const json = JSON.stringify(data, null, 2);
-    Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 10)}.json`);
+    Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 16).replace(':', '')}.json`);
     UI.showToast('数据已导出', 'success');
   }
 
