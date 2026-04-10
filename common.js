@@ -2171,7 +2171,7 @@ const Utils = {
     h = h.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     h = h.replace(/\*(.*?)\*/g, '<em>$1</em>');
     h = h.replace(/「(.*?)」/g, '<span class="quote-text">「$1」</span>');
-    h = h.replace(/&quot;(.*?)&quot;/g, '<span class="quote-text">"$1"</span>');
+    h = h.replace(/"([^"]*?)"/g, '<span class="quote-text">"$1"</span>');
     h = h.replace(/^(\*{3}|---)/gm, '<hr class="story-divider">');
     h = h.replace(/\n/g, '<br>');
     return h;
@@ -2323,7 +2323,7 @@ const UI = {
     .modal-close-btn:hover { color: var(--text-primary); background: var(--accent-dim); }
     .modal-body { padding: 20px; line-height: 1.6; color: var(--text-secondary); font-size: 14px; }
     .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
-    .quote-text { color: var(--accent); font-style: italic; }
+    .quote-text { color: var(--accent); margin-right: 0.25em; }
     .story-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }

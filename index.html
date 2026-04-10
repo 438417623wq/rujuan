@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=13"></script>
+  <script src="common.js?v=14"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -1163,8 +1163,11 @@
     UI.showToast('正在加载对话数据...', 'info');
     const conv = await Storage.loadConversation(id);
     if (!conv) { UI.showToast('无法加载对话', 'error'); return; }
-    Exporter.download(conv, Storage.getSettings().exportFormat || 'md');
-    UI.showToast('故事已导出', 'success');
+    const json = JSON.stringify(conv, null, 2);
+    const name = (conv.name || '对话').replace(/[\/\\:*?"<>|]/g, '_');
+    const date = new Date().toISOString().slice(0, 16).replace(':', '');
+    Utils.downloadFile(json, `airp-conv-${name}-${date}.json`);
+    UI.showToast('对话已导出', 'success');
   }
 
   // ── Export All Data ────────────────────────────

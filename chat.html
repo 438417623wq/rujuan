@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=13"></script>
+  <script src="common.js?v=14"></script>
   <style>
     /* ============================================================
        Chat Page - Complete Layout
@@ -3560,13 +3560,12 @@ function revertToMessage(msgId) {
 // Export
 // ============================================================
 function exportConversation() {
-  if (!conversation || conversation.messages.length === 0) {
-    UI.showToast('没有可导出的内容', 'info');
-    return;
-  }
-  const settings = Storage.getSettings();
-  Exporter.download(conversation, settings.exportFormat || 'md');
-  UI.showToast('导出成功', 'success');
+  if (!conversation) return;
+  const json = JSON.stringify(conversation, null, 2);
+  const name = (conversation.name || '对话').replace(/[\/\\:*?"<>|]/g, '_');
+  const date = new Date().toISOString().slice(0, 16).replace(':', '');
+  Utils.downloadFile(json, `airp-conv-${name}-${date}.json`);
+  UI.showToast('对话已导出', 'success');
 }
 
 // ============================================================
