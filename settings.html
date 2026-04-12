@@ -1836,13 +1836,36 @@
       try {
         const json = JSON.parse(e.target.result);
         const defaultName = file.name.replace(/\.json$/i, '');
-        importSillyTavernPreset(json, defaultName);
+        // Auto-detect: AIRP preset (has entries array) vs SillyTavern preset (has prompts array)
+        if (json.entries && Array.isArray(json.entries)) {
+          importAirpPreset(json, defaultName);
+        } else {
+          importSillyTavernPreset(json, defaultName);
+        }
       } catch (err) {
         UI.showToast('文件解析失败: ' + err.message, 'error');
       }
     };
     reader.readAsText(file);
     event.target.value = '';
+  }
+
+  function importAirpPreset(json, defaultName) {
+    const presetName = prompt('预设名称:', json.name || defaultName || '导入预设');
+    if (!presetName) return;
+    const id = Utils.generateId();
+    settings.promptPresets[id] = {
+      name: presetName,
+      entries: json.entries,
+      initPrompt: json.initPrompt || '',
+      summaryPrompt: json.summaryPrompt || '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast(`导入成功：${json.entries.length} 条目`, 'success');
   }
 
   function importSillyTavernPreset(json, defaultName) {
@@ -1948,6 +1971,7 @@
     slots.push({ id: 'slot_summaries', name: '故事总结', slot: 'summaries', enabled: true });
     slots.push({ id: 'slot_chat_history', name: '对话历史', slot: 'chat_history', enabled: true });
     slots.push({ id: 'slot_mvu_state', name: '状态栏', slot: 'mvu_state', enabled: true });
+    slots.push({ id: 'slot_user_input', name: '用户输入', slot: 'user_input', enabled: true });
 
     if (chatHistoryIdx >= 0) {
       entries.splice(chatHistoryIdx, 0, ...slots);
@@ -2004,11 +2028,7 @@
     if (!text) return '';
     let s = text;
 
-    // Replace {{getvar::key}} with collected values
-    s = s.replace(/\{\{getvar::([^}]+)\}\}/g, (_, key) => varMap[key] || '');
-
-    // Remove {{setvar::key::value}}
-    s = s.replace(/\{\{setvar::[^}]*\}\}/g, '');
+    // Keep {{setvar}}, {{addvar}}, {{getvar}} intact — resolved at runtime by expandVars
 
     // Remove {{//...}} comments
     s = s.replace(/\{\{\/\/[^}]*\}\}/g, '');

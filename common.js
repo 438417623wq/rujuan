@@ -1412,11 +1412,29 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
       }
     }
 
+    // SillyTavern variable system: collect setvar/addvar from enabled entries, then expand getvar
+    const stVars = {};
+    for (const e of entries) {
+      if (!e.enabled) continue;
+      const c = e.content || '';
+      // setvar: overwrite
+      for (const m of c.matchAll(/\{\{setvar::([^:]+)::([\s\S]*?)\}\}/g)) {
+        stVars[m[1]] = m[2];
+      }
+      // addvar: append
+      for (const m of c.matchAll(/\{\{addvar::([^:]+)::([\s\S]*?)\}\}/g)) {
+        stVars[m[1]] = (stVars[m[1]] || '') + m[2];
+      }
+    }
+
     // Template variable expansion
     const expandVars = (text) => text
       .replace(/\{\{schema\}\}/g, schemaDesc)
       .replace(/\{\{articleWords\}\}/g, String(settings.articleWordCount || 500))
-      .replace(/\{\{summaryWords\}\}/g, String(settings.summaryWordCount || 50));
+      .replace(/\{\{summaryWords\}\}/g, String(settings.summaryWordCount || 50))
+      .replace(/\{\{getvar::([^}]+)\}\}/g, (_, k) => stVars[k] || '')
+      .replace(/\{\{setvar::[^}]*\}\}/g, '')
+      .replace(/\{\{addvar::[^}]*\}\}/g, '');
 
     // Build MVU context string
     const buildMvuContext = () => {
@@ -1575,7 +1593,7 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
 
           case 'user_input': {
             if (pendingUserInput) {
-              msgs.push({ role: 'user', content: '[ 本轮用户消息 ]\n' + pendingUserInput.content });
+              msgs.push({ role: 'user', content: '[ 本轮用户消息 ]\n<interactive_input>\n' + pendingUserInput.content + '\n</interactive_input>' });
             }
             break;
           }
@@ -2168,10 +2186,16 @@ const Utils = {
   },
   renderMarkdown(text) {
     let h = Utils.escapeHtml(text);
+    // Remove HTML comments (escaped by escapeHtml: &lt;!-- ... --&gt;) and collapse leftover blank lines
+    h = h.replace(/&lt;!--[\s\S]*?--&gt;\s*/g, '');
+    h = h.replace(/\n{3,}/g, '\n\n');
     h = h.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     h = h.replace(/\*(.*?)\*/g, '<em>$1</em>');
-    h = h.replace(/「(.*?)」/g, '<span class="quote-text">「$1」</span>');
-    h = h.replace(/"([^"]*?)"/g, '<span class="quote-text">"$1"</span>');
+    // Dialogue quotes: "" "" 「」『』 — straight quotes first (before spans introduce " in attributes)
+    h = h.replace(/"([^"]*)"/g, '<span class=\'quote-text\'>"$1"</span>');
+    h = h.replace(/\u201c([^\u201c\u201d]*)\u201d/g, '<span class=\'quote-text\'>\u201c$1\u201d</span>');
+    h = h.replace(/「([^「」]*)」/g, '<span class=\'quote-text\'>「$1」</span>');
+    h = h.replace(/『([^『』]*)』/g, '<span class=\'quote-text\'>『$1』</span>');
     h = h.replace(/^(\*{3}|---)/gm, '<hr class="story-divider">');
     h = h.replace(/\n/g, '<br>');
     return h;

@@ -959,6 +959,9 @@
             </div>
           </div>
           <div class="conv-card-actions">
+            <button class="btn-icon" onclick="forkConversation('${conv.id}', event)" title="复制">
+              ${getIcon('copy', 15)}
+            </button>
             <button class="btn-icon" onclick="exportConversation('${conv.id}', event)" title="导出">
               ${getIcon('download', 15)}
             </button>
@@ -1155,6 +1158,22 @@
         loadConversations();
       },
     });
+  }
+
+  // ── Fork Conversation ────────────────────────────
+  async function forkConversation(id, event) {
+    event.stopPropagation();
+    UI.showToast('正在复制...', 'info');
+    const conv = await Storage.loadConversation(id);
+    if (!conv) { UI.showToast('无法加载对话', 'error'); return; }
+    const fork = JSON.parse(JSON.stringify(conv));
+    fork.id = Utils.generateId();
+    fork.name = (conv.name || '对话') + ' (副本)';
+    fork.createdAt = Date.now();
+    fork.updatedAt = Date.now();
+    Storage.saveConversation(fork);
+    loadConversations();
+    UI.showToast('对话已复制', 'success');
   }
 
   // ── Export Single Conversation ──────────────────
