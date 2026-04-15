@@ -138,9 +138,8 @@
       background: var(--bg-surface);
       border: 1px solid var(--border-strong);
       border-radius: var(--radius-lg);
-      width: 92%;
-      max-width: 680px;
-      max-height: 85vh;
+      width: min(96vw, 1220px);
+      max-height: min(90vh, 980px);
       display: flex;
       flex-direction: column;
       box-shadow: 0 16px 48px rgba(0,0,0,.5);
@@ -159,16 +158,380 @@
       font-weight: 600;
       color: var(--accent);
     }
+    .world-setting-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px 0;
+      flex-shrink: 0;
+    }
+    .world-setting-tab {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .world-setting-tab:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .world-setting-tab.active {
+      background: var(--accent-dim);
+      border-color: rgba(201, 164, 76, 0.35);
+      color: var(--accent);
+    }
     .world-setting-body {
       flex: 1;
       overflow-y: auto;
       padding: 16px 20px;
+    }
+    .world-setting-panel {
+      display: none;
+      min-height: 0;
+    }
+    .world-setting-panel.active {
+      display: block;
+    }
+    .world-setting-note {
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
     }
     .world-setting-body textarea {
       min-height: 300px;
       resize: vertical;
       line-height: 1.6;
       font-size: 13px;
+    }
+    .worldbook-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .worldbook-toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .worldbook-toolbar input,
+    .worldbook-toolbar select {
+      min-width: 160px;
+    }
+    .worldbook-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .worldbook-stat {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.02);
+      min-width: 120px;
+    }
+    .worldbook-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .worldbook-stat-value {
+      margin-top: 4px;
+      font-size: 18px;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .worldbook-layout {
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      gap: 14px;
+      min-height: 520px;
+    }
+    .worldbook-column {
+      min-height: 0;
+    }
+    .worldbook-list-column {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      background: rgba(255,255,255,0.02);
+      display: flex;
+      flex-direction: column;
+    }
+    .worldbook-list {
+      overflow-y: auto;
+      min-height: 0;
+      flex: 1;
+    }
+    .worldbook-list-empty {
+      padding: 28px 18px;
+      color: var(--text-muted);
+      text-align: center;
+      font-size: 13px;
+    }
+    .worldbook-entry {
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease;
+    }
+    .worldbook-entry:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    .worldbook-entry.active {
+      background: var(--accent-dim);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .worldbook-entry:last-child {
+      border-bottom: none;
+    }
+    .worldbook-entry-head {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .worldbook-entry-title {
+      font-size: 13px;
+      color: var(--text-primary);
+      font-weight: 600;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .worldbook-entry-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 8px;
+    }
+    .worldbook-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.02);
+    }
+    .worldbook-tag.active {
+      color: var(--success);
+      border-color: rgba(124,184,122,.35);
+      background: rgba(124,184,122,.12);
+    }
+    .worldbook-tag.constant {
+      color: var(--accent);
+      border-color: rgba(201,164,76,.35);
+      background: rgba(201,164,76,.12);
+    }
+    .worldbook-entry-keywords {
+      margin-top: 8px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .worldbook-editor-column {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-height: 0;
+    }
+    .worldbook-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      background: rgba(255,255,255,0.02);
+    }
+    .worldbook-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+    .worldbook-card-subtitle {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .worldbook-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .worldbook-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .worldbook-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .worldbook-checkbox {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    .worldbook-checkbox input {
+      width: auto;
+      margin: 0;
+    }
+    .worldbook-actions-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .worldbook-editor-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .worldbook-editor-entry {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+      transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+    }
+    .worldbook-editor-entry.selected {
+      border-color: rgba(201,164,76,.35);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .worldbook-editor-entry.expanded {
+      background: rgba(255,255,255,0.03);
+    }
+    .worldbook-editor-head {
+      padding: 12px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .worldbook-editor-head:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    .worldbook-editor-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .worldbook-editor-title-group {
+      flex: 1;
+      min-width: 0;
+    }
+    .worldbook-editor-title {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .worldbook-editor-meta {
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .worldbook-editor-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    .worldbook-editor-preview {
+      margin-top: 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .worldbook-editor-chevron {
+      width: 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      flex-shrink: 0;
+      transition: transform .15s ease, color .15s ease;
+    }
+    .worldbook-editor-entry.expanded .worldbook-editor-chevron {
+      transform: rotate(90deg);
+      color: var(--accent);
+    }
+    .worldbook-editor-body {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 14px;
+    }
+    .worldbook-editor-body.collapsed {
+      display: none;
+    }
+    .worldbook-active-preview {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: 220px;
+      overflow-y: auto;
+    }
+    .worldbook-active-item {
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.02);
+    }
+    .worldbook-active-item-title {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .worldbook-active-item-meta {
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-bottom: 6px;
+    }
+    .worldbook-active-item-content {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .worldbook-entry-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    @media (max-width: 960px) {
+      .worldbook-layout {
+        grid-template-columns: 1fr;
+      }
+      .worldbook-grid,
+      .worldbook-grid-3 {
+        grid-template-columns: 1fr;
+      }
     }
     .world-setting-footer {
       padding: 12px 20px;
@@ -1044,6 +1407,97 @@
     .debug-pre.collapsed {
       display: none;
     }
+    .debug-worldbook-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .debug-worldbook-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .debug-worldbook-entry {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--bg-surface);
+    }
+    .debug-worldbook-entry-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--bg-elevated);
+      cursor: pointer;
+      user-select: none;
+    }
+    .debug-worldbook-entry-head:hover {
+      background: var(--accent-dim);
+    }
+    .debug-worldbook-title {
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 1;
+      min-width: 0;
+    }
+    .debug-worldbook-meta {
+      font-family: var(--font-ui);
+      font-size: 11px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+    .debug-worldbook-body {
+      padding: 10px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-surface);
+    }
+    .debug-worldbook-body.collapsed {
+      display: none;
+    }
+    .debug-worldbook-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .debug-worldbook-tag {
+      font-family: var(--font-ui);
+      font-size: 10px;
+      line-height: 1.2;
+      color: var(--text-secondary);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 7px;
+    }
+    .debug-worldbook-tag.accent {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .debug-worldbook-content {
+      font-family: 'SF Mono', 'Fira Code', 'Menlo', monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text-secondary);
+      background: var(--bg-deep);
+      border-radius: calc(var(--radius) - 2px);
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .debug-worldbook-empty {
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      font-size: 12px;
+    }
 
     /* ---- Scroll-to-bottom button ---- */
     .scroll-bottom-btn {
@@ -1573,13 +2027,103 @@
 <div class="world-setting-overlay" id="worldSettingOverlay" onclick="if(event.target===this)closeWorldSetting()">
   <div class="world-setting-modal">
     <div class="world-setting-header">
-      <span class="world-setting-title">World Setting</span>
+      <span class="world-setting-title">世界设定 / 世界书</span>
       <button class="btn-icon" onclick="closeWorldSetting()" style="width:28px;height:28px;">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    <div class="world-setting-tabs">
+      <button class="world-setting-tab active" id="worldSettingTabStory" onclick="switchWorldSettingTab('story')">故事设定</button>
+      <button class="world-setting-tab" id="worldSettingTabBook" onclick="switchWorldSettingTab('worldbook')">世界书</button>
+    </div>
     <div class="world-setting-body">
-      <textarea id="worldSettingText" placeholder="暂无世界设定。在初始化阶段确认后会自动生成。"></textarea>
+      <div class="world-setting-panel active" id="worldSettingStoryPanel">
+        <div class="world-setting-note">
+          这里保留原有的完整故事设定正文。它会作为固定背景随会话保存。
+        </div>
+        <textarea id="worldSettingText" placeholder="暂无世界设定。在初始化阶段确认后会自动生成。" oninput="onWorldSettingStoryInput(this.value)"></textarea>
+      </div>
+      <div class="world-setting-panel" id="worldSettingBookPanel">
+        <div class="world-setting-note">
+          世界书用于维护可检索、可导入导出的细粒度设定条目。命中条目会动态加入 Prompt，行为上接近酒馆 AI 的世界书/Lorebook。
+        </div>
+        <div class="worldbook-toolbar">
+          <div class="worldbook-toolbar-group">
+            <input type="text" id="worldBookSearch" placeholder="搜索标题、关键词或正文" oninput="onWorldBookSearch(this.value)">
+            <select id="worldBookFilter" onchange="onWorldBookFilter(this.value)">
+              <option value="all">全部条目</option>
+              <option value="enabled">仅启用</option>
+              <option value="constant">仅常驻</option>
+              <option value="active">仅当前命中</option>
+            </select>
+          </div>
+          <div class="worldbook-toolbar-group">
+            <button class="btn btn-secondary" onclick="addWorldBookEntry()">新增条目</button>
+            <button class="btn btn-secondary" onclick="duplicateWorldBookEntry()">复制条目</button>
+            <button class="btn btn-secondary" onclick="deleteWorldBookEntry()">删除条目</button>
+            <button class="btn btn-secondary" onclick="triggerWorldBookImport()">导入</button>
+            <button class="btn btn-secondary" onclick="exportWorldBook('airp')">导出 AIRP</button>
+            <button class="btn btn-secondary" onclick="exportWorldBook('tavern')">导出酒馆</button>
+          </div>
+        </div>
+        <div class="worldbook-stats" id="worldBookStats"></div>
+        <div class="worldbook-layout">
+          <div class="worldbook-column worldbook-list-column">
+            <div class="worldbook-list" id="worldBookList"></div>
+          </div>
+          <div class="worldbook-column worldbook-editor-column">
+            <div class="worldbook-card">
+              <div class="worldbook-card-title">世界书设置</div>
+              <div class="worldbook-grid">
+                <div class="form-group">
+                  <label>名称</label>
+                  <input type="text" id="worldBookName" onchange="updateWorldBookMeta('name', this.value)">
+                </div>
+                <div class="form-group">
+                  <label>描述</label>
+                  <input type="text" id="worldBookDescription" onchange="updateWorldBookMeta('description', this.value)">
+                </div>
+              </div>
+              <div class="worldbook-grid-3">
+                <div class="form-group">
+                  <label>扫描深度</label>
+                  <input type="number" min="1" max="50" id="worldBookScanDepth" onchange="updateWorldBookSetting('scanDepth', this.value, 'number')">
+                </div>
+                <div class="form-group">
+                  <label>最大激活条目</label>
+                  <input type="number" min="1" max="100" id="worldBookMaxEntries" onchange="updateWorldBookSetting('maxEntries', this.value, 'number')">
+                </div>
+                <div class="form-group">
+                  <label>字符预算</label>
+                  <input type="number" min="200" max="50000" id="worldBookMaxChars" onchange="updateWorldBookSetting('maxChars', this.value, 'number')">
+                </div>
+              </div>
+              <div class="worldbook-grid">
+                <div class="form-group">
+                  <label>递归扫描步数</label>
+                  <input type="number" min="0" max="10" id="worldBookMaxRecursionSteps" onchange="updateWorldBookSetting('maxRecursionSteps', this.value, 'number')">
+                </div>
+                <div class="form-group">
+                  <label>全局匹配模式</label>
+                  <select id="worldBookMatchWholeWords" onchange="updateWorldBookSetting('matchWholeWords', this.value === 'true', 'boolean')">
+                    <option value="false">默认包含匹配</option>
+                    <option value="true">整词匹配</option>
+                  </select>
+                </div>
+              </div>
+              <div class="worldbook-checkboxes">
+                <label class="worldbook-checkbox"><input type="checkbox" id="worldBookRecursiveScan" onchange="updateWorldBookSetting('recursiveScan', this.checked, 'boolean')">递归扫描激活条目内容</label>
+                <label class="worldbook-checkbox"><input type="checkbox" id="worldBookCaseSensitive" onchange="updateWorldBookSetting('caseSensitive', this.checked, 'boolean')">全局区分大小写</label>
+              </div>
+            </div>
+            <div class="worldbook-card" id="worldBookEditor"></div>
+            <div class="worldbook-card">
+              <div class="worldbook-card-title">当前命中预览</div>
+              <div class="worldbook-active-preview" id="worldBookActivePreview"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="world-setting-footer">
       <button class="btn btn-secondary" onclick="closeWorldSetting()">取消</button>
@@ -1587,6 +2131,7 @@
     </div>
   </div>
 </div>
+<input type="file" id="worldBookImportInput" accept=".json" style="display:none" onchange="handleWorldBookImport(event)">
 
 <!-- Sidebar overlay for mobile -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeAnySidebar()"></div>
@@ -1624,11 +2169,134 @@ let currentAbortController = null;
 let streamStartTime = 0;
 let streamStatusTimer = null;
 let lastFailedUserMsgId = null;
+let worldSettingDraft = null;
+let worldSettingTab = 'story';
+let worldBookSearch = '';
+let worldBookFilter = 'all';
+let worldBookSelectedUid = null;
+let worldBookExpandedUid = null;
+let nativeAiNotificationStarted = false;
+let nativeStreamSessionId = null;
+let nativeStreamPollTimer = null;
+let nativeStreamLastText = '';
+let nativeStreamAiMsgId = null;
+
+function getNativeNotificationTargetPath() {
+  return conversation?.id ? `chat.html?id=${encodeURIComponent(conversation.id)}` : 'index.html';
+}
+
+function getNativeNotificationTitle() {
+  return (conversation?.name || '未命名故事').trim();
+}
+
+function buildNativeAiNotificationPreview(text) {
+  const raw = Utils.extractStoryContent(text, true) || Summary.cleanAbstract(MVU.cleanText(text)) || '';
+  const plain = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain || 'AI 已生成新内容，点按查看';
+}
+
+function notifyAiStreamingStart() {
+  if (nativeAiNotificationStarted) return;
+  nativeAiNotificationStarted = true;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.notifyAiStreaming) {
+      window.AndroidBridge.notifyAiStreaming(getNativeNotificationTargetPath(), getNativeNotificationTitle());
+    }
+  } catch (e) {
+    log('notifyAiStreaming failed:', e);
+  }
+}
+
+function notifyAiStreamingDone(text) {
+  nativeAiNotificationStarted = false;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.notifyAiReply) {
+      window.AndroidBridge.notifyAiReply(
+        getNativeNotificationTargetPath(),
+        getNativeNotificationTitle(),
+        buildNativeAiNotificationPreview(text)
+      );
+    }
+  } catch (e) {
+    log('notifyAiReply failed:', e);
+  }
+}
+
+function cancelAiStreamingNotification() {
+  nativeAiNotificationStarted = false;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.cancelAiNotification) {
+      window.AndroidBridge.cancelAiNotification();
+    }
+  } catch (e) {
+    log('cancelAiNotification failed:', e);
+  }
+}
+
+function canUseNativeBackgroundStreaming() {
+  return !editMvuMode && !!(window.AndroidBridge && window.AndroidBridge.startNativeAiStream);
+}
+
+function clearNativeStreamPolling() {
+  if (nativeStreamPollTimer) {
+    clearInterval(nativeStreamPollTimer);
+    nativeStreamPollTimer = null;
+  }
+}
+
+function clearNativeStreamTracking() {
+  clearNativeStreamPolling();
+  nativeStreamSessionId = null;
+  nativeStreamLastText = '';
+  nativeStreamAiMsgId = null;
+}
+
+function getNativeStreamState(sessionId) {
+  if (!sessionId || !window.AndroidBridge?.getNativeAiStreamState) return null;
+  try {
+    const raw = window.AndroidBridge.getNativeAiStreamState(sessionId);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    log('getNativeStreamState failed:', e);
+    return null;
+  }
+}
+
+function clearNativeStreamState(sessionId) {
+  try {
+    if (sessionId && window.AndroidBridge?.clearNativeAiStreamState) {
+      window.AndroidBridge.clearNativeAiStreamState(sessionId);
+    }
+  } catch (e) {
+    log('clearNativeAiStreamState failed:', e);
+  }
+}
+
+function setNativeAbortController(sessionId) {
+  currentAbortController = {
+    isNative: true,
+    sessionId,
+    abort() {
+      try {
+        if (window.AndroidBridge?.cancelNativeAiStream) {
+          window.AndroidBridge.cancelNativeAiStream(sessionId);
+        }
+      } catch (e) {
+        log('cancelNativeAiStream failed:', e);
+      }
+    },
+  };
+}
 
 // ============================================================
 // Initialization
 // ============================================================
 document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    resumeNativeStreamIfNeeded();
+  }
+});
 
 async function init() {
   await Config.load();
@@ -1658,6 +2326,7 @@ async function init() {
     setTimeout(() => goBack(), 1200);
     return;
   }
+  WorldBook.ensureConversation(conversation);
 
   // Clean up stale per-conversation API fields (now global-only)
   if (conversation.apiProfileId || conversation.model) {
@@ -1706,6 +2375,7 @@ async function init() {
   setupScrollDetection();
   setupIOSKeyboardFix();
   updateSendButton();
+  resumeNativeStreamIfNeeded();
 
   // Restore options from last AI message
   const lastAiMsg = [...conversation.messages].reverse().find(m => m.role === 'assistant');
@@ -1849,7 +2519,7 @@ function renderMoreMenu() {
   // --- Tools section ---
   html += `<div class="topbar-menu-item" onclick="closeMoreMenu();openWorldSetting()">
     ${icon('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>')}
-    世界设定</div>`;
+    世界设定 / 世界书</div>`;
   html += `<div class="topbar-menu-item" onclick="closeMoreMenu();enterEditMvuMode()">
     ${icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>')}
     编辑状态栏</div>`;
@@ -1932,23 +2602,474 @@ document.addEventListener('click', () => { if (_moreMenuOpen) closeMoreMenu(); }
 // ============================================================
 
 function openWorldSetting() {
-  const textarea = document.getElementById('worldSettingText');
-  textarea.value = conversation?.storySetting || '';
+  if (!conversation) return;
+  WorldBook.ensureConversation(conversation);
+  worldSettingDraft = {
+    storySetting: conversation.storySetting || '',
+    worldBook: WorldBook.normalizeBook(
+      JSON.parse(JSON.stringify(conversation.worldBook || null)),
+      (conversation.name || '未命名故事') + ' 世界书'
+    ),
+  };
+  if (!hasWorldBookUid(worldBookSelectedUid) || !worldSettingDraft.worldBook.entries.some(entry => entry.uid === worldBookSelectedUid)) {
+    worldBookSelectedUid = worldSettingDraft.worldBook.entries[0]?.uid || null;
+  }
+  if (!hasWorldBookUid(worldBookExpandedUid) || !worldSettingDraft.worldBook.entries.some(entry => entry.uid === worldBookExpandedUid)) {
+    worldBookExpandedUid = worldBookSelectedUid;
+  }
+  renderWorldSettingModal();
   document.getElementById('worldSettingOverlay').classList.add('visible');
-  textarea.focus();
+  if (worldSettingTab === 'story') {
+    document.getElementById('worldSettingText').focus();
+  }
 }
 
 function closeWorldSetting() {
   document.getElementById('worldSettingOverlay').classList.remove('visible');
+  worldSettingDraft = null;
 }
 
 function saveWorldSetting() {
-  const text = document.getElementById('worldSettingText').value.trim();
-  if (!conversation) return;
-  conversation.storySetting = text;
+  if (!conversation || !worldSettingDraft) return;
+  conversation.storySetting = (worldSettingDraft.storySetting || '').trim();
+  conversation.worldBook = WorldBook.normalizeBook(
+    worldSettingDraft.worldBook,
+    (conversation.name || '未命名故事') + ' 世界书'
+  );
   Storage.saveConversation(conversation);
+  worldSettingDraft = null;
   closeWorldSetting();
-  UI.showToast('世界设定已保存', 'success');
+  UI.showToast('世界设定与世界书已保存', 'success');
+}
+
+function switchWorldSettingTab(tab) {
+  worldSettingTab = tab === 'worldbook' ? 'worldbook' : 'story';
+  const storyTab = document.getElementById('worldSettingTabStory');
+  const bookTab = document.getElementById('worldSettingTabBook');
+  const storyPanel = document.getElementById('worldSettingStoryPanel');
+  const bookPanel = document.getElementById('worldSettingBookPanel');
+  if (!storyTab || !bookTab || !storyPanel || !bookPanel) return;
+  storyTab.classList.toggle('active', worldSettingTab === 'story');
+  bookTab.classList.toggle('active', worldSettingTab === 'worldbook');
+  storyPanel.classList.toggle('active', worldSettingTab === 'story');
+  bookPanel.classList.toggle('active', worldSettingTab === 'worldbook');
+}
+
+function onWorldSettingStoryInput(value) {
+  if (!worldSettingDraft) return;
+  worldSettingDraft.storySetting = value;
+}
+
+function renderWorldSettingModal() {
+  if (!worldSettingDraft) return;
+  document.getElementById('worldSettingText').value = worldSettingDraft.storySetting || '';
+  switchWorldSettingTab(worldSettingTab);
+  renderWorldBookUI();
+}
+
+function getWorldBookDraft() {
+  if (!worldSettingDraft) return null;
+  worldSettingDraft.worldBook = WorldBook.normalizeBook(
+    worldSettingDraft.worldBook,
+    (conversation?.name || '未命名故事') + ' 世界书'
+  );
+  return worldSettingDraft.worldBook;
+}
+
+function getWorldBookDraftConversation() {
+  if (!conversation || !worldSettingDraft) return null;
+  return {
+    ...conversation,
+    storySetting: worldSettingDraft.storySetting || '',
+    worldBook: getWorldBookDraft(),
+  };
+}
+
+function hasWorldBookUid(uid) {
+  return uid !== null && uid !== undefined;
+}
+
+function onWorldBookSearch(value) {
+  worldBookSearch = value || '';
+  renderWorldBookUI();
+}
+
+function onWorldBookFilter(value) {
+  worldBookFilter = value || 'all';
+  renderWorldBookUI();
+}
+
+function renderWorldBookUI() {
+  const book = getWorldBookDraft();
+  if (!book) return;
+
+  document.getElementById('worldBookName').value = book.name || '';
+  document.getElementById('worldBookDescription').value = book.description || '';
+  document.getElementById('worldBookScanDepth').value = book.settings.scanDepth;
+  document.getElementById('worldBookMaxEntries').value = book.settings.maxEntries;
+  document.getElementById('worldBookMaxChars').value = book.settings.maxChars;
+  document.getElementById('worldBookMaxRecursionSteps').value = book.settings.maxRecursionSteps;
+  document.getElementById('worldBookRecursiveScan').checked = !!book.settings.recursiveScan;
+  document.getElementById('worldBookCaseSensitive').checked = !!book.settings.caseSensitive;
+  document.getElementById('worldBookMatchWholeWords').value = String(!!book.settings.matchWholeWords);
+  document.getElementById('worldBookSearch').value = worldBookSearch;
+  document.getElementById('worldBookFilter').value = worldBookFilter;
+
+  const activeEntries = WorldBook.buildPromptBlocks(getWorldBookDraftConversation()).active || [];
+  const activeIds = new Set(activeEntries.map(entry => entry.uid));
+  const filtered = getFilteredWorldBookEntries(book.entries, activeIds);
+  const filteredIds = new Set(filtered.map(entry => entry.uid));
+  if (!hasWorldBookUid(worldBookSelectedUid) || !filteredIds.has(worldBookSelectedUid)) {
+    worldBookSelectedUid = filtered[0]?.uid || book.entries[0]?.uid || null;
+  }
+  if (hasWorldBookUid(worldBookExpandedUid) && !filteredIds.has(worldBookExpandedUid)) {
+    worldBookExpandedUid = filtered[0]?.uid || null;
+  }
+
+  renderWorldBookStats(book, activeEntries);
+  renderWorldBookList(filtered, activeIds);
+  renderWorldBookEditor(book, filtered, activeIds);
+  renderWorldBookActivePreview(activeEntries);
+}
+
+function getFilteredWorldBookEntries(entries, activeIds) {
+  const keyword = worldBookSearch.trim().toLowerCase();
+  return entries.filter(entry => {
+    if (worldBookFilter === 'enabled' && !entry.enabled) return false;
+    if (worldBookFilter === 'constant' && !entry.constant) return false;
+    if (worldBookFilter === 'active' && !activeIds.has(entry.uid)) return false;
+    if (!keyword) return true;
+    const haystack = [
+      entry.title,
+      entry.comment,
+      entry.content,
+      ...(entry.keys || []),
+      ...(entry.secondaryKeys || []),
+    ].join('\n').toLowerCase();
+    return haystack.includes(keyword);
+  });
+}
+
+function renderWorldBookStats(book, activeEntries) {
+  const enabledCount = book.entries.filter(entry => entry.enabled).length;
+  const constantCount = book.entries.filter(entry => entry.constant).length;
+  const html = [
+    { label: '总条目', value: book.entries.length },
+    { label: '已启用', value: enabledCount },
+    { label: '常驻项', value: constantCount },
+    { label: '当前命中', value: activeEntries.length },
+  ].map(item => `
+    <div class="worldbook-stat">
+      <div class="worldbook-stat-label">${item.label}</div>
+      <div class="worldbook-stat-value">${item.value}</div>
+    </div>
+  `).join('');
+  document.getElementById('worldBookStats').innerHTML = html;
+}
+
+function renderWorldBookList(entries, activeIds) {
+  const list = document.getElementById('worldBookList');
+  if (!entries.length) {
+    list.innerHTML = '<div class="worldbook-list-empty">没有匹配的世界书条目。</div>';
+    return;
+  }
+  list.innerHTML = entries.map(entry => {
+    const tags = [];
+    if (entry.enabled) tags.push('<span class="worldbook-tag">启用</span>');
+    else tags.push('<span class="worldbook-tag">停用</span>');
+    if (entry.constant) tags.push('<span class="worldbook-tag constant">常驻</span>');
+    if (activeIds.has(entry.uid)) tags.push('<span class="worldbook-tag active">命中</span>');
+    return `
+      <div class="worldbook-entry${entry.uid === worldBookSelectedUid ? ' active' : ''}" onclick="selectWorldBookEntry(${entry.uid})">
+        <div class="worldbook-entry-head">
+          <div class="worldbook-entry-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
+          <div class="worldbook-tag">${Utils.escapeHtml(entry.position)}</div>
+        </div>
+        <div class="worldbook-entry-tags">${tags.join('')}</div>
+        <div class="worldbook-entry-keywords">${Utils.escapeHtml((entry.keys || []).join(', ') || '无主关键词')}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function buildWorldBookEntryEditorFields(entry) {
+  return `
+    <div class="worldbook-grid">
+      <div class="form-group">
+        <label>标题 / 备注</label>
+        <input type="text" value="${Utils.escapeHtml(entry.comment || entry.title || '')}" onchange="updateWorldBookEntryField('comment', this.value)">
+      </div>
+      <div class="form-group">
+        <label>排序</label>
+        <input type="number" value="${entry.order}" onchange="updateWorldBookEntryField('order', this.value, 'number')">
+      </div>
+    </div>
+    <div class="worldbook-grid">
+      <div class="form-group">
+        <label>主关键词</label>
+        <textarea style="min-height:92px;" onchange="updateWorldBookEntryListField('keys', this.value)" placeholder="每行一个，或用逗号分隔">${Utils.escapeHtml((entry.keys || []).join('\n'))}</textarea>
+      </div>
+      <div class="form-group">
+        <label>次关键词</label>
+        <textarea style="min-height:92px;" onchange="updateWorldBookEntryListField('secondaryKeys', this.value)" placeholder="用于更精细的条件触发">${Utils.escapeHtml((entry.secondaryKeys || []).join('\n'))}</textarea>
+      </div>
+    </div>
+    <div class="worldbook-grid-3">
+      <div class="form-group">
+        <label>插入位置</label>
+        <select onchange="updateWorldBookEntryField('position', this.value)">
+          ${['before_char', 'after_char', 'before_input', 'after_input'].map(position => `<option value="${position}" ${entry.position === position ? 'selected' : ''}>${position}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>次关键词逻辑</label>
+        <select onchange="updateWorldBookEntryField('selectiveLogic', this.value)">
+          ${[
+            ['and_any', '命中任一'],
+            ['and_all', '命中全部'],
+            ['not_any', '全部不命中'],
+            ['not_all', '不全部命中'],
+          ].map(([value, label]) => `<option value="${value}" ${entry.selectiveLogic === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>概率</label>
+        <input type="number" min="0" max="100" value="${entry.probability}" onchange="updateWorldBookEntryField('probability', this.value, 'number')">
+      </div>
+    </div>
+    <div class="worldbook-checkboxes">
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateWorldBookEntryField('enabled', this.checked, 'boolean')">启用</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.constant ? 'checked' : ''} onchange="updateWorldBookEntryField('constant', this.checked, 'boolean')">常驻条目</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.selective !== false ? 'checked' : ''} onchange="updateWorldBookEntryField('selective', this.checked, 'boolean')">启用副关键词条件</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.useRegex ? 'checked' : ''} onchange="updateWorldBookEntryField('useRegex', this.checked, 'boolean')">正则匹配</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.matchWholeWords ? 'checked' : ''} onchange="updateWorldBookEntryField('matchWholeWords', this.checked, 'boolean')">整词匹配</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.caseSensitive ? 'checked' : ''} onchange="updateWorldBookEntryField('caseSensitive', this.checked, 'boolean')">区分大小写</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.disableRecursion ? 'checked' : ''} onchange="updateWorldBookEntryField('disableRecursion', this.checked, 'boolean')">禁止递归命中</label>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>条目正文</label>
+      <textarea style="min-height:220px;" onchange="updateWorldBookEntryField('content', this.value)">${Utils.escapeHtml(entry.content || '')}</textarea>
+    </div>
+    <div class="worldbook-actions-inline">
+      <button class="btn btn-secondary" onclick="moveWorldBookEntry(-1)">上移</button>
+      <button class="btn btn-secondary" onclick="moveWorldBookEntry(1)">下移</button>
+    </div>
+  `;
+}
+
+function renderWorldBookEditor(book, entries, activeIds) {
+  const container = document.getElementById('worldBookEditor');
+  if (!entries.length) {
+    container.innerHTML = `
+      <div class="worldbook-card-title">条目查看 / 编辑</div>
+      <div class="worldbook-entry-empty">当前筛选下没有可显示的世界书条目。</div>
+    `;
+    return;
+  }
+
+  const expandedUid = hasWorldBookUid(worldBookExpandedUid) && entries.some(entry => entry.uid === worldBookExpandedUid)
+    ? worldBookExpandedUid
+    : null;
+
+  container.innerHTML = `
+    <div class="worldbook-card-title">条目查看 / 编辑</div>
+    <div class="worldbook-card-subtitle">参考 TauriTavern 的世界书交互，这里改成了折叠式条目编辑。点击条目头部即可查看、折叠并直接编辑。</div>
+    <div class="worldbook-editor-list">
+      ${entries.map((entry, index) => {
+        const isExpanded = entry.uid === expandedUid;
+        const isSelected = entry.uid === worldBookSelectedUid;
+        const bodyHtml = isExpanded ? buildWorldBookEntryEditorFields(entry) : '';
+        const tags = [];
+        tags.push(`<span class="worldbook-tag">${Utils.escapeHtml(entry.position)}</span>`);
+        if (entry.enabled) tags.push('<span class="worldbook-tag">启用</span>');
+        else tags.push('<span class="worldbook-tag">停用</span>');
+        if (entry.constant) tags.push('<span class="worldbook-tag constant">常驻</span>');
+        if (activeIds.has(entry.uid)) tags.push('<span class="worldbook-tag active">命中</span>');
+        const preview = Utils.escapeHtml((entry.content || '').trim() || '暂无正文').replace(/\n/g, '<br>');
+        return `
+          <div class="worldbook-editor-entry${isExpanded ? ' expanded' : ''}${isSelected ? ' selected' : ''}">
+            <div class="worldbook-editor-head" onclick="toggleWorldBookEntry(${entry.uid})">
+              <div class="worldbook-editor-title-row">
+                <div class="worldbook-editor-title-group">
+                  <div class="worldbook-editor-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
+                  <div class="worldbook-editor-meta">#${index + 1} · 排序 ${entry.order} · 主关键词 ${(entry.keys || []).length} 个 · 正文 ${(entry.content || '').length} 字</div>
+                </div>
+                <div class="worldbook-editor-tags">${tags.join('')}</div>
+                <div class="worldbook-editor-chevron">▶</div>
+              </div>
+              <div class="worldbook-editor-preview">${preview}</div>
+            </div>
+            <div class="worldbook-editor-body${isExpanded ? '' : ' collapsed'}">
+              ${bodyHtml}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderWorldBookActivePreview(activeEntries) {
+  const container = document.getElementById('worldBookActivePreview');
+  if (!activeEntries.length) {
+    container.innerHTML = '<div class="worldbook-entry-empty">当前上下文没有命中任何世界书条目。</div>';
+    return;
+  }
+  container.innerHTML = activeEntries.map(entry => `
+    <div class="worldbook-active-item">
+      <div class="worldbook-active-item-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
+      <div class="worldbook-active-item-meta">位置: ${Utils.escapeHtml(entry.position)} · 排序: ${entry.order}</div>
+      <div class="worldbook-active-item-content">${Utils.escapeHtml(entry.content)}</div>
+    </div>
+  `).join('');
+}
+
+function selectWorldBookEntry(uid) {
+  worldBookSelectedUid = Number(uid);
+  worldBookExpandedUid = Number(uid);
+  renderWorldBookUI();
+}
+
+function toggleWorldBookEntry(uid) {
+  const nextUid = Number(uid);
+  worldBookSelectedUid = nextUid;
+  worldBookExpandedUid = worldBookExpandedUid === nextUid ? null : nextUid;
+  renderWorldBookUI();
+}
+
+function updateWorldBookMeta(field, value) {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  book[field] = value;
+}
+
+function updateWorldBookSetting(field, value, type = 'text') {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  if (type === 'number') book.settings[field] = Math.max(0, Number(value) || 0);
+  else if (type === 'boolean') book.settings[field] = !!value;
+  else book.settings[field] = value;
+  renderWorldBookUI();
+}
+
+function getSelectedWorldBookEntry() {
+  const book = getWorldBookDraft();
+  if (!book) return null;
+  return book.entries.find(entry => entry.uid === worldBookSelectedUid) || null;
+}
+
+function updateWorldBookEntryField(field, value, type = 'text') {
+  const entry = getSelectedWorldBookEntry();
+  if (!entry) return;
+  if (type === 'number') {
+    entry[field] = Number(value) || 0;
+  } else if (type === 'boolean') {
+    entry[field] = !!value;
+  } else {
+    entry[field] = value;
+    if (field === 'comment') entry.title = value || entry.title;
+  }
+  renderWorldBookUI();
+}
+
+function updateWorldBookEntryListField(field, value) {
+  const entry = getSelectedWorldBookEntry();
+  if (!entry) return;
+  entry[field] = String(value || '').split(/\r?\n|,/).map(item => item.trim()).filter(Boolean);
+  renderWorldBookUI();
+}
+
+function addWorldBookEntry() {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const entry = WorldBook.createEntry();
+  book.entries.unshift(entry);
+  worldBookSelectedUid = entry.uid;
+  worldBookExpandedUid = entry.uid;
+  renderWorldBookUI();
+}
+
+function duplicateWorldBookEntry() {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  const copy = WorldBook.createEntry({
+    ...JSON.parse(JSON.stringify(entry)),
+    comment: (entry.comment || entry.title || '条目') + ' (副本)',
+  });
+  const index = book.entries.findIndex(item => item.uid === entry.uid);
+  book.entries.splice(index + 1, 0, copy);
+  worldBookSelectedUid = copy.uid;
+  worldBookExpandedUid = copy.uid;
+  renderWorldBookUI();
+}
+
+function deleteWorldBookEntry() {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  UI.showConfirm({
+    title: '删除世界书条目',
+    message: `确定删除「${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}」吗？`,
+    onConfirm: () => {
+      book.entries = book.entries.filter(item => item.uid !== entry.uid);
+      worldBookSelectedUid = book.entries[0]?.uid || null;
+      worldBookExpandedUid = worldBookSelectedUid;
+      renderWorldBookUI();
+    },
+  });
+}
+
+function moveWorldBookEntry(delta) {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  const index = book.entries.findIndex(item => item.uid === entry.uid);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= book.entries.length) return;
+  const [item] = book.entries.splice(index, 1);
+  book.entries.splice(target, 0, item);
+  renderWorldBookUI();
+}
+
+function triggerWorldBookImport() {
+  document.getElementById('worldBookImportInput').click();
+}
+
+function handleWorldBookImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const parsed = JSON.parse(e.target.result);
+      const imported = WorldBook.importAny(parsed);
+      if (!worldSettingDraft) return;
+      worldSettingDraft.worldBook = imported;
+      worldBookSelectedUid = imported.entries[0]?.uid || null;
+      worldBookExpandedUid = worldBookSelectedUid;
+      renderWorldBookUI();
+      UI.showToast(`世界书导入成功，共 ${imported.entries.length} 条`, 'success');
+    } catch (err) {
+      UI.showToast('世界书文件格式无效: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function exportWorldBook(format) {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const payload = format === 'tavern' ? WorldBook.exportSillyTavern(book) : WorldBook.exportAirp(book);
+  const extName = format === 'tavern' ? 'tavern' : 'airp';
+  const baseName = (book.name || 'worldbook').replace(/[\/\\:*?"<>|]/g, '_');
+  Utils.downloadFile(
+    JSON.stringify(payload, null, 2),
+    `${baseName}-${extName}.json`,
+    'application/json;charset=utf-8'
+  );
+  UI.showToast('世界书已导出', 'success');
 }
 
 // ============================================================
@@ -2590,12 +3711,280 @@ function removeStreamStatus() {
   if (streamStatusTimer) { clearInterval(streamStatusTimer); streamStatusTimer = null; }
 }
 
+function finalizeStreamCleanup() {
+  isStreaming = false;
+  streamAborted = false;
+  currentAbortController = null;
+  updateSendButton();
+  if (pendingMvuInit && conversation.phase === 'init') {
+    showMvuInitConfirmation();
+  }
+}
+
+function removeAiPlaceholderMessage(aiMsg) {
+  if (editMvuMode) {
+    editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
+  } else {
+    conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+    Storage.saveConversation(conversation);
+  }
+  const el = document.getElementById(`msg-${aiMsg.id}`);
+  if (el) el.remove();
+}
+
+function handleEmptyAiResponse(aiMsg) {
+  log('onDone with empty response, removing placeholder');
+  cancelAiStreamingNotification();
+  removeAiPlaceholderMessage(aiMsg);
+  UI.showToast('AI 返回空响应', 'error');
+  finalizeStreamCleanup();
+}
+
+function applyCompletedAiResponse(aiMsg, fullText) {
+  aiMsg.content = fullText;
+  aiMsg.timestamp = Date.now();
+  updateAssistantBubble(aiMsg.id, fullText, false);
+
+  if (editMvuMode) {
+    processEditMvuResponse(fullText);
+  } else {
+    const abstract = Summary.parseAbstract(fullText);
+    if (abstract) aiMsg.abstract = abstract;
+
+    const refineArr = MVU.parseRefine(fullText);
+    if (refineArr && refineArr.length > 0) {
+      const originalStory = Utils.extractStoryContent(fullText);
+      const refinedStory = MVU.applyRefine(originalStory, refineArr);
+      if (refinedStory !== originalStory) {
+        fullText = fullText.replace(
+          /(<story>)([\s\S]*?)(<\/story>)/,
+          (m, open, content, close) => open + MVU.applyRefine(content, refineArr) + close
+        );
+        aiMsg.content = fullText;
+        updateAssistantBubble(aiMsg.id, fullText, false);
+        log('[Refine] Applied', refineArr.length, 'replacements');
+      }
+    }
+
+    processMvuFromResponse(fullText, aiMsg);
+    processWritingAdvice(fullText);
+    Storage.saveConversation(conversation);
+    renderOptionsBar(fullText);
+    if (summaryPanelOpen) renderSummaryPanel();
+    checkBigSummaryTrigger();
+    lastFailedUserMsgId = null;
+    removeRetryBar();
+  }
+
+  scrollToBottom(false);
+}
+
+function handleNativeStreamError(aiMsg, state) {
+  removeStreamStatus();
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeAiPlaceholderMessage(aiMsg);
+
+  const httpStatus = Number(state.httpStatus || 0);
+  const rawError = state.error || 'Unknown error';
+  const classified = API.classifyError(httpStatus, rawError);
+  const errDetail = `[${classified.type}] ${rawError}${httpStatus ? ' (HTTP ' + httpStatus + ')' : ''}`;
+
+  const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
+  if (lastUserMsg) {
+    lastFailedUserMsgId = lastUserMsg.id;
+    showRetryBar(lastUserMsg.id, `${classified.userMessage} | ${errDetail}`);
+  } else {
+    UI.showToast(classified.userMessage || rawError, 'error');
+  }
+
+  Storage.saveConversation(conversation);
+  finalizeStreamCleanup();
+}
+
+function handleNativeStreamCancelled(aiMsg, state) {
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeStreamStatus();
+  aiMsg.content = state.fullText || '';
+  handleStreamStopped(aiMsg);
+}
+
+function handleNativeStreamCompleted(aiMsg, state) {
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeStreamStatus();
+  const fullText = state.fullText || '';
+  if (!fullText.trim()) {
+    handleEmptyAiResponse(aiMsg);
+    return;
+  }
+  applyCompletedAiResponse(aiMsg, fullText);
+  finalizeStreamCleanup();
+}
+
+function updateNativeStreamUi(aiMsg, state) {
+  const fullText = state.fullText || '';
+  aiMsg.content = fullText;
+  updateAssistantBubble(aiMsg.id, fullText, state.status !== 'completed');
+  if (state.status === 'starting') {
+    showStreamStatus('connecting');
+  } else if (state.status === 'streaming') {
+    showStreamStatus('streaming');
+    updateStreamStatusText(`生成中 (${fullText.length}字)`);
+  }
+}
+
+function pollNativeStreamState(aiMsg) {
+  if (!nativeStreamSessionId) return;
+  const state = getNativeStreamState(nativeStreamSessionId);
+  if (!state) return;
+  if (state.conversationId && conversation?.id && state.conversationId !== conversation.id) return;
+
+  if ((state.fullText || '') !== nativeStreamLastText || state.status === 'starting' || state.status === 'streaming') {
+    nativeStreamLastText = state.fullText || '';
+    updateNativeStreamUi(aiMsg, state);
+  }
+
+  if (state.status === 'completed') {
+    handleNativeStreamCompleted(aiMsg, state);
+  } else if (state.status === 'cancelled') {
+    handleNativeStreamCancelled(aiMsg, state);
+  } else if (state.status === 'error') {
+    handleNativeStreamError(aiMsg, state);
+  }
+}
+
+function startNativeStreamPolling(aiMsg) {
+  clearNativeStreamPolling();
+  nativeStreamAiMsgId = aiMsg.id;
+  nativeStreamLastText = '';
+  pollNativeStreamState(aiMsg);
+  nativeStreamPollTimer = setInterval(() => pollNativeStreamState(aiMsg), 500);
+}
+
+function resumeNativeStreamIfNeeded() {
+  if (!canUseNativeBackgroundStreaming()) return;
+  let state = null;
+  try {
+    const activeRaw = window.AndroidBridge?.getActiveNativeAiStream?.();
+    const latestRaw = !activeRaw ? window.AndroidBridge?.getLatestNativeAiStream?.() : null;
+    state = activeRaw ? JSON.parse(activeRaw) : (latestRaw ? JSON.parse(latestRaw) : null);
+  } catch (e) {
+    log('resumeNativeStreamIfNeeded failed:', e);
+    return;
+  }
+
+  if (!state || state.conversationId !== conversation?.id || !state.sessionId) return;
+
+  let aiMsg = findMessage(state.aiMsgId);
+  if (!aiMsg) {
+    aiMsg = {
+      id: state.aiMsgId || Utils.generateId('msg'),
+      role: 'assistant',
+      content: state.fullText || '',
+      timestamp: Date.now(),
+      hidden: false,
+      abstract: null,
+    };
+    conversation.messages.push(aiMsg);
+    appendMessageElement(aiMsg);
+    Storage.saveConversation(conversation);
+  }
+
+  nativeStreamSessionId = state.sessionId;
+  setNativeAbortController(state.sessionId);
+  isStreaming = !['completed', 'cancelled', 'error'].includes(state.status);
+  streamAborted = false;
+  updateSendButton();
+
+  if (state.status === 'completed') {
+    handleNativeStreamCompleted(aiMsg, state);
+  } else if (state.status === 'cancelled') {
+    handleNativeStreamCancelled(aiMsg, state);
+  } else if (state.status === 'error') {
+    handleNativeStreamError(aiMsg, state);
+  } else {
+    startNativeStreamPolling(aiMsg);
+  }
+}
+
 // ============================================================
 // Streaming
 // ============================================================
-async function streamAIResponse(retryAttempt = 0) {
+async function streamAIResponseNative(retryAttempt = 0) {
   isStreaming = true;
   streamAborted = false;
+  clearNativeStreamTracking();
+  updateSendButton();
+
+  const settings = Storage.getSettings();
+  let systemPrompt, messages;
+  ({ systemPrompt, messages } = PromptBuilder.buildMessages(conversation));
+  _lastBuiltPrompt = { systemPrompt, messages };
+
+  const aiMsg = {
+    id: Utils.generateId('msg'),
+    role: 'assistant',
+    content: '',
+    timestamp: Date.now(),
+    hidden: false,
+    abstract: null,
+  };
+  conversation.messages.push(aiMsg);
+  appendMessageElement(aiMsg);
+  Storage.saveConversation(conversation);
+
+  showStreamStatus('connecting');
+
+  const apiProfileId = settings.defaultApiProfileId;
+  const model = settings.defaultModel;
+  const apiProfile = Storage.getApiProfile(apiProfileId);
+  if (!apiProfile) {
+    removeAiPlaceholderMessage(aiMsg);
+    removeStreamStatus();
+    UI.showToast('API 配置不存在', 'error');
+    finalizeStreamCleanup();
+    return;
+  }
+
+  const payload = {
+    sessionId: Utils.generateId('nstream'),
+    conversationId: conversation.id,
+    conversationTitle: getNativeNotificationTitle(),
+    aiMsgId: aiMsg.id,
+    apiProfile,
+    model,
+    systemPrompt,
+    messages,
+  };
+
+  try {
+    nativeStreamSessionId = window.AndroidBridge.startNativeAiStream(JSON.stringify(payload));
+  } catch (e) {
+    log('startNativeAiStream failed:', e);
+    nativeStreamSessionId = null;
+  }
+
+  if (!nativeStreamSessionId) {
+    removeAiPlaceholderMessage(aiMsg);
+    removeStreamStatus();
+    UI.showToast('启动后台生成失败', 'error');
+    finalizeStreamCleanup();
+    return;
+  }
+
+  setNativeAbortController(nativeStreamSessionId);
+  startNativeStreamPolling(aiMsg);
+}
+
+async function streamAIResponse(retryAttempt = 0) {
+  if (canUseNativeBackgroundStreaming()) {
+    return streamAIResponseNative(retryAttempt);
+  }
+  isStreaming = true;
+  streamAborted = false;
+  if (retryAttempt === 0) nativeAiNotificationStarted = false;
   updateSendButton();
 
   const MAX_AUTO_RETRIES = 2;
@@ -2649,6 +4038,9 @@ async function streamAIResponse(retryAttempt = 0) {
 
     onChunk(chunk, fullText) {
       if (streamAborted) return;
+      if (fullText && fullText.trim()) {
+        notifyAiStreamingStart();
+      }
       aiMsg.content = fullText;
       updateAssistantBubble(aiMsg.id, fullText, true);
       updateStreamStatusText(`生成中 (${fullText.length}字)`);
@@ -2664,6 +4056,7 @@ async function streamAIResponse(retryAttempt = 0) {
       // Guard: if response is completely empty, treat as error
       if (!fullText || !fullText.trim()) {
         log('onDone with empty response, removing placeholder');
+        cancelAiStreamingNotification();
         if (editMvuMode) {
           editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
         } else {
@@ -2720,6 +4113,8 @@ async function streamAIResponse(retryAttempt = 0) {
         removeRetryBar();
       }
 
+      notifyAiStreamingDone(fullText);
+
       isStreaming = false;
       streamAborted = false;
       currentAbortController = null;
@@ -2772,6 +4167,7 @@ async function streamAIResponse(retryAttempt = 0) {
       }
 
       // All retries exhausted or non-retryable: show error retry bar
+      cancelAiStreamingNotification();
       const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
       if (lastUserMsg) {
         lastFailedUserMsgId = lastUserMsg.id;
@@ -2790,6 +4186,7 @@ async function streamAIResponse(retryAttempt = 0) {
 }
 
 function handleStreamStopped(aiMsg) {
+  cancelAiStreamingNotification();
   try {
     if (aiMsg.content) {
       // Keep partial content
@@ -2839,6 +4236,7 @@ function handleStreamStopped(aiMsg) {
 
 function stopStreaming() {
   streamAborted = true;
+  cancelAiStreamingNotification();
   if (currentAbortController) {
     currentAbortController.abort();
     currentAbortController = null;
@@ -3686,16 +5084,29 @@ function showPromptDebug() {
 
   if (!conversation) return;
   const { systemPrompt, messages } = _lastBuiltPrompt || PromptBuilder.buildMessages(conversation);
+  const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
+  const activeWorldBookEntries = worldBookBlocks.active || [];
   const THRESHOLD = 200;
+  const positionLabels = {
+    before_char: '背景前',
+    after_char: '背景后',
+    before_input: '输入前',
+    after_input: '输入后',
+  };
+
+  function previewText(content, max = 60) {
+    const firstLine = String(content || '').split('\n')[0];
+    return firstLine.substring(0, max) + (firstLine.length > max ? '...' : '');
+  }
 
   function msgBlock(role, content, idx) {
+    const safeContent = String(content || '');
     const labels = { assistant: 'AI', user: 'USER', system: 'SYS' };
     const roleLabel = labels[role] || role.toUpperCase();
     const roleClass = role === 'assistant' ? 'ai' : role === 'system' ? 'sys' : 'user';
-    const len = content.length;
+    const len = safeContent.length;
     const isLong = len > THRESHOLD;
-    const firstLine = content.split('\n')[0].substring(0, 60);
-    const preview = firstLine + (firstLine.length < content.split('\n')[0].length ? '...' : '');
+    const preview = previewText(safeContent);
     const idxStr = idx !== null ? '#' + idx + ' · ' : '';
 
     return `<div class="debug-message">
@@ -3704,8 +5115,68 @@ function showPromptDebug() {
         <span class="debug-msg-meta">${idxStr}${len}字</span>
         <span class="debug-preview">${Utils.escapeHtml(preview)}</span>
       </div>
-      <pre class="debug-pre${isLong ? ' collapsed' : ''}">${Utils.escapeHtml(content)}</pre>
+      <pre class="debug-pre${isLong ? ' collapsed' : ''}">${Utils.escapeHtml(safeContent)}</pre>
     </div>`;
+  }
+
+  function worldBookSummary() {
+    const buckets = [
+      ['before_char', '背景前'],
+      ['after_char', '背景后'],
+      ['before_input', '输入前'],
+      ['after_input', '输入后'],
+    ];
+    return buckets.map(([key, label]) => {
+      const count = activeWorldBookEntries.filter(entry => entry.position === key).length;
+      return `<span class="debug-worldbook-tag">${label} ${count}</span>`;
+    }).join('');
+  }
+
+  function worldBookEntryBlock(entry, idx) {
+    const title = entry.comment || entry.title || ('条目 ' + entry.uid);
+    const content = String(entry.content || '');
+    const primaryKeys = Array.isArray(entry.keys) ? entry.keys.filter(Boolean) : [];
+    const secondaryKeys = Array.isArray(entry.secondaryKeys) ? entry.secondaryKeys.filter(Boolean) : [];
+    const tags = [
+      `<span class="debug-worldbook-tag accent">${Utils.escapeHtml(positionLabels[entry.position] || entry.position || '未知位置')}</span>`,
+      entry.constant ? '<span class="debug-worldbook-tag">常驻</span>' : '',
+      `<span class="debug-worldbook-tag">排序 ${Number(entry.order) || 0}</span>`,
+      entry.probability !== undefined ? `<span class="debug-worldbook-tag">概率 ${Number(entry.probability) || 0}</span>` : '',
+      ...primaryKeys.map(key => `<span class="debug-worldbook-tag">主键 ${Utils.escapeHtml(key)}</span>`),
+      ...secondaryKeys.map(key => `<span class="debug-worldbook-tag">副键 ${Utils.escapeHtml(key)}</span>`),
+    ].filter(Boolean).join('');
+
+    return `<div class="debug-worldbook-entry">
+      <div class="debug-worldbook-entry-head" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+        <div class="debug-worldbook-title">${Utils.escapeHtml(title)}</div>
+        <div class="debug-worldbook-meta">#${idx + 1} · ${content.length}字 · ${Utils.escapeHtml(previewText(content, 36))}</div>
+      </div>
+      <div class="debug-worldbook-body${content.length > THRESHOLD ? ' collapsed' : ''}">
+        <div class="debug-worldbook-tags">${tags}</div>
+        <div class="debug-worldbook-content">${Utils.escapeHtml(content)}</div>
+      </div>
+    </div>`;
+  }
+
+  function worldBookSection() {
+    if (!activeWorldBookEntries.length) {
+      return `
+        <div class="debug-section">
+          <div class="debug-section-header"><span>世界书</span><span class="debug-badge">0条命中</span></div>
+          <div class="debug-worldbook-empty">本轮 Prompt 没有命中任何世界书条目。</div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="debug-section">
+        <div class="debug-section-header"><span>世界书</span><span class="debug-badge">${activeWorldBookEntries.length}条命中</span></div>
+        <div class="debug-worldbook-summary">${worldBookSummary()}</div>
+        <div class="debug-worldbook-list">
+          ${activeWorldBookEntries.map((entry, idx) => worldBookEntryBlock(entry, idx)).join('')}
+        </div>
+      </div>
+    `;
   }
 
   const overlay = document.createElement('div');
@@ -3724,6 +5195,7 @@ function showPromptDebug() {
         <div class="debug-section-header"><span>System Prompt</span><span class="debug-badge">${systemPrompt.length}字</span></div>
         ${msgBlock('system', systemPrompt, null)}
       </div>
+      ${worldBookSection()}
       <div class="debug-section">
         <div class="debug-section-header"><span>Messages</span><span class="debug-badge">${messages.length}条</span></div>
         ${messages.map((m, i) => msgBlock(m.role, m.content, i + 1)).join('')}

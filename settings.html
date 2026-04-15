@@ -202,6 +202,50 @@
       line-height: 1.6;
     }
 
+    .field-help {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .compact-textarea {
+      min-height: 92px;
+      font-family: 'SF Mono', 'Fira Code', var(--font-ui), monospace;
+    }
+
+    .fetch-status {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .fetch-status.info {
+      border-color: rgba(201, 164, 76, 0.22);
+      background: rgba(201, 164, 76, 0.08);
+      color: var(--text-primary);
+    }
+
+    .fetch-status.success {
+      border-color: rgba(90, 178, 122, 0.28);
+      background: rgba(90, 178, 122, 0.12);
+      color: #c9f0d6;
+    }
+
+    .fetch-status.error {
+      border-color: rgba(214, 92, 92, 0.28);
+      background: rgba(214, 92, 92, 0.12);
+      color: #ffd2d2;
+    }
+
     /* ── API Profile Cards ───────────────────────── */
     .api-list-empty {
       text-align: center;
@@ -999,6 +1043,7 @@
         <div class="form-group">
           <label>Base URL <span style="font-size:11px;color:var(--text-muted);">(留空使用默认)</span></label>
           <input type="text" id="edBaseUrl" value="${Utils.escapeHtml(profile?.baseUrl || '')}" placeholder="${Utils.escapeHtml(urlPlaceholder)}">
+          <div class="field-help">支持直接填写根域名、`/v1`，甚至完整的 `/chat/completions` 地址；测试和调用时会自动尝试规范化。</div>
         </div>
         <div class="form-group">
           <label>API Key</label>
@@ -1009,6 +1054,11 @@
             </button>
           </div>
         </div>
+        <div class="form-group">
+          <label>附加请求头 <span style="font-size:11px;color:var(--text-muted);">(可选)</span></label>
+          <textarea id="edExtraHeaders" class="special-textarea compact-textarea" placeholder='{"HTTP-Referer":"https://example.com","X-Title":"AIRP"}&#10;或每行一个 Key: Value'>${Utils.escapeHtml(profile?.extraHeaders || '')}</textarea>
+          <div class="field-help">适合 OpenRouter、自建中转、反代或需要自定义鉴权头的 OpenAI 兼容接口。</div>
+        </div>
         <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
           <label>快速测试：拉取模型列表</label>
           <div class="input-row">
@@ -1018,6 +1068,7 @@
               ${getIcon('refresh', 14)} 拉取
             </button>
           </div>
+          <div id="edModelFetchStatus" class="fetch-status"></div>
         </div>
       `,
       buttons: [
@@ -1049,7 +1100,96 @@
     }
   }
 
+  function buildEditorProfileDraft() {
+    return {
+      provider: document.getElementById('edProvider').value,
+      baseUrl: document.getElementById('edBaseUrl').value.trim(),
+      apiKey: document.getElementById('edApiKey').value.trim(),
+      extraHeaders: document.getElementById('edExtraHeaders')?.value.trim() || '',
+    };
+  }
+
+  function setEditorModelFetchStatus(message = '', type = 'info') {
+    const box = document.getElementById('edModelFetchStatus');
+    if (!box) return;
+    if (!message) {
+      box.textContent = '';
+      box.className = 'fetch-status';
+      box.style.display = 'none';
+      return;
+    }
+    box.textContent = message;
+    box.className = `fetch-status ${type}`;
+    box.style.display = 'block';
+  }
+
+  function buildModelFetchToast(result) {
+    if (result?.success) return `成功获取 ${result.models.length} 个模型`;
+    const classified = API.classifyError?.(result?.status || 0, result?.error || '');
+    return classified?.userMessage || result?.error || '模型列表拉取失败';
+  }
+
+  function buildModelFetchStatusText(result) {
+    if (!result) return '模型列表请求未返回结果';
+    const lines = [];
+    if (result.success) {
+      lines.push(`已获取 ${result.models.length} 个模型`);
+    } else {
+      const classified = API.classifyError?.(result.status || 0, result.error || '');
+      lines.push(classified?.userMessage || result.error || '模型列表拉取失败');
+    }
+    if (result.status) lines.push(`状态码：HTTP ${result.status}`);
+    if (result.endpoint) lines.push(`接口：${result.endpoint}`);
+    if (result.source === 'native') lines.push('通道：Android 原生请求');
+    if (result.source === 'browser') lines.push('通道：前端直连');
+    if (!result.success && result.diagnostics?.length > 1) lines.push(`已尝试 ${result.diagnostics.length} 个候选地址`);
+    return lines.filter(Boolean).join('\n');
+  }
+
   async function fetchEditorModels() {
+    const fetchBtn = document.getElementById('btnEdFetchModels');
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    fetchBtn.classList.add('is-loading');
+    setEditorModelFetchStatus('正在拉取模型列表...', 'info');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    try {
+      const result = await API.fetchModels(draft);
+      if (result.success && result.models.length > 0) {
+        const datalist = document.getElementById('edModelList');
+        if (datalist) {
+          datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        }
+        const testInput = document.getElementById('edTestModel');
+        if (testInput) {
+          testInput.removeAttribute('readonly');
+          testInput.style.opacity = '1';
+          testInput.placeholder = '选择或输入模型名...';
+          testInput.focus();
+        }
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'success');
+        UI.showToast(buildModelFetchToast(result), 'success');
+      } else {
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'error');
+        UI.showToast(buildModelFetchToast(result), 'error');
+      }
+    } catch (e) {
+      setEditorModelFetchStatus(`拉取出错：${e.message}`, 'error');
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      fetchBtn.classList.remove('is-loading');
+    }
+    return;
+
     const apiKey = document.getElementById('edApiKey').value.trim();
 
     const btn = document.getElementById('btnEdFetchModels');
@@ -1092,6 +1232,40 @@
   }
 
   function saveProfile(editId) {
+    const profileName = document.getElementById('edName').value.trim();
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    const nextProfile = {
+      id: editId || Utils.generateId('api'),
+      name: profileName || '未命名',
+      provider: draft.provider,
+      baseUrl: draft.baseUrl,
+      apiKey: draft.apiKey,
+      extraHeaders: draft.extraHeaders,
+    };
+
+    Storage.saveApiProfile(nextProfile);
+
+    const profileMap = Storage.getApiProfiles();
+    if (Object.keys(profileMap).length === 1) {
+      settings.defaultApiProfileId = nextProfile.id;
+      Storage.saveSettings(settings);
+    }
+
+    UI.closeModal();
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    UI.showToast(editId ? '配置已更新' : '配置已添加', 'success');
+    return;
+
     const name = document.getElementById('edName').value.trim();
     const provider = document.getElementById('edProvider').value;
     const baseUrl = document.getElementById('edBaseUrl').value.trim();
@@ -1111,6 +1285,174 @@
     const allProfiles = Storage.getApiProfiles();
     if (Object.keys(allProfiles).length === 1) {
       settings.defaultApiProfileId = profile.id;
+      Storage.saveSettings(settings);
+    }
+
+    UI.closeModal();
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    UI.showToast(editId ? '配置已更新' : '配置已添加', 'success');
+  }
+
+  function openProfileEditor(editId) {
+    const profile = editId ? Storage.getApiProfile(editId) : null;
+    const isEdit = !!profile;
+
+    const defaultUrls = {
+      openai: 'https://api.openai.com/v1',
+      claude: 'https://api.anthropic.com/v1',
+      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
+    };
+
+    const selectedProvider = profile?.provider || 'openai';
+    const urlPlaceholder = defaultUrls[selectedProvider] || 'https://api.openai.com/v1';
+
+    UI.showModal({
+      title: isEdit ? '编辑 API 配置' : '添加 API 配置',
+      content: `
+        <div class="form-group">
+          <label>名称</label>
+          <input type="text" id="edName" value="${Utils.escapeHtml(profile?.name || '')}" placeholder="如：Claude 官方">
+        </div>
+        <div class="form-group">
+          <label>提供商</label>
+          <select id="edProvider" onchange="onEditorProviderChange()">
+            <option value="openai" ${selectedProvider === 'openai' ? 'selected' : ''}>OpenAI Compatible</option>
+            <option value="claude" ${selectedProvider === 'claude' ? 'selected' : ''}>Claude (Anthropic)</option>
+            <option value="google-ai-studio" ${selectedProvider === 'google-ai-studio' ? 'selected' : ''}>Google AI Studio</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Base URL <span style="font-size:11px;color:var(--text-muted);">(留空使用默认)</span></label>
+          <input type="text" id="edBaseUrl" value="${Utils.escapeHtml(profile?.baseUrl || '')}" placeholder="${Utils.escapeHtml(urlPlaceholder)}">
+          <div class="field-help">支持直接填写根域名、带 /v1 的地址，或完整接口地址；测试和调用时会自动尝试规范化。</div>
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <div class="password-row">
+            <input type="password" id="edApiKey" value="${Utils.escapeHtml(profile?.apiKey || '')}" placeholder="sk-...">
+            <button class="btn-toggle-vis" type="button" onclick="toggleEditorKeyVisibility()" title="切换显示">
+              ${getIcon('eye', 16)}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>附加请求头 <span style="font-size:11px;color:var(--text-muted);">(可选)</span></label>
+          <textarea id="edExtraHeaders" class="special-textarea compact-textarea" placeholder='{"HTTP-Referer":"https://example.com","X-Title":"AIRP"}&#10;或每行一个 Key: Value'>${Utils.escapeHtml(profile?.extraHeaders || '')}</textarea>
+          <div class="field-help">适合 OpenRouter、自建中转、反代或需要自定义鉴权头的 OpenAI 兼容接口。</div>
+        </div>
+        <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <label>快速测试：拉取模型列表</label>
+          <div class="input-row">
+            <input type="text" id="edTestModel" list="edModelList" readonly placeholder="点击右侧按钮拉取" style="opacity:0.6;">
+            <datalist id="edModelList"></datalist>
+            <button class="btn btn-secondary" id="btnEdFetchModels" onclick="fetchEditorModels()">
+              ${getIcon('refresh', 14)} 拉取
+            </button>
+          </div>
+          <div id="edModelFetchStatus" class="fetch-status"></div>
+        </div>
+      `,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: isEdit ? '保存' : '添加', class: 'btn-primary', onclick: `saveProfile('${editId || ''}')` },
+      ],
+    });
+  }
+
+  function buildModelFetchToast(result) {
+    if (result?.success) return `成功获取 ${result.models.length} 个模型`;
+    const classified = API.classifyError?.(result?.status || 0, result?.error || '');
+    return classified?.userMessage || result?.error || '模型列表拉取失败';
+  }
+
+  function buildModelFetchStatusText(result) {
+    if (!result) return '模型列表请求未返回结果';
+    const lines = [];
+    if (result.success) {
+      lines.push(`已获取 ${result.models.length} 个模型`);
+    } else {
+      const classified = API.classifyError?.(result.status || 0, result.error || '');
+      lines.push(classified?.userMessage || result.error || '模型列表拉取失败');
+    }
+    if (result.status) lines.push(`状态码：HTTP ${result.status}`);
+    if (result.endpoint) lines.push(`接口：${result.endpoint}`);
+    if (result.source === 'native') lines.push('通道：Android 原生请求');
+    if (result.source === 'browser') lines.push('通道：前端直连');
+    if (!result.success && result.diagnostics?.length > 1) lines.push(`已尝试 ${result.diagnostics.length} 个候选地址`);
+    return lines.filter(Boolean).join('\n');
+  }
+
+  async function fetchEditorModels() {
+    const fetchBtn = document.getElementById('btnEdFetchModels');
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    fetchBtn.classList.add('is-loading');
+    setEditorModelFetchStatus('正在拉取模型列表...', 'info');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    try {
+      const result = await API.fetchModels(draft);
+      if (result.success && result.models.length > 0) {
+        const datalist = document.getElementById('edModelList');
+        if (datalist) {
+          datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        }
+        const testInput = document.getElementById('edTestModel');
+        if (testInput) {
+          testInput.removeAttribute('readonly');
+          testInput.style.opacity = '1';
+          testInput.placeholder = '选择或输入模型名...';
+          testInput.focus();
+        }
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'success');
+        UI.showToast(buildModelFetchToast(result), 'success');
+      } else {
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'error');
+        UI.showToast(buildModelFetchToast(result), 'error');
+      }
+    } catch (e) {
+      setEditorModelFetchStatus(`拉取出错：${e.message}`, 'error');
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      fetchBtn.classList.remove('is-loading');
+    }
+  }
+
+  function saveProfile(editId) {
+    const profileName = document.getElementById('edName').value.trim();
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    const nextProfile = {
+      id: editId || Utils.generateId('api'),
+      name: profileName || '未命名',
+      provider: draft.provider,
+      baseUrl: draft.baseUrl,
+      apiKey: draft.apiKey,
+      extraHeaders: draft.extraHeaders,
+    };
+
+    Storage.saveApiProfile(nextProfile);
+
+    const profileMap = Storage.getApiProfiles();
+    if (Object.keys(profileMap).length === 1) {
+      settings.defaultApiProfileId = nextProfile.id;
       Storage.saveSettings(settings);
     }
 
@@ -1243,9 +1585,9 @@
       if (result.success && result.models.length > 0) {
         const currentModel = getSelectedModel();
         showModelSelect(result.models, currentModel);
-        UI.showToast(`成功获取 ${result.models.length} 个模型`, 'success');
+        UI.showToast(buildModelFetchToast(result), 'success');
       } else {
-        UI.showToast('拉取失败，请检查 API 配置', 'error');
+        UI.showToast(buildModelFetchToast(result), 'error');
       }
     } catch (e) {
       UI.showToast('拉取出错: ' + e.message, 'error');

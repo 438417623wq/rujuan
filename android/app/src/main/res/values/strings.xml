@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AIRP</string>
+    <string name="notification_channel_ai_name">AI 回复提醒</string>
+    <string name="notification_channel_ai_description">在 AI 生成或完成回复时发送通知</string>
+    <string name="notification_ai_generating">AI 正在生成回复</string>
+    <string name="notification_ai_reply_fallback">AI 已生成新内容，点按查看</string>
+    <string name="notification_ai_background_generating">AI 正在后台生成</string>
+    <string name="notification_ai_background_connecting">AI 正在连接</string>
+    <string name="notification_ai_background_done">AI 回复已完成</string>
+    <string name="notification_ai_background_error">AI 回复失败</string>
+    <string name="notification_ai_background_cancelled">AI 已停止生成</string>
+    <string name="notification_ai_stop_action">停止</string>
+</resources>

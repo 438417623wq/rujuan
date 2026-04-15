@@ -6,3 +6,8 @@ start-public.sh
 .env.*
 CLAUDE.md
 docs/
+.claude/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/app/src/main/assets/
