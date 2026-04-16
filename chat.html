@@ -251,7 +251,7 @@
     }
     .worldbook-layout {
       display: grid;
-      grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: 14px;
       min-height: 520px;
     }
@@ -328,6 +328,11 @@
       color: var(--success);
       border-color: rgba(124,184,122,.35);
       background: rgba(124,184,122,.12);
+    }
+    .worldbook-tag.manual {
+      color: #8fd3a3;
+      border-color: rgba(143,211,163,.35);
+      background: rgba(143,211,163,.14);
     }
     .worldbook-tag.constant {
       color: var(--accent);
@@ -433,6 +438,20 @@
       align-items: center;
       gap: 10px;
     }
+    .worldbook-editor-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      flex-shrink: 0;
+    }
+    .worldbook-editor-toggle input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #8fd3a3;
+    }
     .worldbook-editor-title-group {
       flex: 1;
       min-width: 0;
@@ -488,36 +507,6 @@
     }
     .worldbook-editor-body.collapsed {
       display: none;
-    }
-    .worldbook-active-preview {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-height: 220px;
-      overflow-y: auto;
-    }
-    .worldbook-active-item {
-      border: 1px solid rgba(255,255,255,0.06);
-      border-radius: var(--radius);
-      padding: 10px 12px;
-      background: rgba(255,255,255,0.02);
-    }
-    .worldbook-active-item-title {
-      color: var(--text-primary);
-      font-size: 13px;
-      font-weight: 600;
-      margin-bottom: 6px;
-    }
-    .worldbook-active-item-meta {
-      color: var(--text-muted);
-      font-size: 11px;
-      margin-bottom: 6px;
-    }
-    .worldbook-active-item-content {
-      color: var(--text-secondary);
-      font-size: 12px;
-      line-height: 1.6;
-      white-space: pre-wrap;
     }
     .worldbook-entry-empty {
       color: var(--text-muted);
@@ -2045,7 +2034,7 @@
       </div>
       <div class="world-setting-panel" id="worldSettingBookPanel">
         <div class="world-setting-note">
-          世界书用于维护可检索、可导入导出的细粒度设定条目。命中条目会动态加入 Prompt，行为上接近酒馆 AI 的世界书/Lorebook。
+          世界书用于维护可导入导出的细粒度设定条目。这里改为以手动命中和常驻条目为主，勾选后会直接加入 Prompt。
         </div>
         <div class="worldbook-toolbar">
           <div class="worldbook-toolbar-group">
@@ -2054,7 +2043,7 @@
               <option value="all">全部条目</option>
               <option value="enabled">仅启用</option>
               <option value="constant">仅常驻</option>
-              <option value="active">仅当前命中</option>
+              <option value="manual">仅手动命中</option>
             </select>
           </div>
           <div class="worldbook-toolbar-group">
@@ -2064,13 +2053,11 @@
             <button class="btn btn-secondary" onclick="triggerWorldBookImport()">导入</button>
             <button class="btn btn-secondary" onclick="exportWorldBook('airp')">导出 AIRP</button>
             <button class="btn btn-secondary" onclick="exportWorldBook('tavern')">导出酒馆</button>
+            <button class="btn btn-secondary" onclick="deleteCurrentWorldBook()" style="border-color:rgba(201,106,90,0.45);color:var(--danger);">删除当前世界书</button>
           </div>
         </div>
         <div class="worldbook-stats" id="worldBookStats"></div>
         <div class="worldbook-layout">
-          <div class="worldbook-column worldbook-list-column">
-            <div class="worldbook-list" id="worldBookList"></div>
-          </div>
           <div class="worldbook-column worldbook-editor-column">
             <div class="worldbook-card">
               <div class="worldbook-card-title">世界书设置</div>
@@ -2084,13 +2071,9 @@
                   <input type="text" id="worldBookDescription" onchange="updateWorldBookMeta('description', this.value)">
                 </div>
               </div>
-              <div class="worldbook-grid-3">
+              <div class="worldbook-grid">
                 <div class="form-group">
-                  <label>扫描深度</label>
-                  <input type="number" min="1" max="50" id="worldBookScanDepth" onchange="updateWorldBookSetting('scanDepth', this.value, 'number')">
-                </div>
-                <div class="form-group">
-                  <label>最大激活条目</label>
+                  <label>最大注入条目</label>
                   <input type="number" min="1" max="100" id="worldBookMaxEntries" onchange="updateWorldBookSetting('maxEntries', this.value, 'number')">
                 </div>
                 <div class="form-group">
@@ -2098,29 +2081,8 @@
                   <input type="number" min="200" max="50000" id="worldBookMaxChars" onchange="updateWorldBookSetting('maxChars', this.value, 'number')">
                 </div>
               </div>
-              <div class="worldbook-grid">
-                <div class="form-group">
-                  <label>递归扫描步数</label>
-                  <input type="number" min="0" max="10" id="worldBookMaxRecursionSteps" onchange="updateWorldBookSetting('maxRecursionSteps', this.value, 'number')">
-                </div>
-                <div class="form-group">
-                  <label>全局匹配模式</label>
-                  <select id="worldBookMatchWholeWords" onchange="updateWorldBookSetting('matchWholeWords', this.value === 'true', 'boolean')">
-                    <option value="false">默认包含匹配</option>
-                    <option value="true">整词匹配</option>
-                  </select>
-                </div>
-              </div>
-              <div class="worldbook-checkboxes">
-                <label class="worldbook-checkbox"><input type="checkbox" id="worldBookRecursiveScan" onchange="updateWorldBookSetting('recursiveScan', this.checked, 'boolean')">递归扫描激活条目内容</label>
-                <label class="worldbook-checkbox"><input type="checkbox" id="worldBookCaseSensitive" onchange="updateWorldBookSetting('caseSensitive', this.checked, 'boolean')">全局区分大小写</label>
-              </div>
             </div>
             <div class="worldbook-card" id="worldBookEditor"></div>
-            <div class="worldbook-card">
-              <div class="worldbook-card-title">当前命中预览</div>
-              <div class="worldbook-active-preview" id="worldBookActivePreview"></div>
-            </div>
           </div>
         </div>
       </div>
@@ -2163,7 +2125,49 @@ let editMvuMode = false;
 let editMvuMessages = [];
 let editMvuBackup = null;
 let userScrolledUp = false;
-let _lastBuiltPrompt = null; // cached prompt for debug inspector
+let _lastBuiltPrompt = null; // cached prompt snapshot for debug inspector
+
+function buildPromptDebugSnapshot(targetConversation = conversation) {
+  const sourceConversation = getPromptDebugSourceConversation(targetConversation);
+  if (!sourceConversation) {
+    return {
+      conversationId: null,
+      phase: null,
+      systemPrompt: '',
+      messages: [],
+      activeWorldBookEntries: [],
+    };
+  }
+  const { systemPrompt, messages } = PromptBuilder.buildMessages(sourceConversation);
+  const worldBookBlocks = WorldBook.buildPromptBlocks(sourceConversation);
+  return {
+    conversationId: sourceConversation.id || null,
+    phase: sourceConversation.phase || null,
+    systemPrompt,
+    messages,
+    activeWorldBookEntries: worldBookBlocks.active || [],
+  };
+}
+
+function cachePromptDebugSnapshot(targetConversation = conversation) {
+  _lastBuiltPrompt = buildPromptDebugSnapshot(targetConversation);
+  return _lastBuiltPrompt;
+}
+
+function getPromptDebugSnapshot(targetConversation = conversation) {
+  if (shouldUseDraftPromptDebugSnapshot(targetConversation)) {
+    return buildPromptDebugSnapshot(targetConversation);
+  }
+  if (!targetConversation) return buildPromptDebugSnapshot(targetConversation);
+  if (
+    !_lastBuiltPrompt
+    || _lastBuiltPrompt.conversationId !== (targetConversation.id || null)
+    || _lastBuiltPrompt.phase !== (targetConversation.phase || null)
+  ) {
+    return cachePromptDebugSnapshot(targetConversation);
+  }
+  return _lastBuiltPrompt;
+}
 let pendingMvuInit = null;
 let currentAbortController = null;
 let streamStartTime = 0;
@@ -2637,6 +2641,7 @@ function saveWorldSetting() {
     (conversation.name || '未命名故事') + ' 世界书'
   );
   Storage.saveConversation(conversation);
+  cachePromptDebugSnapshot(conversation);
   worldSettingDraft = null;
   closeWorldSetting();
   UI.showToast('世界设定与世界书已保存', 'success');
@@ -2685,6 +2690,22 @@ function getWorldBookDraftConversation() {
   };
 }
 
+function shouldUseDraftPromptDebugSnapshot(targetConversation = conversation) {
+  return !!(
+    worldSettingDraft
+    && conversation
+    && targetConversation
+    && targetConversation.id === conversation.id
+  );
+}
+
+function getPromptDebugSourceConversation(targetConversation = conversation) {
+  if (shouldUseDraftPromptDebugSnapshot(targetConversation)) {
+    return getWorldBookDraftConversation() || targetConversation;
+  }
+  return targetConversation;
+}
+
 function hasWorldBookUid(uid) {
   return uid !== null && uid !== undefined;
 }
@@ -2705,19 +2726,12 @@ function renderWorldBookUI() {
 
   document.getElementById('worldBookName').value = book.name || '';
   document.getElementById('worldBookDescription').value = book.description || '';
-  document.getElementById('worldBookScanDepth').value = book.settings.scanDepth;
   document.getElementById('worldBookMaxEntries').value = book.settings.maxEntries;
   document.getElementById('worldBookMaxChars').value = book.settings.maxChars;
-  document.getElementById('worldBookMaxRecursionSteps').value = book.settings.maxRecursionSteps;
-  document.getElementById('worldBookRecursiveScan').checked = !!book.settings.recursiveScan;
-  document.getElementById('worldBookCaseSensitive').checked = !!book.settings.caseSensitive;
-  document.getElementById('worldBookMatchWholeWords').value = String(!!book.settings.matchWholeWords);
   document.getElementById('worldBookSearch').value = worldBookSearch;
   document.getElementById('worldBookFilter').value = worldBookFilter;
 
-  const activeEntries = WorldBook.buildPromptBlocks(getWorldBookDraftConversation()).active || [];
-  const activeIds = new Set(activeEntries.map(entry => entry.uid));
-  const filtered = getFilteredWorldBookEntries(book.entries, activeIds);
+  const filtered = getFilteredWorldBookEntries(book.entries);
   const filteredIds = new Set(filtered.map(entry => entry.uid));
   if (!hasWorldBookUid(worldBookSelectedUid) || !filteredIds.has(worldBookSelectedUid)) {
     worldBookSelectedUid = filtered[0]?.uid || book.entries[0]?.uid || null;
@@ -2726,18 +2740,16 @@ function renderWorldBookUI() {
     worldBookExpandedUid = filtered[0]?.uid || null;
   }
 
-  renderWorldBookStats(book, activeEntries);
-  renderWorldBookList(filtered, activeIds);
-  renderWorldBookEditor(book, filtered, activeIds);
-  renderWorldBookActivePreview(activeEntries);
+  renderWorldBookStats(book);
+  renderWorldBookEditor(book, filtered);
 }
 
-function getFilteredWorldBookEntries(entries, activeIds) {
+function getFilteredWorldBookEntries(entries) {
   const keyword = worldBookSearch.trim().toLowerCase();
   return entries.filter(entry => {
     if (worldBookFilter === 'enabled' && !entry.enabled) return false;
     if (worldBookFilter === 'constant' && !entry.constant) return false;
-    if (worldBookFilter === 'active' && !activeIds.has(entry.uid)) return false;
+    if (worldBookFilter === 'manual' && !entry.manualActive) return false;
     if (!keyword) return true;
     const haystack = [
       entry.title,
@@ -2750,14 +2762,15 @@ function getFilteredWorldBookEntries(entries, activeIds) {
   });
 }
 
-function renderWorldBookStats(book, activeEntries) {
+function renderWorldBookStats(book) {
   const enabledCount = book.entries.filter(entry => entry.enabled).length;
   const constantCount = book.entries.filter(entry => entry.constant).length;
+  const manualCount = book.entries.filter(entry => entry.manualActive && entry.enabled && String(entry.content || '').trim()).length;
   const html = [
     { label: '总条目', value: book.entries.length },
     { label: '已启用', value: enabledCount },
     { label: '常驻项', value: constantCount },
-    { label: '当前命中', value: activeEntries.length },
+    { label: '手动命中', value: manualCount },
   ].map(item => `
     <div class="worldbook-stat">
       <div class="worldbook-stat-label">${item.label}</div>
@@ -2767,7 +2780,7 @@ function renderWorldBookStats(book, activeEntries) {
   document.getElementById('worldBookStats').innerHTML = html;
 }
 
-function renderWorldBookList(entries, activeIds) {
+function renderWorldBookList(entries) {
   const list = document.getElementById('worldBookList');
   if (!entries.length) {
     list.innerHTML = '<div class="worldbook-list-empty">没有匹配的世界书条目。</div>';
@@ -2778,7 +2791,7 @@ function renderWorldBookList(entries, activeIds) {
     if (entry.enabled) tags.push('<span class="worldbook-tag">启用</span>');
     else tags.push('<span class="worldbook-tag">停用</span>');
     if (entry.constant) tags.push('<span class="worldbook-tag constant">常驻</span>');
-    if (activeIds.has(entry.uid)) tags.push('<span class="worldbook-tag active">命中</span>');
+    if (entry.manualActive) tags.push('<span class="worldbook-tag manual">手动命中</span>');
     return `
       <div class="worldbook-entry${entry.uid === worldBookSelectedUid ? ' active' : ''}" onclick="selectWorldBookEntry(${entry.uid})">
         <div class="worldbook-entry-head">
@@ -2806,45 +2819,20 @@ function buildWorldBookEntryEditorFields(entry) {
     </div>
     <div class="worldbook-grid">
       <div class="form-group">
-        <label>主关键词</label>
-        <textarea style="min-height:92px;" onchange="updateWorldBookEntryListField('keys', this.value)" placeholder="每行一个，或用逗号分隔">${Utils.escapeHtml((entry.keys || []).join('\n'))}</textarea>
-      </div>
-      <div class="form-group">
-        <label>次关键词</label>
-        <textarea style="min-height:92px;" onchange="updateWorldBookEntryListField('secondaryKeys', this.value)" placeholder="用于更精细的条件触发">${Utils.escapeHtml((entry.secondaryKeys || []).join('\n'))}</textarea>
-      </div>
-    </div>
-    <div class="worldbook-grid-3">
-      <div class="form-group">
         <label>插入位置</label>
         <select onchange="updateWorldBookEntryField('position', this.value)">
           ${['before_char', 'after_char', 'before_input', 'after_input'].map(position => `<option value="${position}" ${entry.position === position ? 'selected' : ''}>${position}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
-        <label>次关键词逻辑</label>
-        <select onchange="updateWorldBookEntryField('selectiveLogic', this.value)">
-          ${[
-            ['and_any', '命中任一'],
-            ['and_all', '命中全部'],
-            ['not_any', '全部不命中'],
-            ['not_all', '不全部命中'],
-          ].map(([value, label]) => `<option value="${value}" ${entry.selectiveLogic === value ? 'selected' : ''}>${label}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label>概率</label>
-        <input type="number" min="0" max="100" value="${entry.probability}" onchange="updateWorldBookEntryField('probability', this.value, 'number')">
+        <label>说明</label>
+        <div class="worldbook-card-subtitle" style="margin:0;padding-top:10px;">手动命中和常驻条目会直接注入 Prompt，不再使用自动当前命中。</div>
       </div>
     </div>
     <div class="worldbook-checkboxes">
       <label class="worldbook-checkbox"><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateWorldBookEntryField('enabled', this.checked, 'boolean')">启用</label>
       <label class="worldbook-checkbox"><input type="checkbox" ${entry.constant ? 'checked' : ''} onchange="updateWorldBookEntryField('constant', this.checked, 'boolean')">常驻条目</label>
-      <label class="worldbook-checkbox"><input type="checkbox" ${entry.selective !== false ? 'checked' : ''} onchange="updateWorldBookEntryField('selective', this.checked, 'boolean')">启用副关键词条件</label>
-      <label class="worldbook-checkbox"><input type="checkbox" ${entry.useRegex ? 'checked' : ''} onchange="updateWorldBookEntryField('useRegex', this.checked, 'boolean')">正则匹配</label>
-      <label class="worldbook-checkbox"><input type="checkbox" ${entry.matchWholeWords ? 'checked' : ''} onchange="updateWorldBookEntryField('matchWholeWords', this.checked, 'boolean')">整词匹配</label>
-      <label class="worldbook-checkbox"><input type="checkbox" ${entry.caseSensitive ? 'checked' : ''} onchange="updateWorldBookEntryField('caseSensitive', this.checked, 'boolean')">区分大小写</label>
-      <label class="worldbook-checkbox"><input type="checkbox" ${entry.disableRecursion ? 'checked' : ''} onchange="updateWorldBookEntryField('disableRecursion', this.checked, 'boolean')">禁止递归命中</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.manualActive ? 'checked' : ''} onchange="updateWorldBookEntryField('manualActive', this.checked, 'boolean')">手动命中</label>
     </div>
     <div class="form-group" style="margin-top:12px;">
       <label>条目正文</label>
@@ -2857,7 +2845,7 @@ function buildWorldBookEntryEditorFields(entry) {
   `;
 }
 
-function renderWorldBookEditor(book, entries, activeIds) {
+function renderWorldBookEditor(book, entries) {
   const container = document.getElementById('worldBookEditor');
   if (!entries.length) {
     container.innerHTML = `
@@ -2873,7 +2861,7 @@ function renderWorldBookEditor(book, entries, activeIds) {
 
   container.innerHTML = `
     <div class="worldbook-card-title">条目查看 / 编辑</div>
-    <div class="worldbook-card-subtitle">参考 TauriTavern 的世界书交互，这里改成了折叠式条目编辑。点击条目头部即可查看、折叠并直接编辑。</div>
+    <div class="worldbook-card-subtitle">点击条目头部即可查看、折叠并直接编辑。左侧勾选框用于快速切换手动命中。</div>
     <div class="worldbook-editor-list">
       ${entries.map((entry, index) => {
         const isExpanded = entry.uid === expandedUid;
@@ -2884,15 +2872,18 @@ function renderWorldBookEditor(book, entries, activeIds) {
         if (entry.enabled) tags.push('<span class="worldbook-tag">启用</span>');
         else tags.push('<span class="worldbook-tag">停用</span>');
         if (entry.constant) tags.push('<span class="worldbook-tag constant">常驻</span>');
-        if (activeIds.has(entry.uid)) tags.push('<span class="worldbook-tag active">命中</span>');
+        if (entry.manualActive) tags.push('<span class="worldbook-tag manual">手动命中</span>');
         const preview = Utils.escapeHtml((entry.content || '').trim() || '暂无正文').replace(/\n/g, '<br>');
         return `
           <div class="worldbook-editor-entry${isExpanded ? ' expanded' : ''}${isSelected ? ' selected' : ''}">
             <div class="worldbook-editor-head" onclick="toggleWorldBookEntry(${entry.uid})">
               <div class="worldbook-editor-title-row">
+                <label class="worldbook-editor-toggle" onclick="event.stopPropagation()">
+                  <input type="checkbox" ${entry.manualActive ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleWorldBookEntryManual(${entry.uid}, this.checked)">
+                </label>
                 <div class="worldbook-editor-title-group">
                   <div class="worldbook-editor-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
-                  <div class="worldbook-editor-meta">#${index + 1} · 排序 ${entry.order} · 主关键词 ${(entry.keys || []).length} 个 · 正文 ${(entry.content || '').length} 字</div>
+                  <div class="worldbook-editor-meta">#${index + 1} · 排序 ${entry.order} · 位置 ${entry.position} · 正文 ${(entry.content || '').length} 字</div>
                 </div>
                 <div class="worldbook-editor-tags">${tags.join('')}</div>
                 <div class="worldbook-editor-chevron">▶</div>
@@ -2907,21 +2898,6 @@ function renderWorldBookEditor(book, entries, activeIds) {
       }).join('')}
     </div>
   `;
-}
-
-function renderWorldBookActivePreview(activeEntries) {
-  const container = document.getElementById('worldBookActivePreview');
-  if (!activeEntries.length) {
-    container.innerHTML = '<div class="worldbook-entry-empty">当前上下文没有命中任何世界书条目。</div>';
-    return;
-  }
-  container.innerHTML = activeEntries.map(entry => `
-    <div class="worldbook-active-item">
-      <div class="worldbook-active-item-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
-      <div class="worldbook-active-item-meta">位置: ${Utils.escapeHtml(entry.position)} · 排序: ${entry.order}</div>
-      <div class="worldbook-active-item-content">${Utils.escapeHtml(entry.content)}</div>
-    </div>
-  `).join('');
 }
 
 function selectWorldBookEntry(uid) {
@@ -2941,6 +2917,16 @@ function updateWorldBookMeta(field, value) {
   const book = getWorldBookDraft();
   if (!book) return;
   book[field] = value;
+}
+
+function toggleWorldBookEntryManual(uid, checked) {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const entry = book.entries.find(item => item.uid === Number(uid));
+  if (!entry) return;
+  entry.manualActive = !!checked;
+  if (entry.manualActive) entry.enabled = true;
+  renderWorldBookUI();
 }
 
 function updateWorldBookSetting(field, value, type = 'text') {
@@ -2965,6 +2951,7 @@ function updateWorldBookEntryField(field, value, type = 'text') {
     entry[field] = Number(value) || 0;
   } else if (type === 'boolean') {
     entry[field] = !!value;
+    if (field === 'manualActive' && entry[field]) entry.enabled = true;
   } else {
     entry[field] = value;
     if (field === 'comment') entry.title = value || entry.title;
@@ -3016,6 +3003,27 @@ function deleteWorldBookEntry() {
       worldBookSelectedUid = book.entries[0]?.uid || null;
       worldBookExpandedUid = worldBookSelectedUid;
       renderWorldBookUI();
+    },
+  });
+}
+
+function deleteCurrentWorldBook() {
+  if (!worldSettingDraft || !conversation) return;
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const entryCount = Array.isArray(book.entries) ? book.entries.length : 0;
+  const bookName = book.name || ((conversation.name || '未命名故事') + ' 世界书');
+  UI.showConfirm({
+    title: '删除当前世界书',
+    message: `确定要删除当前世界书「${Utils.escapeHtml(bookName)}」吗？这会清空整本世界书的名称、描述、设置和全部 ${entryCount} 条条目。`,
+    onConfirm: () => {
+      worldSettingDraft.worldBook = WorldBook.createEmptyBook(
+        (conversation.name || '未命名故事') + ' 世界书'
+      );
+      worldBookSelectedUid = null;
+      worldBookExpandedUid = null;
+      renderWorldBookUI();
+      UI.showToast('当前世界书已清空，点击保存后正式生效', 'success');
     },
   });
 }
@@ -3919,9 +3927,8 @@ async function streamAIResponseNative(retryAttempt = 0) {
   updateSendButton();
 
   const settings = Storage.getSettings();
-  let systemPrompt, messages;
-  ({ systemPrompt, messages } = PromptBuilder.buildMessages(conversation));
-  _lastBuiltPrompt = { systemPrompt, messages };
+  const promptSnapshot = cachePromptDebugSnapshot(conversation);
+  const { systemPrompt, messages } = promptSnapshot;
 
   const aiMsg = {
     id: Utils.generateId('msg'),
@@ -3995,8 +4002,7 @@ async function streamAIResponse(retryAttempt = 0) {
   if (editMvuMode) {
     ({ systemPrompt, messages } = buildEditMvuPrompt());
   } else {
-    ({ systemPrompt, messages } = PromptBuilder.buildMessages(conversation));
-    _lastBuiltPrompt = { systemPrompt, messages };
+    ({ systemPrompt, messages } = cachePromptDebugSnapshot(conversation));
   }
 
   // Create AI placeholder message
@@ -5083,9 +5089,7 @@ function showPromptDebug() {
   if (existing) { closeDebug(); return; }
 
   if (!conversation) return;
-  const { systemPrompt, messages } = _lastBuiltPrompt || PromptBuilder.buildMessages(conversation);
-  const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
-  const activeWorldBookEntries = worldBookBlocks.active || [];
+  const { systemPrompt, messages, activeWorldBookEntries } = getPromptDebugSnapshot(conversation);
   const THRESHOLD = 200;
   const positionLabels = {
     before_char: '背景前',
@@ -5140,6 +5144,7 @@ function showPromptDebug() {
     const tags = [
       `<span class="debug-worldbook-tag accent">${Utils.escapeHtml(positionLabels[entry.position] || entry.position || '未知位置')}</span>`,
       entry.constant ? '<span class="debug-worldbook-tag">常驻</span>' : '',
+      entry.manualActive ? '<span class="debug-worldbook-tag">手动命中</span>' : '',
       `<span class="debug-worldbook-tag">排序 ${Number(entry.order) || 0}</span>`,
       entry.probability !== undefined ? `<span class="debug-worldbook-tag">概率 ${Number(entry.probability) || 0}</span>` : '',
       ...primaryKeys.map(key => `<span class="debug-worldbook-tag">主键 ${Utils.escapeHtml(key)}</span>`),
@@ -5162,15 +5167,15 @@ function showPromptDebug() {
     if (!activeWorldBookEntries.length) {
       return `
         <div class="debug-section">
-          <div class="debug-section-header"><span>世界书</span><span class="debug-badge">0条命中</span></div>
-          <div class="debug-worldbook-empty">本轮 Prompt 没有命中任何世界书条目。</div>
+          <div class="debug-section-header"><span>世界书</span><span class="debug-badge">0条注入</span></div>
+          <div class="debug-worldbook-empty">本轮 Prompt 没有注入任何手动命中或常驻世界书条目。</div>
         </div>
       `;
     }
 
     return `
       <div class="debug-section">
-        <div class="debug-section-header"><span>世界书</span><span class="debug-badge">${activeWorldBookEntries.length}条命中</span></div>
+        <div class="debug-section-header"><span>世界书</span><span class="debug-badge">${activeWorldBookEntries.length}条注入</span></div>
         <div class="debug-worldbook-summary">${worldBookSummary()}</div>
         <div class="debug-worldbook-list">
           ${activeWorldBookEntries.map((entry, idx) => worldBookEntryBlock(entry, idx)).join('')}

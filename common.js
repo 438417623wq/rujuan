@@ -2039,6 +2039,15 @@ const WorldBook = {
       content: String(partial.content || partial.text || ''),
       enabled: partial.enabled !== false && partial.disable !== true && partial.disabled !== true,
       constant: !!(partial.constant || partial.alwaysActive || partial.always_active),
+      manualActive: !!(
+        partial.manualActive
+        || partial.forceActive
+        || partial.force_active
+        || partial.forceHit
+        || partial.force_hit
+        || partial.currentHit
+        || partial.current_hit
+      ),
       order: Number.isFinite(Number(partial.order)) ? Number(partial.order) : 100,
       position: this._normalizePosition(partial.position),
       selectiveLogic: this._normalizeSelectiveLogic(partial.selectiveLogic),
@@ -2127,59 +2136,46 @@ const WorldBook = {
 
   getActiveEntries(book, conversation) {
     const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
-    const entries = normalized.entries.filter(entry => entry.enabled && entry.content.trim());
+    const entries = normalized.entries.filter(entry => (
+      entry.enabled
+      && entry.content.trim()
+      && (entry.manualActive || entry.constant)
+    ));
     if (entries.length === 0) return [];
 
-    const baseText = this._buildScanText(conversation, normalized.settings.scanDepth);
-    const active = [];
-    const seen = new Set();
-
-    const tryActivate = (entry, scanText) => {
-      if (!entry || seen.has(entry.uid)) return false;
-      if (!entry.enabled || !entry.content.trim()) return false;
-      if (entry.probability <= 0) return false;
-      if (entry.constant || this._entryMatches(entry, scanText, normalized.settings)) {
-        seen.add(entry.uid);
-        active.push(entry);
-        return true;
-      }
-      return false;
-    };
-
-    for (const entry of entries) {
-      tryActivate(entry, baseText);
-    }
-
-    if (normalized.settings.recursiveScan) {
-      for (let step = 0; step < normalized.settings.maxRecursionSteps; step++) {
-        let changed = false;
-        const recursiveText = baseText + '\n' + active.map(entry => entry.content).join('\n');
-        for (const entry of entries) {
-          if (entry.disableRecursion) continue;
-          if (tryActivate(entry, recursiveText)) changed = true;
-        }
-        if (!changed) break;
-      }
-    }
-
-    active.sort((a, b) => {
+    const active = [...entries];
+    const compareEntries = (a, b) => {
       const posA = this._positionRank(a.position);
       const posB = this._positionRank(b.position);
       if (posA !== posB) return posA - posB;
+      if (a.manualActive !== b.manualActive) return a.manualActive ? -1 : 1;
       if (a.constant !== b.constant) return a.constant ? -1 : 1;
       if (a.order !== b.order) return a.order - b.order;
       return a.uid - b.uid;
-    });
+    };
+
+    active.sort(compareEntries);
 
     const limited = [];
     let totalChars = 0;
-    for (const entry of active) {
-      if (limited.length >= normalized.settings.maxEntries) break;
+    const addEntry = (entry, force = false) => {
+      if (!force && limited.length >= normalized.settings.maxEntries) return false;
       const nextLen = entry.content.length;
-      if (limited.length > 0 && totalChars + nextLen > normalized.settings.maxChars) break;
+      if (!force && limited.length > 0 && totalChars + nextLen > normalized.settings.maxChars) return false;
       limited.push(entry);
       totalChars += nextLen;
+      return true;
+    };
+
+    for (const entry of active) {
+      if (!entry.manualActive) continue;
+      addEntry(entry, true);
     }
+    for (const entry of active) {
+      if (entry.manualActive) continue;
+      if (!addEntry(entry, false)) break;
+    }
+    limited.sort(compareEntries);
     return limited;
   },
 
@@ -2867,7 +2863,7 @@ const Exporter = {
         md += `- 主关键词: ${(entry.keys || []).join(', ') || '无'}\n`;
         md += `- 次关键词: ${(entry.secondaryKeys || []).join(', ') || '无'}\n`;
         md += `- 位置: ${entry.position}\n`;
-        md += `- 状态: ${entry.enabled ? '启用' : '停用'}${entry.constant ? ' / 常驻' : ''}\n\n`;
+        md += `- 状态: ${entry.enabled ? '启用' : '停用'}${entry.constant ? ' / 常驻' : ''}${entry.manualActive ? ' / 手动命中' : ''}\n\n`;
         md += `${entry.content}\n\n`;
       }
       md += `---\n\n`;

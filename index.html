@@ -180,6 +180,12 @@
       margin-left: 8px;
     }
 
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
     /* ── Conversation Cards ──────────────────────── */
     .conv-list {
       display: flex;
@@ -405,6 +411,13 @@
       margin: 0 auto 32px;
     }
 
+    .empty-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .empty-cta {
       font-size: 15px;
       padding: 12px 36px;
@@ -535,7 +548,8 @@
     }
 
     /* ── Hidden file input ───────────────────────── */
-    #import-file-input {
+    #import-file-input,
+    #story-import-input {
       display: none;
     }
 
@@ -597,6 +611,19 @@
 
       .toolbar-label {
         font-size: 16px;
+      }
+
+      .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .toolbar-actions {
+        width: 100%;
+      }
+
+      .toolbar-actions .btn {
+        width: 100%;
       }
     }
 
@@ -742,6 +769,11 @@
       <div class="toolbar-label">
         我的故事 <span class="toolbar-count" id="toolbar-count"></span>
       </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" onclick="triggerStoryImport()" title="导入别人分享的故事" id="btn-import-story">
+          导入故事
+        </button>
+      </div>
     </div>
 
     <!-- Conversation List -->
@@ -752,13 +784,17 @@
     <!-- Footer: Import/Export -->
     <div class="footer-actions" id="footer-actions" style="display:none;">
       <button class="btn btn-ghost" onclick="exportAllData()" title="导出所有数据" id="btn-export">
-        导出数据
+        导出备份
+      </button>
+      <button class="btn btn-ghost" onclick="triggerStoryImport()" title="导入别人分享的故事" id="btn-import-story-footer">
+        导入故事
       </button>
       <button class="btn btn-ghost" onclick="triggerImport()" title="导入数据" id="btn-import">
-        导入数据
+        导入备份
       </button>
     </div>
     <input type="file" id="import-file-input" accept=".json" onchange="importData(event)">
+    <input type="file" id="story-import-input" accept=".json,application/json,text/plain" onchange="importStoryData(event)">
 
   </main>
 </div>
@@ -776,9 +812,13 @@
     document.querySelector('#fab-create > .icon').innerHTML = Icons.plus;
 
     const btnExport = document.getElementById('btn-export');
+    const btnImportStory = document.getElementById('btn-import-story');
+    const btnImportStoryFooter = document.getElementById('btn-import-story-footer');
     const btnImport = document.getElementById('btn-import');
-    btnExport.innerHTML = `${getIcon('download', 14)} 导出数据`;
-    btnImport.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入数据`;
+    btnExport.innerHTML = `${getIcon('download', 14)} 导出备份`;
+    btnImportStory.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入故事`;
+    btnImportStoryFooter.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入故事`;
+    btnImport.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入备份`;
   })();
 
   // ── Guide ──────────────────────────────────────
@@ -891,6 +931,7 @@
       document.getElementById('btn-settings-pub').style.display = '';
       // Hide footer import/export (moved into settings panel)
       document.getElementById('btn-export').style.display = 'none';
+      document.getElementById('btn-import-story-footer').style.display = 'none';
       document.getElementById('btn-import').style.display = 'none';
     } else {
       // Local mode: hide guide and public settings buttons
@@ -914,7 +955,7 @@
 
     if (conversations.length === 0) {
       toolbar.style.display = 'none';
-      footer.style.display = 'none';
+      footer.style.display = '';
       container.innerHTML = renderEmptyState();
       return;
     }
@@ -1202,6 +1243,100 @@
   // ── Import Data ────────────────────────────────
   function triggerImport() {
     document.getElementById('import-file-input').click();
+  }
+
+  function triggerStoryImport() {
+    document.getElementById('story-import-input').click();
+  }
+
+  function isImportableConversation(data) {
+    return !!data && typeof data === 'object' && !Array.isArray(data) && (
+      Array.isArray(data.messages) ||
+      typeof data.storySetting !== 'undefined' ||
+      typeof data.phase === 'string' ||
+      typeof data.mvu !== 'undefined'
+    );
+  }
+
+  function extractImportableStories(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+    if (isImportableConversation(data)) return [data];
+    if (data.conversations && typeof data.conversations === 'object' && !Array.isArray(data.conversations)) {
+      return Object.values(data.conversations).filter(isImportableConversation);
+    }
+    return [];
+  }
+
+  function makeImportedStoryName(rawName, usedNames) {
+    const baseName = (rawName || '\u5bfc\u5165\u7684\u6545\u4e8b').trim() || '\u5bfc\u5165\u7684\u6545\u4e8b';
+    if (!usedNames.has(baseName)) {
+      usedNames.add(baseName);
+      return baseName;
+    }
+
+    let suffix = 1;
+    let nextName = `${baseName} (\u5bfc\u5165)`;
+    while (usedNames.has(nextName)) {
+      suffix += 1;
+      nextName = `${baseName} (\u5bfc\u5165${suffix})`;
+    }
+    usedNames.add(nextName);
+    return nextName;
+  }
+
+  function prepareImportedConversation(rawConv, usedNames) {
+    const now = Date.now();
+    const settings = Storage.getSettings();
+    const conv = JSON.parse(JSON.stringify(rawConv));
+    conv.id = Utils.generateId('conv');
+    conv.name = makeImportedStoryName(conv.name, usedNames);
+    conv.phase = conv.phase || 'init';
+    conv.messages = Array.isArray(conv.messages) ? conv.messages : [];
+    conv.mvu = conv.mvu ?? null;
+    conv.storySetting = conv.storySetting ?? null;
+    conv.worldBook = conv.worldBook ?? null;
+    conv.summary = conv.summary && typeof conv.summary === 'object'
+      ? conv.summary
+      : { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+    conv.createdAt = now;
+    conv.updatedAt = now;
+    return conv;
+  }
+
+  function importStoryData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        const stories = extractImportableStories(data);
+        if (!stories.length) throw new Error('no-story');
+
+        const count = stories.length;
+        UI.showConfirm({
+          title: '\u5bfc\u5165\u6545\u4e8b',
+          message: count === 1
+            ? '\u8fd9\u4e2a\u6587\u4ef6\u4e2d\u7684\u6545\u4e8b\u4f1a\u52a0\u5165\u201c\u6211\u7684\u6545\u4e8b\u201d\uff0c\u4e0d\u4f1a\u8986\u76d6\u4f60\u73b0\u6709\u7684\u5185\u5bb9\u3002\u786e\u5b9a\u7ee7\u7eed\u5417\uff1f'
+            : `\u5c06\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b\u5230\u201c\u6211\u7684\u6545\u4e8b\u201d\uff0c\u4e0d\u4f1a\u8986\u76d6\u4f60\u73b0\u6709\u7684\u5185\u5bb9\u3002\u786e\u5b9a\u7ee7\u7eed\u5417\uff1f`,
+          onConfirm: async () => {
+            UI.showToast(count === 1 ? '\u6b63\u5728\u5bfc\u5165\u6545\u4e8b...' : `\u6b63\u5728\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b...`, 'info');
+            const usedNames = new Set(Storage.getConversationList().map(conv => (conv.name || '').trim()).filter(Boolean));
+            for (const story of stories) {
+              const importedConv = prepareImportedConversation(story, usedNames);
+              Storage.saveConversation(importedConv);
+            }
+            UI.showToast(count === 1 ? '\u6545\u4e8b\u5bfc\u5165\u6210\u529f' : `\u5df2\u6210\u529f\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b`, 'success');
+            loadConversations();
+          },
+        });
+      } catch {
+        UI.showToast('\u6587\u4ef6\u683c\u5f0f\u65e0\u6548\uff0c\u65e0\u6cd5\u8bc6\u522b\u6545\u4e8b\u6570\u636e', 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   }
 
   function importData(event) {
