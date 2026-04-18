@@ -1,0 +1,2499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="入卷">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>入卷 - 设置</title>
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
+  <script src="common.js?v=14"></script>
+  <style>
+    /* ── Page Layout ─────────────────────────────── */
+    body {
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .page-container {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 20px 80px;
+    }
+
+    /* ── Header ──────────────────────────────────── */
+    .settings-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: calc(24px + env(safe-area-inset-top, var(--sat, 0px))) 0 28px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+    }
+
+    .settings-header h1 {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--accent);
+      flex: 1;
+      letter-spacing: 2px;
+    }
+
+    .settings-header h1 small {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      margin-left: 8px;
+    }
+
+    .header-ornament {
+      display: block;
+      width: 40px;
+      height: 1px;
+      background: linear-gradient(90deg, var(--accent), transparent);
+      margin-top: 6px;
+    }
+
+    /* ── Sections ────────────────────────────────── */
+    .section {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 22px;
+      margin-bottom: 18px;
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+
+    .section.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .section::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 15% 0%, rgba(201, 164, 76, 0.03), transparent 50%),
+        radial-gradient(ellipse at 85% 100%, rgba(201, 164, 76, 0.02), transparent 50%);
+      pointer-events: none;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title .icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .section-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin: -8px 0 16px;
+      line-height: 1.7;
+    }
+
+    .section-desc code {
+      font-size: 11px;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* ── Form elements ───────────────────────────── */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .input-row input,
+    .input-row select {
+      flex: 1;
+    }
+
+    .input-row .btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .password-row {
+      display: flex;
+      gap: 0;
+      align-items: center;
+      position: relative;
+    }
+
+    .password-row input {
+      padding-right: 44px;
+    }
+
+    .password-row .btn-toggle-vis {
+      position: absolute;
+      right: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: none;
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .password-row .btn-toggle-vis:hover {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .special-textarea {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      min-height: 140px;
+      line-height: 1.6;
+    }
+
+    .toggle-card {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-surface);
+    }
+
+    .toggle-card input[type="checkbox"] {
+      margin-top: 2px;
+      transform: scale(1.1);
+    }
+
+    .toggle-card-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .toggle-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .toggle-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    .field-help {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .compact-textarea {
+      min-height: 92px;
+      font-family: 'SF Mono', 'Fira Code', var(--font-ui), monospace;
+    }
+
+    .fetch-status {
+      display: none;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .fetch-status.info {
+      border-color: rgba(201, 164, 76, 0.22);
+      background: rgba(201, 164, 76, 0.08);
+      color: var(--text-primary);
+    }
+
+    .fetch-status.success {
+      border-color: rgba(90, 178, 122, 0.28);
+      background: rgba(90, 178, 122, 0.12);
+      color: #c9f0d6;
+    }
+
+    .fetch-status.error {
+      border-color: rgba(214, 92, 92, 0.28);
+      background: rgba(214, 92, 92, 0.12);
+      color: #ffd2d2;
+    }
+
+    /* ── API Profile Cards ───────────────────────── */
+    .api-list-empty {
+      text-align: center;
+      padding: 28px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .api-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .api-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    .api-card.is-default {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 12px rgba(201, 164, 76, 0.08);
+    }
+
+    .api-card-badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      font-weight: 700;
+      font-family: var(--font-display);
+      flex-shrink: 0;
+      letter-spacing: -0.5px;
+    }
+
+    .badge-openai { background: linear-gradient(135deg, #5aab7b, #3d8f5f); color: #fff; }
+    .badge-claude { background: linear-gradient(135deg, #d4845a, #c96a3f); color: #fff; }
+    .badge-google { background: linear-gradient(135deg, #5a8fd4, #3d6fb5); color: #fff; }
+
+    .api-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .api-card-name {
+      font-weight: 500;
+      font-size: 14px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-card-name .default-tag {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--accent);
+      background: var(--accent-dim);
+      padding: 1px 7px;
+      border-radius: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .api-card-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .api-card-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+
+    .api-card:hover .api-card-actions {
+      opacity: 1;
+    }
+
+    /* ── Preset Selector ─────────────────────────── */
+    .preset-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .preset-pills {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+
+    .preset-actions {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    /* ── Prompt Entry Cards ───────────────────────── */
+    .prompt-entry {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      transition: all var(--transition);
+      overflow: hidden;
+    }
+
+    .prompt-entry.is-disabled {
+      opacity: 0.4;
+    }
+
+    .prompt-entry-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .prompt-entry-header:hover {
+      background: rgba(201, 164, 76, 0.03);
+    }
+
+    .prompt-entry-grip {
+      width: 16px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      opacity: 0.35;
+      font-size: 14px;
+      cursor: grab;
+    }
+
+    .prompt-entry-grip:active {
+      cursor: grabbing;
+    }
+
+    .prompt-entry.dragging {
+      opacity: 0.35;
+      border-color: var(--accent);
+    }
+
+    .prompt-entry.drag-over {
+      border-top: 2px solid var(--accent);
+    }
+
+    .prompt-entry-toggle {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      border: 1.5px solid var(--border-strong);
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: transparent;
+      transition: all var(--transition);
+      flex-shrink: 0;
+      padding: 0;
+    }
+
+    .prompt-entry-toggle.is-on {
+      background: var(--accent);
+      color: #1a1510;
+      border-color: var(--accent);
+    }
+
+    .prompt-entry-toggle .icon svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    .prompt-entry-name {
+      flex: 1;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .prompt-entry-role-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: all var(--transition);
+    }
+
+    .prompt-entry-role-badge.role-system {
+      color: var(--accent);
+      border-color: rgba(201, 164, 76, 0.3);
+    }
+
+    .prompt-entry-role-badge.role-user {
+      color: var(--success);
+      border-color: rgba(124, 184, 122, 0.3);
+    }
+
+    .prompt-entry-role-badge.role-assistant {
+      color: #a0a0d0;
+      border-color: rgba(160, 160, 208, 0.3);
+    }
+
+    .prompt-entry-actions {
+      display: flex;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .prompt-entry-actions .btn-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    .prompt-entry-chevron {
+      transition: transform 0.25s ease;
+      flex-shrink: 0;
+    }
+
+    .prompt-entry.is-expanded .prompt-entry-chevron {
+      transform: rotate(180deg);
+    }
+
+    .prompt-entry-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+    }
+
+    .prompt-entry.is-expanded .prompt-entry-body {
+      max-height: 600px;
+    }
+
+    .prompt-entry-body-inner {
+      padding: 4px 12px 14px;
+    }
+
+    .prompt-entry-body textarea {
+      font-size: 12px;
+      min-height: 100px;
+      line-height: 1.65;
+      font-family: 'SF Mono', 'Fira Code', var(--font-ui), monospace;
+    }
+
+    /* ── Slot Entry (marker) ────────────────────── */
+    .prompt-entry.is-slot {
+      background: rgba(201, 164, 76, 0.04);
+      border-style: dashed;
+    }
+
+    .prompt-entry.is-slot .prompt-entry-header {
+      cursor: default;
+    }
+
+    .prompt-entry-slot-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 10px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      letter-spacing: 0.5px;
+    }
+
+    /* ── Interval Selector ────────────────────────── */
+    .interval-selector {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .interval-pill {
+      padding: 7px 18px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-ui);
+    }
+
+    .interval-pill:hover:not(.active) {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+
+    .interval-pill.active {
+      background: var(--accent);
+      color: #1a1510;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* ── Reset Default Button ─────────────────────── */
+    .btn-inline-reset {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--accent);
+      opacity: 0.65;
+      padding: 0;
+      margin-left: 10px;
+      transition: opacity var(--transition);
+      font-family: var(--font-ui);
+    }
+
+    .btn-inline-reset:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+
+    /* ── Data Management ──────────────────────────── */
+    .data-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .data-actions .btn {
+      flex: 1;
+      min-width: 140px;
+      justify-content: center;
+    }
+
+    .btn-danger {
+      background: var(--bg-elevated);
+      color: var(--danger);
+      border: 1px solid rgba(201, 106, 90, 0.3);
+    }
+
+    .btn-danger:hover {
+      border-color: var(--danger);
+      background: rgba(201, 106, 90, 0.1);
+    }
+
+    .data-size-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 12px;
+      text-align: center;
+    }
+
+    /* ── Hidden file input ────────────────────────── */
+    #importFileInput,
+    #importPresetInput {
+      display: none;
+    }
+
+    /* ── Responsive ───────────────────────────────── */
+    @media (max-width: 600px) {
+      .page-container {
+        padding: 0 14px 60px;
+      }
+
+      .settings-header h1 {
+        font-size: 22px;
+      }
+
+      .settings-header h1 small {
+        display: none;
+      }
+
+      .section {
+        padding: 16px;
+      }
+
+      .form-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+
+      .api-card-actions {
+        opacity: 1;
+      }
+
+      .data-actions {
+        flex-direction: column;
+      }
+
+      .data-actions .btn {
+        min-width: unset;
+      }
+    }
+
+    /* ── Loading spinner for fetch buttons ────────── */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .btn.is-loading {
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .btn.is-loading .icon {
+      animation: spin 1s linear infinite;
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-container" id="app">
+
+  <!-- ── Header ──────────────────────────────── -->
+  <header class="settings-header">
+    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=12'" title="返回">
+      <!-- icon injected by JS -->
+    </button>
+    <div>
+      <h1>Settings <small>设置</small></h1>
+      <span class="header-ornament"></span>
+    </div>
+  </header>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 0: Notification Settings          -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionNotification">
+    <div class="section-title" id="titleNotification">
+      <!-- icon injected --> 通知栏提示
+    </div>
+    <p class="section-desc">
+      开启后，通知栏会按状态显示：
+      <code>软件正在后台运行</code>、
+      <code>生成中</code>、
+      <code>生成失败</code>、
+      <code>生成完成</code>
+    </p>
+    <label class="toggle-card" for="chkNotificationBar">
+      <input type="checkbox" id="chkNotificationBar" onchange="onDefaultsChange('notification')">
+      <span class="toggle-card-main">
+        <span class="toggle-card-title">开启通知栏提示</span>
+        <span class="toggle-card-desc">启用后，安卓端会在后台生成和结果返回时更新通知栏提示。</span>
+      </span>
+    </label>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 1: API Profiles                    -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionApi">
+    <div class="section-title" id="titleApi">
+      <!-- icon injected --> API 配置
+    </div>
+    <div id="apiProfileList"></div>
+    <button class="btn btn-secondary" id="btnAddApi" onclick="openProfileEditor()" style="width:100%;justify-content:center;margin-top:8px;">
+      <!-- icon injected --> 添加 API 配置
+    </button>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 2: Default Settings                -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionDefaults">
+    <div class="section-title" id="titleDefaults">
+      <!-- icon injected --> 默认设定
+    </div>
+
+    <div class="form-group">
+      <label>默认 API 配置</label>
+      <select id="selDefaultApi" onchange="onDefaultsChange('api')"></select>
+    </div>
+
+    <div class="form-group">
+      <label>默认模型</label>
+      <div class="input-row">
+        <select id="selDefaultModel" onchange="onDefaultsChange()" style="display:none;"></select>
+        <input type="text" id="inputDefaultModel"
+               placeholder="如 claude-sonnet-4-20250514" oninput="onDefaultsChange()">
+        <button class="btn btn-secondary" id="btnFetchDefaultModels" onclick="fetchDefaultModels()">
+          <!-- icon injected --> 拉取
+        </button>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>摘要合并间隔</label>
+        <div class="interval-selector" id="intervalSelector"></div>
+      </div>
+      <div class="form-group">
+        <label>导出格式</label>
+        <select id="selExportFormat" onchange="onDefaultsChange()">
+          <option value="md">Markdown (.md)</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row" style="margin-top:16px;">
+      <div class="form-group">
+        <label>回复字数 <span style="font-size:11px;color:var(--text-muted);">（对应 <code>{{articleWords}}</code>）</span></label>
+        <div class="interval-selector" id="articleWordSelector"></div>
+      </div>
+      <div class="form-group">
+        <label>摘要字数 <span style="font-size:11px;color:var(--text-muted);">（对应 <code>{{summaryWords}}</code>）</span></label>
+        <div class="interval-selector" id="summaryWordSelector"></div>
+      </div>
+    </div>
+
+    <div class="form-row" style="margin-top:16px;">
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkPromptInspector" onchange="onDefaultsChange('inspector')">
+          显示 Prompt Inspector
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 3: Prompt Entries (RP Phase)       -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionPromptEntries">
+    <div class="section-title" id="titlePromptEntries">
+      <!-- icon injected --> Prompt 预设
+    </div>
+    <div class="preset-bar" id="presetBar"></div>
+    <p class="section-desc">
+      切换预设会同时更改下方的 RP 条目和特殊 Prompt。支持拖拽排序、开关、角色切换。<br>
+      <code>{{schema}}</code> = 状态栏字段定义 &nbsp;&nbsp;
+      <code>{{articleWords}}</code> = 正文字数 &nbsp;&nbsp;
+      <code>{{summaryWords}}</code> = 摘要字数<br>
+      <span style="color:var(--text-muted)">SLOT = 动态内容插槽（故事设定/总结/对话历史/状态栏）。对话历史之后的条目处于 jailbreak 位置。</span>
+    </p>
+    <div id="promptEntryList"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn btn-secondary" id="btnAddEntry" onclick="addPromptEntry()" style="flex:1;justify-content:center;">
+        <!-- icon injected --> 添加条目
+      </button>
+      <button class="btn btn-secondary" onclick="addSlotEntry()" style="justify-content:center;">
+        添加 Slot
+      </button>
+      <button class="btn btn-secondary" onclick="resetPromptEntries()" style="justify-content:center;">
+        恢复默认
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 5: Special Prompts                 -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionSpecialPrompts">
+    <div class="section-title" id="titleSpecialPrompts">
+      <!-- icon injected --> 特殊 Prompt
+    </div>
+    <p class="section-desc">
+      初始化阶段和大总结生成使用独立的 Prompt，属于当前预设。留空则使用内置默认模板。
+    </p>
+
+    <div class="form-group">
+      <label>
+        初始化阶段指令
+        <button class="btn-inline-reset" onclick="resetSpecialPrompt('init')">恢复默认</button>
+      </label>
+      <textarea id="taPromptInit" class="special-textarea" style="min-height:160px;"
+                oninput="onSpecialPromptsChange()"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>
+        大总结生成指令
+        <button class="btn-inline-reset" onclick="resetSpecialPrompt('summaryGen')">恢复默认</button>
+      </label>
+      <textarea id="taPromptSummaryGen" class="special-textarea" style="min-height:120px;"
+                oninput="onSpecialPromptsChange()"></textarea>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════ -->
+  <!-- Section 6: Data Management                 -->
+  <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionData">
+    <div class="section-title" id="titleData">
+      <!-- icon injected --> 数据管理
+    </div>
+    <div class="data-actions">
+      <button class="btn btn-secondary" onclick="exportAllData()">
+        <span class="icon di-export" style="width:16px;height:16px;display:inline-flex;"></span>
+        导出全部数据
+      </button>
+      <button class="btn btn-secondary" onclick="triggerImport()">
+        <span class="icon di-import" style="width:16px;height:16px;display:inline-flex;transform:rotate(180deg);"></span>
+        导入数据
+      </button>
+      <button class="btn btn-danger" onclick="clearAllData()">
+        <span class="icon di-clear" style="width:16px;height:16px;display:inline-flex;"></span>
+        清空全部数据
+      </button>
+    </div>
+    <div class="data-size-label" id="dataSizeLabel"></div>
+    <input type="file" id="importFileInput" accept=".json" onchange="handleImportFile(event)">
+    <input type="file" id="importPresetInput" accept=".json" onchange="handleImportPresetFile(event)">
+  </div>
+
+</div>
+
+<script>
+  // ================================================================
+  // State
+  // ================================================================
+  let settings = Storage.getSettings();
+  let promptEntries = [];
+  let expandedEntryId = null;
+  let dragSrcIdx = null;
+
+  // ================================================================
+  // Initialization
+  // ================================================================
+  async function init() {
+    await Config.load();
+    if (Config.isPublic()) { location.href = 'index.html'; return; }
+    await Storage.syncFromServer();
+    injectIcons();
+    loadAllSections();
+    animateSections();
+  }
+
+  function injectIcons() {
+    // Header back button
+    document.getElementById('btnBack').innerHTML = getIcon('back', 22);
+
+    // Section title icons
+    const titleIcons = {
+      titleNotification: 'sidebar',
+      titleApi: 'settings',
+      titleDefaults: 'edit',
+      titlePromptEntries: 'menu',  // Prompt 预设
+      titleSpecialPrompts: 'edit',
+      titleData: 'download',
+    };
+    for (const [id, iconName] of Object.entries(titleIcons)) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = getIcon(iconName, 18) + ' ' + el.textContent.trim();
+    }
+
+    // Add API button
+    document.getElementById('btnAddApi').innerHTML = getIcon('plus', 16) + ' 添加 API 配置';
+
+    // Add entry button
+    document.getElementById('btnAddEntry').innerHTML = getIcon('plus', 16) + ' 添加条目';
+
+    // Fetch button
+    document.getElementById('btnFetchDefaultModels').innerHTML = getIcon('refresh', 14) + ' 拉取';
+
+    // Data management icons
+    document.querySelector('.di-export').innerHTML = Icons.download;
+    document.querySelector('.di-import').innerHTML = Icons.download;
+    document.querySelector('.di-clear').innerHTML = Icons.trash;
+  }
+
+  function loadAllSections() {
+    renderApiProfileList();
+    renderDefaultSettings();
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    renderIntervalSelector();
+    renderArticleWordSelector();
+    renderSummaryWordSelector();
+    renderDataSize();
+  }
+
+  function animateSections() {
+    const sections = document.querySelectorAll('.section');
+    sections.forEach((section, i) => {
+      setTimeout(() => section.classList.add('visible'), 60 + i * 80);
+    });
+  }
+
+  // ================================================================
+  // Section 1: API Profiles
+  // ================================================================
+  function renderApiProfileList() {
+    const profiles = Storage.getApiProfiles();
+    const container = document.getElementById('apiProfileList');
+    const keys = Object.keys(profiles);
+
+    if (keys.length === 0) {
+      container.innerHTML = '<div class="api-list-empty">尚未添加任何 API 配置</div>';
+      return;
+    }
+
+    container.innerHTML = Object.values(profiles).map(p => {
+      const isDefault = p.id === settings.defaultApiProfileId;
+      const badgeClass = {
+        openai: 'badge-openai',
+        claude: 'badge-claude',
+        'google-ai-studio': 'badge-google',
+      }[p.provider] || 'badge-openai';
+      const providerLabel = {
+        openai: 'OpenAI Compatible',
+        claude: 'Claude (Anthropic)',
+        'google-ai-studio': 'Google AI Studio',
+      }[p.provider] || p.provider;
+      const letter = (p.name || p.provider || '?')[0].toUpperCase();
+      const maskedKey = p.apiKey ? p.apiKey.substring(0, 6) + '...' + p.apiKey.slice(-4) : '未设置';
+
+      return `
+        <div class="api-card ${isDefault ? 'is-default' : ''}" onclick="setDefaultProfile('${p.id}')">
+          <div class="api-card-badge ${badgeClass}">${Utils.escapeHtml(letter)}</div>
+          <div class="api-card-info">
+            <div class="api-card-name">
+              ${Utils.escapeHtml(p.name || '未命名')}
+              ${isDefault ? '<span class="default-tag">default</span>' : ''}
+            </div>
+            <div class="api-card-meta">${Utils.escapeHtml(providerLabel)} &middot; ${Utils.escapeHtml(maskedKey)}</div>
+          </div>
+          <div class="api-card-actions">
+            <button class="btn-icon" onclick="event.stopPropagation(); openProfileEditor('${p.id}')" title="编辑">
+              ${getIcon('edit', 15)}
+            </button>
+            <button class="btn-icon" onclick="event.stopPropagation(); deleteProfile('${p.id}')" title="删除">
+              ${getIcon('trash', 15)}
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function setDefaultProfile(id) {
+    // Save current model to old profile
+    const oldId = settings.defaultApiProfileId;
+    if (oldId && oldId !== id) {
+      const currentModel = getSelectedModel();
+      if (currentModel) {
+        const oldProfile = Storage.getApiProfile(oldId);
+        if (oldProfile) {
+          oldProfile.defaultModel = currentModel;
+          Storage.saveApiProfile(oldProfile);
+        }
+      }
+    }
+
+    settings.defaultApiProfileId = id;
+
+    // Load new profile's model
+    const newProfile = Storage.getApiProfile(id);
+    const newModel = newProfile?.defaultModel || newProfile?.model || '';
+    settings.defaultModel = newModel;
+
+    Storage.saveSettings(settings);
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    setModelValue(newModel);
+    showModelInput();
+    UI.showToast('已设为默认 API', 'success');
+  }
+
+  function openProfileEditor(editId) {
+    const profile = editId ? Storage.getApiProfile(editId) : null;
+    const isEdit = !!profile;
+
+    const defaultUrls = {
+      openai: 'https://api.openai.com/v1',
+      claude: 'https://api.anthropic.com/v1',
+      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
+    };
+
+    const selectedProvider = profile?.provider || 'openai';
+    const urlPlaceholder = defaultUrls[selectedProvider] || 'https://api.openai.com/v1';
+
+    UI.showModal({
+      title: isEdit ? '编辑 API 配置' : '新建 API 配置',
+      content: `
+        <div class="form-group">
+          <label>名称</label>
+          <input type="text" id="edName" value="${Utils.escapeHtml(profile?.name || '')}" placeholder="如 Claude 官方">
+        </div>
+        <div class="form-group">
+          <label>提供商</label>
+          <select id="edProvider" onchange="onEditorProviderChange()">
+            <option value="openai" ${selectedProvider === 'openai' ? 'selected' : ''}>OpenAI Compatible</option>
+            <option value="claude" ${selectedProvider === 'claude' ? 'selected' : ''}>Claude (Anthropic)</option>
+            <option value="google-ai-studio" ${selectedProvider === 'google-ai-studio' ? 'selected' : ''}>Google AI Studio</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Base URL <span style="font-size:11px;color:var(--text-muted);">(留空使用默认)</span></label>
+          <input type="text" id="edBaseUrl" value="${Utils.escapeHtml(profile?.baseUrl || '')}" placeholder="${Utils.escapeHtml(urlPlaceholder)}">
+          <div class="field-help">支持直接填写根域名、`/v1`，甚至完整的 `/chat/completions` 地址；测试和调用时会自动尝试规范化。</div>
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <div class="password-row">
+            <input type="password" id="edApiKey" value="${Utils.escapeHtml(profile?.apiKey || '')}" placeholder="sk-...">
+            <button class="btn-toggle-vis" type="button" onclick="toggleEditorKeyVisibility()" title="切换显示">
+              ${getIcon('eye', 16)}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>附加请求头 <span style="font-size:11px;color:var(--text-muted);">(可选)</span></label>
+          <textarea id="edExtraHeaders" class="special-textarea compact-textarea" placeholder='{"HTTP-Referer":"https://example.com","X-Title":"AIRP"}&#10;或每行一个 Key: Value'>${Utils.escapeHtml(profile?.extraHeaders || '')}</textarea>
+          <div class="field-help">适合 OpenRouter、自建中转、反代或需要自定义鉴权头的 OpenAI 兼容接口。</div>
+        </div>
+        <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <label>快速测试：拉取模型列表</label>
+          <div class="input-row">
+            <input type="text" id="edTestModel" list="edModelList" readonly placeholder="点击右侧按钮拉取" style="opacity:0.6;">
+            <datalist id="edModelList"></datalist>
+            <button class="btn btn-secondary" id="btnEdFetchModels" onclick="fetchEditorModels()">
+              ${getIcon('refresh', 14)} 拉取
+            </button>
+          </div>
+          <div id="edModelFetchStatus" class="fetch-status"></div>
+        </div>
+      `,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: isEdit ? '保存' : '添加', class: 'btn-primary', onclick: `saveProfile('${editId || ''}')` },
+      ],
+    });
+  }
+
+  function onEditorProviderChange() {
+    const provider = document.getElementById('edProvider').value;
+    const defaults = {
+      openai: 'https://api.openai.com/v1',
+      claude: 'https://api.anthropic.com/v1',
+      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
+    };
+    document.getElementById('edBaseUrl').placeholder = defaults[provider] || '';
+  }
+
+  function toggleEditorKeyVisibility() {
+    const input = document.getElementById('edApiKey');
+    const btn = input.nextElementSibling;
+    if (input.type === 'password') {
+      input.type = 'text';
+      btn.innerHTML = getIcon('eyeOff', 16);
+    } else {
+      input.type = 'password';
+      btn.innerHTML = getIcon('eye', 16);
+    }
+  }
+
+  function buildEditorProfileDraft() {
+    return {
+      provider: document.getElementById('edProvider').value,
+      baseUrl: document.getElementById('edBaseUrl').value.trim(),
+      apiKey: document.getElementById('edApiKey').value.trim(),
+      extraHeaders: document.getElementById('edExtraHeaders')?.value.trim() || '',
+    };
+  }
+
+  function setEditorModelFetchStatus(message = '', type = 'info') {
+    const box = document.getElementById('edModelFetchStatus');
+    if (!box) return;
+    if (!message) {
+      box.textContent = '';
+      box.className = 'fetch-status';
+      box.style.display = 'none';
+      return;
+    }
+    box.textContent = message;
+    box.className = `fetch-status ${type}`;
+    box.style.display = 'block';
+  }
+
+  function buildModelFetchToast(result) {
+    if (result?.success) return `成功获取 ${result.models.length} 个模型`;
+    const classified = API.classifyError?.(result?.status || 0, result?.error || '');
+    return classified?.userMessage || result?.error || '模型列表拉取失败';
+  }
+
+  function buildModelFetchStatusText(result) {
+    if (!result) return '模型列表请求未返回结果';
+    const lines = [];
+    if (result.success) {
+      lines.push(`已获取 ${result.models.length} 个模型`);
+    } else {
+      const classified = API.classifyError?.(result.status || 0, result.error || '');
+      lines.push(classified?.userMessage || result.error || '模型列表拉取失败');
+    }
+    if (result.status) lines.push(`状态码：HTTP ${result.status}`);
+    if (result.endpoint) lines.push(`接口：${result.endpoint}`);
+    if (result.source === 'native') lines.push('通道：Android 原生请求');
+    if (result.source === 'browser') lines.push('通道：前端直连');
+    if (!result.success && result.diagnostics?.length > 1) lines.push(`已尝试 ${result.diagnostics.length} 个候选地址`);
+    return lines.filter(Boolean).join('\n');
+  }
+
+  async function fetchEditorModels() {
+    const fetchBtn = document.getElementById('btnEdFetchModels');
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    fetchBtn.classList.add('is-loading');
+    setEditorModelFetchStatus('正在拉取模型列表...', 'info');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    try {
+      const result = await API.fetchModels(draft);
+      if (result.success && result.models.length > 0) {
+        const datalist = document.getElementById('edModelList');
+        if (datalist) {
+          datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        }
+        const testInput = document.getElementById('edTestModel');
+        if (testInput) {
+          testInput.removeAttribute('readonly');
+          testInput.style.opacity = '1';
+          testInput.placeholder = '选择或输入模型名...';
+          testInput.focus();
+        }
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'success');
+        UI.showToast(buildModelFetchToast(result), 'success');
+      } else {
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'error');
+        UI.showToast(buildModelFetchToast(result), 'error');
+      }
+    } catch (e) {
+      setEditorModelFetchStatus(`拉取出错：${e.message}`, 'error');
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      fetchBtn.classList.remove('is-loading');
+    }
+    return;
+
+    const apiKey = document.getElementById('edApiKey').value.trim();
+
+    const btn = document.getElementById('btnEdFetchModels');
+    btn.classList.add('is-loading');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    // Create temp profile from editor form fields
+    const tempProfile = {
+      id: '_temp_editor_fetch',
+      provider: document.getElementById('edProvider').value,
+      baseUrl: document.getElementById('edBaseUrl').value.trim(),
+      apiKey: apiKey || '',
+    };
+    Storage.saveApiProfile(tempProfile);
+
+    try {
+      const result = await API.fetchModels('_temp_editor_fetch');
+      if (result.success && result.models.length > 0) {
+        const datalist = document.getElementById('edModelList');
+        if (datalist) {
+          datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        }
+        const testInput = document.getElementById('edTestModel');
+        if (testInput) {
+          testInput.removeAttribute('readonly');
+          testInput.style.opacity = '1';
+          testInput.placeholder = '选择或输入模型名...';
+          testInput.focus();
+        }
+        UI.showToast(`成功获取 ${result.models.length} 个模型`, 'success');
+      } else {
+        UI.showToast('拉取失败，请检查配置', 'error');
+      }
+    } catch (e) {
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      Storage.deleteApiProfile('_temp_editor_fetch');
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  function saveProfile(editId) {
+    const profileName = document.getElementById('edName').value.trim();
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    const nextProfile = {
+      id: editId || Utils.generateId('api'),
+      name: profileName || '未命名',
+      provider: draft.provider,
+      baseUrl: draft.baseUrl,
+      apiKey: draft.apiKey,
+      extraHeaders: draft.extraHeaders,
+    };
+
+    Storage.saveApiProfile(nextProfile);
+
+    const profileMap = Storage.getApiProfiles();
+    if (Object.keys(profileMap).length === 1) {
+      settings.defaultApiProfileId = nextProfile.id;
+      Storage.saveSettings(settings);
+    }
+
+    UI.closeModal();
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    UI.showToast(editId ? '配置已更新' : '配置已添加', 'success');
+    return;
+
+    const name = document.getElementById('edName').value.trim();
+    const provider = document.getElementById('edProvider').value;
+    const baseUrl = document.getElementById('edBaseUrl').value.trim();
+    const apiKey = document.getElementById('edApiKey').value.trim();
+
+    const profile = {
+      id: editId || Utils.generateId('api'),
+      name: name || '未命名',
+      provider,
+      baseUrl,
+      apiKey,
+    };
+
+    Storage.saveApiProfile(profile);
+
+    // Auto-set as default if this is the first profile
+    const allProfiles = Storage.getApiProfiles();
+    if (Object.keys(allProfiles).length === 1) {
+      settings.defaultApiProfileId = profile.id;
+      Storage.saveSettings(settings);
+    }
+
+    UI.closeModal();
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    UI.showToast(editId ? '配置已更新' : '配置已添加', 'success');
+  }
+
+  function openProfileEditor(editId) {
+    const profile = editId ? Storage.getApiProfile(editId) : null;
+    const isEdit = !!profile;
+
+    const defaultUrls = {
+      openai: 'https://api.openai.com/v1',
+      claude: 'https://api.anthropic.com/v1',
+      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
+    };
+
+    const selectedProvider = profile?.provider || 'openai';
+    const urlPlaceholder = defaultUrls[selectedProvider] || 'https://api.openai.com/v1';
+
+    UI.showModal({
+      title: isEdit ? '编辑 API 配置' : '添加 API 配置',
+      content: `
+        <div class="form-group">
+          <label>名称</label>
+          <input type="text" id="edName" value="${Utils.escapeHtml(profile?.name || '')}" placeholder="如：Claude 官方">
+        </div>
+        <div class="form-group">
+          <label>提供商</label>
+          <select id="edProvider" onchange="onEditorProviderChange()">
+            <option value="openai" ${selectedProvider === 'openai' ? 'selected' : ''}>OpenAI Compatible</option>
+            <option value="claude" ${selectedProvider === 'claude' ? 'selected' : ''}>Claude (Anthropic)</option>
+            <option value="google-ai-studio" ${selectedProvider === 'google-ai-studio' ? 'selected' : ''}>Google AI Studio</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Base URL <span style="font-size:11px;color:var(--text-muted);">(留空使用默认)</span></label>
+          <input type="text" id="edBaseUrl" value="${Utils.escapeHtml(profile?.baseUrl || '')}" placeholder="${Utils.escapeHtml(urlPlaceholder)}">
+          <div class="field-help">支持直接填写根域名、带 /v1 的地址，或完整接口地址；测试和调用时会自动尝试规范化。</div>
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <div class="password-row">
+            <input type="password" id="edApiKey" value="${Utils.escapeHtml(profile?.apiKey || '')}" placeholder="sk-...">
+            <button class="btn-toggle-vis" type="button" onclick="toggleEditorKeyVisibility()" title="切换显示">
+              ${getIcon('eye', 16)}
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>附加请求头 <span style="font-size:11px;color:var(--text-muted);">(可选)</span></label>
+          <textarea id="edExtraHeaders" class="special-textarea compact-textarea" placeholder='{"HTTP-Referer":"https://example.com","X-Title":"AIRP"}&#10;或每行一个 Key: Value'>${Utils.escapeHtml(profile?.extraHeaders || '')}</textarea>
+          <div class="field-help">适合 OpenRouter、自建中转、反代或需要自定义鉴权头的 OpenAI 兼容接口。</div>
+        </div>
+        <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <label>快速测试：拉取模型列表</label>
+          <div class="input-row">
+            <input type="text" id="edTestModel" list="edModelList" readonly placeholder="点击右侧按钮拉取" style="opacity:0.6;">
+            <datalist id="edModelList"></datalist>
+            <button class="btn btn-secondary" id="btnEdFetchModels" onclick="fetchEditorModels()">
+              ${getIcon('refresh', 14)} 拉取
+            </button>
+          </div>
+          <div id="edModelFetchStatus" class="fetch-status"></div>
+        </div>
+      `,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: isEdit ? '保存' : '添加', class: 'btn-primary', onclick: `saveProfile('${editId || ''}')` },
+      ],
+    });
+  }
+
+  function buildModelFetchToast(result) {
+    if (result?.success) return `成功获取 ${result.models.length} 个模型`;
+    const classified = API.classifyError?.(result?.status || 0, result?.error || '');
+    return classified?.userMessage || result?.error || '模型列表拉取失败';
+  }
+
+  function buildModelFetchStatusText(result) {
+    if (!result) return '模型列表请求未返回结果';
+    const lines = [];
+    if (result.success) {
+      lines.push(`已获取 ${result.models.length} 个模型`);
+    } else {
+      const classified = API.classifyError?.(result.status || 0, result.error || '');
+      lines.push(classified?.userMessage || result.error || '模型列表拉取失败');
+    }
+    if (result.status) lines.push(`状态码：HTTP ${result.status}`);
+    if (result.endpoint) lines.push(`接口：${result.endpoint}`);
+    if (result.source === 'native') lines.push('通道：Android 原生请求');
+    if (result.source === 'browser') lines.push('通道：前端直连');
+    if (!result.success && result.diagnostics?.length > 1) lines.push(`已尝试 ${result.diagnostics.length} 个候选地址`);
+    return lines.filter(Boolean).join('\n');
+  }
+
+  async function fetchEditorModels() {
+    const fetchBtn = document.getElementById('btnEdFetchModels');
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    fetchBtn.classList.add('is-loading');
+    setEditorModelFetchStatus('正在拉取模型列表...', 'info');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    try {
+      const result = await API.fetchModels(draft);
+      if (result.success && result.models.length > 0) {
+        const datalist = document.getElementById('edModelList');
+        if (datalist) {
+          datalist.innerHTML = result.models.map(m => `<option value="${Utils.escapeHtml(m)}">`).join('');
+        }
+        const testInput = document.getElementById('edTestModel');
+        if (testInput) {
+          testInput.removeAttribute('readonly');
+          testInput.style.opacity = '1';
+          testInput.placeholder = '选择或输入模型名...';
+          testInput.focus();
+        }
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'success');
+        UI.showToast(buildModelFetchToast(result), 'success');
+      } else {
+        setEditorModelFetchStatus(buildModelFetchStatusText(result), 'error');
+        UI.showToast(buildModelFetchToast(result), 'error');
+      }
+    } catch (e) {
+      setEditorModelFetchStatus(`拉取出错：${e.message}`, 'error');
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      fetchBtn.classList.remove('is-loading');
+    }
+  }
+
+  function saveProfile(editId) {
+    const profileName = document.getElementById('edName').value.trim();
+    const draft = buildEditorProfileDraft();
+
+    try {
+      API._parseExtraHeaders?.(draft.extraHeaders || '');
+    } catch (e) {
+      setEditorModelFetchStatus(e.message, 'error');
+      UI.showToast(e.message, 'error');
+      return;
+    }
+
+    const nextProfile = {
+      id: editId || Utils.generateId('api'),
+      name: profileName || '未命名',
+      provider: draft.provider,
+      baseUrl: draft.baseUrl,
+      apiKey: draft.apiKey,
+      extraHeaders: draft.extraHeaders,
+    };
+
+    Storage.saveApiProfile(nextProfile);
+
+    const profileMap = Storage.getApiProfiles();
+    if (Object.keys(profileMap).length === 1) {
+      settings.defaultApiProfileId = nextProfile.id;
+      Storage.saveSettings(settings);
+    }
+
+    UI.closeModal();
+    renderApiProfileList();
+    renderDefaultApiSelect();
+    UI.showToast(editId ? '配置已更新' : '配置已添加', 'success');
+  }
+
+  function deleteProfile(id) {
+    const profile = Storage.getApiProfile(id);
+    UI.showConfirm({
+      title: '删除 API 配置',
+      message: `确定要删除「${Utils.escapeHtml(profile?.name || '未命名')}」吗？此操作不可撤销。`,
+      onConfirm: () => {
+        Storage.deleteApiProfile(id);
+        if (settings.defaultApiProfileId === id) {
+          settings.defaultApiProfileId = '';
+          Storage.saveSettings(settings);
+        }
+        renderApiProfileList();
+        renderDefaultApiSelect();
+        UI.showToast('已删除', 'success');
+      },
+    });
+  }
+
+  // ================================================================
+  // Section 2: Default Settings
+  // ================================================================
+  function renderDefaultSettings() {
+    renderDefaultApiSelect();
+    document.getElementById('inputDefaultModel').value = settings.defaultModel || '';
+    document.getElementById('selDefaultModel').style.display = 'none';
+    document.getElementById('selExportFormat').value = settings.exportFormat || 'md';
+    document.getElementById('chkNotificationBar').checked = settings.enableNotificationBar !== false;
+    document.getElementById('chkPromptInspector').checked = !!settings.showPromptInspector;
+  }
+
+  function renderDefaultApiSelect() {
+    const sel = document.getElementById('selDefaultApi');
+    const profiles = Storage.getApiProfiles();
+    sel.innerHTML = '<option value="">-- 选择默认 API --</option>' +
+      Object.values(profiles).map(p =>
+        `<option value="${p.id}" ${p.id === settings.defaultApiProfileId ? 'selected' : ''}>${Utils.escapeHtml(p.name || p.provider)}</option>`
+      ).join('');
+  }
+
+  function getSelectedModel() {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    return sel.style.display !== 'none' ? sel.value : input.value.trim();
+  }
+
+  function setModelValue(model) {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    if (sel.style.display !== 'none') {
+      sel.value = model;
+    }
+    input.value = model;
+  }
+
+  function onDefaultsChange(source) {
+    const newApiId = document.getElementById('selDefaultApi').value;
+    const currentModel = getSelectedModel();
+
+    // If API profile changed, save current model to old profile and load new profile's model
+    if (source === 'api' && newApiId !== settings.defaultApiProfileId) {
+      // Save current model to old profile
+      if (settings.defaultApiProfileId && currentModel) {
+        const oldProfile = Storage.getApiProfile(settings.defaultApiProfileId);
+        if (oldProfile) {
+          oldProfile.defaultModel = currentModel;
+          Storage.saveApiProfile(oldProfile);
+        }
+      }
+      // Load new profile's default model
+      const newProfile = Storage.getApiProfile(newApiId);
+      const newModel = newProfile?.defaultModel || '';
+      setModelValue(newModel);
+      settings.defaultModel = newModel;
+      // Reset to input mode since model list is per-API
+      showModelInput();
+    } else {
+      settings.defaultModel = currentModel;
+      // Also save model to current profile
+      if (newApiId && currentModel) {
+        const profile = Storage.getApiProfile(newApiId);
+        if (profile) {
+          profile.defaultModel = currentModel;
+          Storage.saveApiProfile(profile);
+        }
+      }
+    }
+
+    settings.defaultApiProfileId = newApiId;
+    settings.exportFormat = document.getElementById('selExportFormat').value;
+    settings.enableNotificationBar = document.getElementById('chkNotificationBar').checked;
+    settings.showPromptInspector = document.getElementById('chkPromptInspector').checked;
+    Storage.saveSettings(settings);
+  }
+
+  function showModelInput() {
+    document.getElementById('selDefaultModel').style.display = 'none';
+    document.getElementById('inputDefaultModel').style.display = '';
+  }
+
+  function showModelSelect(models, currentModel) {
+    const sel = document.getElementById('selDefaultModel');
+    const input = document.getElementById('inputDefaultModel');
+    sel.innerHTML = models.map(m =>
+      `<option value="${Utils.escapeHtml(m)}" ${m === currentModel ? 'selected' : ''}>${Utils.escapeHtml(m)}</option>`
+    ).join('');
+    sel.style.display = '';
+    input.style.display = 'none';
+  }
+
+  async function fetchDefaultModels() {
+    const apiId = settings.defaultApiProfileId || document.getElementById('selDefaultApi').value;
+    if (!apiId) {
+      UI.showToast('请先选择默认 API 配置', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('btnFetchDefaultModels');
+    btn.classList.add('is-loading');
+    UI.showToast('正在拉取模型列表...', 'info');
+
+    try {
+      const result = await API.fetchModels(apiId);
+      if (result.success && result.models.length > 0) {
+        const currentModel = getSelectedModel();
+        showModelSelect(result.models, currentModel);
+        UI.showToast(buildModelFetchToast(result), 'success');
+      } else {
+        UI.showToast(buildModelFetchToast(result), 'error');
+      }
+    } catch (e) {
+      UI.showToast('拉取出错: ' + e.message, 'error');
+    } finally {
+      btn.classList.remove('is-loading');
+    }
+  }
+
+  // ================================================================
+  // Section 3: Prompt Presets & Entries
+  // ================================================================
+  function ensurePresets() {
+    if (!settings.promptPresets) {
+      const legacyEntries = settings.promptEntries
+        ? JSON.parse(JSON.stringify(settings.promptEntries))
+        : null;
+      if (legacyEntries) {
+        // Existing user with legacy entries — migrate to 'lulu' + create default
+        settings.promptPresets = {
+          'default': {
+            name: '默认预设',
+            entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+            initPrompt: '',
+            summaryPrompt: '',
+          },
+          'lulu': {
+            name: 'Lulu',
+            entries: legacyEntries,
+            initPrompt: settings.promptInit || '',
+            summaryPrompt: settings.promptSummaryGen || '',
+          },
+        };
+      } else {
+        // New user — only default preset
+        settings.promptPresets = {
+          'default': {
+            name: '默认预设',
+            entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+            initPrompt: '',
+            summaryPrompt: '',
+          },
+        };
+      }
+      settings.activePresetId = 'default';
+      Storage.saveSettings(settings);
+    }
+  }
+
+  function getActivePresetId() {
+    ensurePresets();
+    return settings.activePresetId && settings.promptPresets[settings.activePresetId]
+      ? settings.activePresetId
+      : Object.keys(settings.promptPresets)[0];
+  }
+
+  function getActivePresetObj() {
+    ensurePresets();
+    return settings.promptPresets[getActivePresetId()];
+  }
+
+  function renderPresetSelector() {
+    ensurePresets();
+    const container = document.getElementById('presetBar');
+    const activeId = getActivePresetId();
+
+    const pills = Object.entries(settings.promptPresets).map(([id, preset]) =>
+      `<button class="interval-pill ${id === activeId ? 'active' : ''}" onclick="switchPreset('${Utils.escapeHtml(id)}')">${Utils.escapeHtml(preset.name)}</button>`
+    ).join('');
+
+    container.innerHTML = `
+      <div class="preset-pills">${pills}</div>
+      <div class="preset-actions">
+        <button class="btn-icon" onclick="addPreset()" title="新建预设">${getIcon('plus', 14)}</button>
+        <button class="btn-icon" onclick="copyPreset()" title="复制当前">${getIcon('copy', 14)}</button>
+        <button class="btn-icon" onclick="renamePreset()" title="重命名">${getIcon('edit', 14)}</button>
+        <button class="btn-icon" onclick="deletePreset()" title="删除当前">${getIcon('trash', 14)}</button>
+        <button class="btn-icon" onclick="triggerImportPreset()" title="导入酒馆预设"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span></button>
+      </div>`;
+  }
+
+  function switchPreset(id) {
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+  }
+
+  function addPreset() {
+    const name = prompt('预设名称:', '新预设');
+    if (!name || !name.trim()) return;
+    const id = Utils.generateId('preset');
+    ensurePresets();
+    settings.promptPresets[id] = {
+      name: name.trim(),
+      entries: JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES)),
+      initPrompt: '',
+      summaryPrompt: '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast('预设已创建', 'success');
+  }
+
+  function copyPreset() {
+    const preset = getActivePresetObj();
+    const name = prompt('新预设名称:', (preset.name || '默认') + ' (副本)');
+    if (!name || !name.trim()) return;
+    const id = Utils.generateId('preset');
+    settings.promptPresets[id] = {
+      name: name.trim(),
+      entries: preset.entries ? JSON.parse(JSON.stringify(preset.entries)) : null,
+      initPrompt: preset.initPrompt || '',
+      summaryPrompt: preset.summaryPrompt || '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast('预设已复制', 'success');
+  }
+
+  function renamePreset() {
+    const preset = getActivePresetObj();
+    const name = prompt('重命名预设:', preset.name);
+    if (!name || !name.trim()) return;
+    preset.name = name.trim();
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+  }
+
+  function deletePreset() {
+    const activeId = getActivePresetId();
+    const keys = Object.keys(settings.promptPresets);
+    if (keys.length <= 1) {
+      UI.showToast('至少需要保留一个预设', 'error');
+      return;
+    }
+    const preset = getActivePresetObj();
+    UI.showConfirm({
+      title: '删除预设',
+      message: `确定删除「${Utils.escapeHtml(preset.name)}」吗？`,
+      onConfirm: () => {
+        delete settings.promptPresets[activeId];
+        settings.activePresetId = Object.keys(settings.promptPresets)[0];
+        Storage.saveSettings(settings);
+        renderPresetSelector();
+        renderPromptEntries();
+        renderSpecialPrompts();
+        UI.showToast('预设已删除', 'success');
+      },
+    });
+  }
+
+  function getEntries() {
+    const preset = getActivePresetObj();
+    const entries = preset.entries || PromptBuilder.MINIMAL_PRESET_ENTRIES;
+    return JSON.parse(JSON.stringify(entries));
+  }
+
+  function renderPromptEntries() {
+    promptEntries = getEntries();
+    const container = document.getElementById('promptEntryList');
+
+    if (promptEntries.length === 0) {
+      container.innerHTML = '<div class="api-list-empty">没有条目</div>';
+      return;
+    }
+
+    container.innerHTML = promptEntries.map((entry, i) => {
+      const disabledClass = entry.enabled ? '' : ' is-disabled';
+      const toggleClass = entry.enabled ? ' is-on' : '';
+
+      // Slot entries — simplified display (no expand, no edit)
+      if (entry.slot) {
+        return `
+        <div class="prompt-entry is-slot${disabledClass}" data-idx="${i}"
+             draggable="true"
+             ondragstart="onDragStart(event,${i})"
+             ondragover="onDragOver(event,${i})"
+             ondragend="onDragEnd(event)"
+             ondrop="onDrop(event,${i})">
+          <div class="prompt-entry-header">
+            <div class="prompt-entry-grip">&#x2807;</div>
+            <button class="prompt-entry-toggle${toggleClass}"
+                    onclick="event.stopPropagation(); toggleEntryEnabled(${i})"
+                    title="${entry.enabled ? '禁用' : '启用'}">
+              ${getIcon('check', 12)}
+            </button>
+            <div class="prompt-entry-name">${Utils.escapeHtml(entry.name || entry.slot)}</div>
+            <span class="prompt-entry-slot-badge">SLOT</span>
+            <div class="prompt-entry-actions">
+              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('arrowUp', 14)}</button>` : ''}
+              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('arrowDown', 14)}</button>` : ''}
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // Normal entries — expandable with edit body
+      const isExpanded = entry.id === expandedEntryId;
+      const expandedClass = isExpanded ? ' is-expanded' : '';
+
+      const roleLabels = { system: 'SYS', user: 'USR', assistant: 'AST' };
+      const roleLabel = roleLabels[entry.role] || 'SYS';
+      const roleClass = 'role-' + (entry.role || 'system');
+
+      return `
+        <div class="prompt-entry${disabledClass}${expandedClass}" data-idx="${i}"
+             draggable="true"
+             ondragstart="onDragStart(event,${i})"
+             ondragover="onDragOver(event,${i})"
+             ondragend="onDragEnd(event)"
+             ondrop="onDrop(event,${i})">
+          <div class="prompt-entry-header" onclick="toggleExpand('${entry.id}')">
+            <div class="prompt-entry-grip">&#x2807;</div>
+            <button class="prompt-entry-toggle${toggleClass}"
+                    onclick="event.stopPropagation(); toggleEntryEnabled(${i})"
+                    title="${entry.enabled ? '禁用' : '启用'}">
+              ${getIcon('check', 12)}
+            </button>
+            <div class="prompt-entry-name">${Utils.escapeHtml(entry.name || '未命名')}</div>
+            <button class="prompt-entry-role-badge ${roleClass}"
+                    onclick="event.stopPropagation(); cycleRole(${i})"
+                    title="切换角色">${roleLabel}</button>
+            <div class="prompt-entry-actions">
+              ${i > 0 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},-1)" title="上移">${getIcon('arrowUp', 14)}</button>` : ''}
+              ${i < promptEntries.length - 1 ? `<button class="btn-icon" onclick="event.stopPropagation(); moveEntry(${i},1)" title="下移">${getIcon('arrowDown', 14)}</button>` : ''}
+              <button class="btn-icon" onclick="event.stopPropagation(); deleteEntry(${i})" title="删除">
+                ${getIcon('trash', 14)}
+              </button>
+            </div>
+            <div class="prompt-entry-chevron">
+              ${getIcon('chevronDown', 14)}
+            </div>
+          </div>
+          <div class="prompt-entry-body">
+            <div class="prompt-entry-body-inner">
+              <div class="form-group" style="margin-bottom:10px;">
+                <label>条目名称</label>
+                <input type="text" value="${Utils.escapeHtml(entry.name || '')}" placeholder="名称"
+                       onchange="updateEntryName(${i}, this.value)" style="font-size:13px;">
+              </div>
+              <div class="form-group">
+                <label>内容</label>
+                <textarea placeholder="Prompt 内容..." onchange="updateEntryContent(${i}, this.value)"
+                >${Utils.escapeHtml(entry.content || '')}</textarea>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function toggleExpand(id) {
+    expandedEntryId = expandedEntryId === id ? null : id;
+    renderPromptEntries();
+  }
+
+  function toggleEntryEnabled(idx) {
+    promptEntries[idx].enabled = !promptEntries[idx].enabled;
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
+  function cycleRole(idx) {
+    const roles = ['system', 'user', 'assistant'];
+    const current = roles.indexOf(promptEntries[idx].role);
+    promptEntries[idx].role = roles[(current + 1) % roles.length];
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
+  function moveEntry(idx, dir) {
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= promptEntries.length) return;
+    const tmp = promptEntries[idx];
+    promptEntries[idx] = promptEntries[targetIdx];
+    promptEntries[targetIdx] = tmp;
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
+  function updateEntryName(idx, name) {
+    promptEntries[idx].name = name.trim() || '未命名';
+    savePromptEntries();
+  }
+
+  function updateEntryContent(idx, content) {
+    promptEntries[idx].content = content;
+    savePromptEntries();
+  }
+
+  function deleteEntry(idx) {
+    const entry = promptEntries[idx];
+    UI.showConfirm({
+      title: '删除条目',
+      message: `确定删除「${Utils.escapeHtml(entry.name || '未命名')}」吗？`,
+      onConfirm: () => {
+        promptEntries.splice(idx, 1);
+        if (expandedEntryId === entry.id) expandedEntryId = null;
+        savePromptEntries();
+        renderPromptEntries();
+      },
+    });
+  }
+
+  function addPromptEntry() {
+    const id = Utils.generateId('pe');
+    promptEntries.push({
+      id,
+      name: '新条目',
+      role: 'system',
+      content: '',
+      enabled: true,
+    });
+    expandedEntryId = id;
+    savePromptEntries();
+    renderPromptEntries();
+    // Scroll to new entry
+    setTimeout(() => {
+      const el = document.querySelector(`.prompt-entry[data-idx="${promptEntries.length - 1}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 50);
+  }
+
+  function addSlotEntry() {
+    const slots = ['story_setting', 'summaries', 'chat_history', 'mvu_state', 'user_input'];
+    const slotNames = { story_setting: '故事设定', summaries: '故事总结', chat_history: '对话历史', mvu_state: '状态栏', user_input: '用户输入' };
+    const existing = new Set(promptEntries.filter(e => e.slot).map(e => e.slot));
+    const available = slots.filter(s => !existing.has(s));
+    if (available.length === 0) {
+      UI.showToast('所有 Slot 类型已存在', 'info');
+      return;
+    }
+    const slot = available[0];
+    promptEntries.push({
+      id: 'slot_' + slot,
+      name: slotNames[slot] || slot,
+      slot,
+      enabled: true,
+    });
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
+  function resetPromptEntries() {
+    UI.showConfirm({
+      title: '恢复默认',
+      message: '将重置当前预设的 RP Prompt 条目为默认值。确定继续？',
+      onConfirm: () => {
+        const preset = getActivePresetObj();
+        const activeId = getActivePresetId();
+        // Reset to default entries
+        preset.entries = JSON.parse(JSON.stringify(PromptBuilder.MINIMAL_PRESET_ENTRIES));
+        Storage.saveSettings(settings);
+        expandedEntryId = null;
+        renderPromptEntries();
+        UI.showToast('已恢复默认', 'success');
+      },
+    });
+  }
+
+  function savePromptEntries() {
+    const preset = getActivePresetObj();
+    preset.entries = promptEntries;
+    Storage.saveSettings(settings);
+  }
+
+  // ── Drag & drop ────────────────────────────────
+  function onDragStart(e, idx) {
+    dragSrcIdx = idx;
+    e.target.closest('.prompt-entry').classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  function onDragOver(e, idx) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.prompt-entry').forEach(el => el.classList.remove('drag-over'));
+    if (idx !== dragSrcIdx) {
+      const el = e.target.closest('.prompt-entry');
+      if (el) el.classList.add('drag-over');
+    }
+  }
+
+  function onDragEnd(e) {
+    dragSrcIdx = null;
+    document.querySelectorAll('.prompt-entry').forEach(el => {
+      el.classList.remove('dragging', 'drag-over');
+    });
+  }
+
+  function onDrop(e, dropIdx) {
+    e.preventDefault();
+    if (dragSrcIdx === null || dragSrcIdx === dropIdx) return;
+    const [moved] = promptEntries.splice(dragSrcIdx, 1);
+    promptEntries.splice(dropIdx, 0, moved);
+    dragSrcIdx = null;
+    savePromptEntries();
+    renderPromptEntries();
+  }
+
+  // ================================================================
+  // Section 5: Special Prompts
+  // ================================================================
+  function renderSpecialPrompts() {
+    const preset = getActivePresetObj();
+    const initEl = document.getElementById('taPromptInit');
+    const summaryEl = document.getElementById('taPromptSummaryGen');
+
+    initEl.value = preset.initPrompt || '';
+    summaryEl.value = preset.summaryPrompt || '';
+
+    // Set placeholders with the default templates
+    initEl.placeholder = PromptBuilder.DEFAULT_INIT_PROMPT.substring(0, 200) + '...';
+    summaryEl.placeholder = PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT.substring(0, 200) + '...';
+  }
+
+  function onSpecialPromptsChange() {
+    const preset = getActivePresetObj();
+    preset.initPrompt = document.getElementById('taPromptInit').value;
+    preset.summaryPrompt = document.getElementById('taPromptSummaryGen').value;
+    Storage.saveSettings(settings);
+  }
+
+  function resetSpecialPrompt(type) {
+    const preset = getActivePresetObj();
+    if (type === 'init') {
+      const val = PromptBuilder.DEFAULT_INIT_PROMPT;
+      document.getElementById('taPromptInit').value = val;
+      preset.initPrompt = val;
+    } else if (type === 'summaryGen') {
+      const val = PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT;
+      document.getElementById('taPromptSummaryGen').value = val;
+      preset.summaryPrompt = val;
+    }
+    Storage.saveSettings(settings);
+    UI.showToast('已恢复默认模板', 'success');
+  }
+
+  // ================================================================
+  // Section 2 supplement: Interval Selector
+  // ================================================================
+  function renderIntervalSelector() {
+    const intervals = [20, 30, 50, 80, 100];
+    const current = settings.summaryInterval || 100;
+    const container = document.getElementById('intervalSelector');
+
+    container.innerHTML = intervals.map(n =>
+      `<button class="interval-pill ${n === current ? 'active' : ''}" onclick="selectSummaryInterval(${n})">${n}</button>`
+    ).join('');
+  }
+
+  function selectSummaryInterval(n) {
+    settings.summaryInterval = n;
+    Storage.saveSettings(settings);
+    renderIntervalSelector();
+  }
+
+  // ── Word Count Selectors ─────────────────────────
+  function renderArticleWordSelector() {
+    const presets = [300, 500, 700, 1000];
+    const current = settings.articleWordCount || 500;
+    const container = document.getElementById('articleWordSelector');
+    const isCustom = !presets.includes(current);
+
+    container.innerHTML = presets.map(n =>
+      `<button class="interval-pill ${n === current ? 'active' : ''}" onclick="selectArticleWords(${n})">${n}</button>`
+    ).join('') +
+      `<button class="interval-pill ${isCustom ? 'active' : ''}" onclick="promptCustomArticleWords()">自定义${isCustom ? ':' + current : ''}</button>`;
+  }
+
+  function selectArticleWords(n) {
+    settings.articleWordCount = n;
+    Storage.saveSettings(settings);
+    renderArticleWordSelector();
+  }
+
+  function promptCustomArticleWords() {
+    const val = prompt('输入自定义字数:', settings.articleWordCount || 500);
+    if (val !== null) {
+      const n = parseInt(val);
+      if (n > 0) {
+        settings.articleWordCount = n;
+        Storage.saveSettings(settings);
+        renderArticleWordSelector();
+      }
+    }
+  }
+
+  function renderSummaryWordSelector() {
+    const presets = [50, 100, 150, 200];
+    const current = settings.summaryWordCount || 50;
+    const container = document.getElementById('summaryWordSelector');
+
+    container.innerHTML = presets.map(n =>
+      `<button class="interval-pill ${n === current ? 'active' : ''}" onclick="selectSummaryWords(${n})">${n}</button>`
+    ).join('');
+  }
+
+  function selectSummaryWords(n) {
+    settings.summaryWordCount = n;
+    Storage.saveSettings(settings);
+    renderSummaryWordSelector();
+  }
+
+  // ================================================================
+  // Section 6: Data Management
+  // ================================================================
+  function renderDataSize() {
+    let total = 0;
+    for (const key of Object.values(Storage.KEYS)) {
+      const data = localStorage.getItem(key);
+      if (data) total += data.length * 2; // UTF-16 chars
+    }
+    const kb = (total / 1024).toFixed(1);
+    const mb = (total / 1024 / 1024).toFixed(2);
+    const label = total > 1048576 ? mb + ' MB' : kb + ' KB';
+    document.getElementById('dataSizeLabel').textContent = '当前数据占用: ' + label;
+  }
+
+  async function exportAllData() {
+    const data = await Storage.exportAll();
+    const json = JSON.stringify(data, null, 2);
+    Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 16).replace(':', '')}.json`);
+    UI.showToast('数据已导出', 'success');
+  }
+
+  function triggerImport() {
+    document.getElementById('importFileInput').click();
+  }
+
+  function handleImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        UI.showConfirm({
+          title: '导入数据',
+          message: '导入将覆盖当前所有数据，确定继续吗？建议先导出备份。',
+          onConfirm: async () => {
+            UI.showToast('正在导入...', 'info');
+            await Storage.importAll(data);
+            UI.showToast('数据已导入', 'success');
+            setTimeout(() => location.reload(), 300);
+          },
+        });
+      } catch {
+        UI.showToast('文件格式无效', 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function clearAllData() {
+    UI.showConfirm({
+      title: '清空全部数据',
+      message: '此操作不可恢复！所有故事、API 配置和设置将被永久删除。建议先导出备份。',
+      onConfirm: () => {
+        Storage.clearAll();
+        UI.showToast('全部数据已清空', 'success');
+        setTimeout(() => location.reload(), 600);
+      },
+    });
+  }
+
+  // ================================================================
+  // Import SillyTavern Preset
+  // ================================================================
+  function triggerImportPreset() {
+    document.getElementById('importPresetInput').click();
+  }
+
+  function handleImportPresetFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        const defaultName = file.name.replace(/\.json$/i, '');
+        // Auto-detect: AIRP preset (has entries array) vs SillyTavern preset (has prompts array)
+        if (json.entries && Array.isArray(json.entries)) {
+          importAirpPreset(json, defaultName);
+        } else {
+          importSillyTavernPreset(json, defaultName);
+        }
+      } catch (err) {
+        UI.showToast('文件解析失败: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function importAirpPreset(json, defaultName) {
+    const presetName = prompt('预设名称:', json.name || defaultName || '导入预设');
+    if (!presetName) return;
+    const id = Utils.generateId();
+    settings.promptPresets[id] = {
+      name: presetName,
+      entries: json.entries,
+      initPrompt: json.initPrompt || '',
+      summaryPrompt: json.summaryPrompt || '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+    UI.showToast(`导入成功：${json.entries.length} 条目`, 'success');
+  }
+
+  function importSillyTavernPreset(json, defaultName) {
+    // Step 1: Validate
+    if (!json.prompts || !Array.isArray(json.prompts)) {
+      UI.showToast('不是有效的酒馆预设格式（缺少 prompts 数组）', 'error');
+      return;
+    }
+
+    // Step 2: Build lookup map
+    const lookup = {};
+    for (const p of json.prompts) {
+      if (p.identifier) lookup[p.identifier] = p;
+    }
+
+    // Step 3: Collect {{setvar::key::value}} from enabled prompts
+    const varMap = {};
+    for (const p of json.prompts) {
+      if (!p.content) continue;
+      const setvarRe = /\{\{setvar::([^:}]+)::([^}]*)\}\}/g;
+      let m;
+      while ((m = setvarRe.exec(p.content)) !== null) {
+        varMap[m[1]] = m[2];
+      }
+    }
+
+    // Step 4: Find prompt_order (not character_id 100000)
+    let orderArr = null;
+    if (Array.isArray(json.prompt_order)) {
+      for (const po of json.prompt_order) {
+        if (po.character_id !== 100000 && Array.isArray(po.order)) {
+          orderArr = po.order;
+          break;
+        }
+      }
+      // Fallback: if only character_id 100000 exists, use it
+      if (!orderArr) {
+        for (const po of json.prompt_order) {
+          if (Array.isArray(po.order)) {
+            orderArr = po.order;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!orderArr) {
+      UI.showToast('预设缺少 prompt_order 排序信息', 'error');
+      return;
+    }
+
+    // Step 5: Iterate order, filter & convert
+    const entries = [];
+    let chatHistoryIdx = -1;
+    let hasUserInput = false;
+
+    const skipIdentifiers = new Set(['SPresetSettings']);
+
+    for (const item of orderArr) {
+      const id = item.identifier;
+      const entry = lookup[id];
+
+      // Handle markers
+      if (entry && entry.marker === true) {
+        if (id === 'chatHistory') {
+          chatHistoryIdx = entries.length; // Mark position for slot insertion
+        }
+        continue;
+      }
+
+      // Skip known non-content entries
+      if (skipIdentifiers.has(id)) continue;
+      if (!entry) continue;
+
+      // Clean content
+      const rawContent = entry.content || '';
+      const cleaned = cleanSillyTavernContent(rawContent, varMap);
+
+      // Skip empty/whitespace-only or pure macro entries
+      if (!cleaned) continue;
+
+      // Check for {{lastUserMessage}} usage
+      if (rawContent.includes('{{lastMessage}}') || rawContent.includes('{{lastUserMessage}}')) {
+        hasUserInput = true;
+      }
+
+      // Map entry
+      const name = cleanEntryName(entry.name || id);
+      const role = mapRole(entry.role);
+
+      entries.push({
+        id: id || Utils.generateId('pe'),
+        name,
+        role,
+        enabled: !!item.enabled,
+        content: cleaned,
+      });
+    }
+
+    // Step 6: Insert AIRP slots at chatHistory position
+    const slots = [];
+    slots.push({ id: 'slot_story_setting', name: '故事设定', slot: 'story_setting', enabled: true });
+    slots.push({ id: 'slot_summaries', name: '故事总结', slot: 'summaries', enabled: true });
+    slots.push({ id: 'slot_chat_history', name: '对话历史', slot: 'chat_history', enabled: true });
+    slots.push({ id: 'slot_mvu_state', name: '状态栏', slot: 'mvu_state', enabled: true });
+    slots.push({ id: 'slot_user_input', name: '用户输入', slot: 'user_input', enabled: true });
+
+    if (chatHistoryIdx >= 0) {
+      entries.splice(chatHistoryIdx, 0, ...slots);
+    } else {
+      // No chatHistory marker found — append slots at end
+      entries.push(...slots);
+    }
+
+    // Insert user_input slot if needed (after mvu_state, before jailbreak entries)
+    if (hasUserInput) {
+      const mvuIdx = entries.findIndex(e => e.slot === 'mvu_state');
+      if (mvuIdx >= 0) {
+        entries.splice(mvuIdx + 1, 0, { id: 'slot_user_input', name: '用户输入', slot: 'user_input', enabled: true });
+      }
+    }
+
+    // Also append AIRP-specific output format entries (writing_style, options_req, mvu_req, abstract_req)
+    // if none of them exist in converted entries
+    const airpIds = ['writing_style', 'options_req', 'mvu_req', 'abstract_req'];
+    const existingIds = new Set(entries.map(e => e.id));
+    const defaults = PromptBuilder.DEFAULT_PROMPT_ENTRIES;
+    for (const aid of airpIds) {
+      if (!existingIds.has(aid)) {
+        const def = defaults.find(d => d.id === aid);
+        if (def) entries.push(JSON.parse(JSON.stringify(def)));
+      }
+    }
+
+    // Step 7: Ask for name and create preset
+    const presetName = prompt('预设名称:', json.name || defaultName || '导入预设');
+    if (!presetName || !presetName.trim()) return;
+
+    ensurePresets();
+    const id = Utils.generateId('preset');
+    settings.promptPresets[id] = {
+      name: presetName.trim(),
+      entries,
+      initPrompt: '',
+      summaryPrompt: '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+
+    const entryCount = entries.filter(e => !e.slot).length;
+    const slotCount = entries.filter(e => e.slot).length;
+    UI.showToast(`导入成功：${entryCount} 条目 + ${slotCount} 插槽`, 'success');
+  }
+
+  function cleanSillyTavernContent(text, varMap) {
+    if (!text) return '';
+    let s = text;
+
+    // Keep {{setvar}}, {{addvar}}, {{getvar}} intact — resolved at runtime by expandVars
+
+    // Remove {{//...}} comments
+    s = s.replace(/\{\{\/\/[^}]*\}\}/g, '');
+
+    // Replace {{random::opt1::opt2}} → keep first option
+    s = s.replace(/\{\{random::([\s\S]*?)\}\}/g, (_, inner) => {
+      const firstOpt = inner.split('::')[0];
+      return firstOpt || '';
+    });
+    // Remove {{roll ...}} (random number generator)
+    s = s.replace(/\{\{roll[^}]*\}\}/g, '');
+
+    // Replace {{user}} / {{char}}
+    s = s.replace(/\{\{user\}\}/gi, '<user>');
+    s = s.replace(/\{\{char\}\}/gi, '<character>');
+
+    // Replace {{lastMessage}} / {{lastUserMessage}}
+    s = s.replace(/\{\{lastMessage\}\}/gi, '');
+    s = s.replace(/\{\{lastUserMessage\}\}/gi, '');
+
+    // Remove {{original}} (sometimes used in regex context)
+    s = s.replace(/\{\{original\}\}/gi, '');
+
+    // Remove other common macros that have no AIRP equivalent
+    s = s.replace(/\{\{input\}\}/gi, '');
+    s = s.replace(/\{\{personality\}\}/gi, '');
+    s = s.replace(/\{\{scenario\}\}/gi, '');
+    s = s.replace(/\{\{persona\}\}/gi, '{{persona}}'); // Keep AIRP template var
+    s = s.replace(/\{\{description\}\}/gi, '');
+    s = s.replace(/\{\{mesExamples?\}\}/gi, '');
+    s = s.replace(/\{\{charIfNotGroup\}\}/gi, '<character>');
+    s = s.replace(/\{\{groupMembers\}\}/gi, '');
+
+    // Remove <|no-trans|>
+    s = s.replace(/<\|no-trans\|>/g, '');
+
+    // Remove {{trim}} macros
+    s = s.replace(/\{\{trim\}\}/gi, '');
+
+    // Clean up excessive blank lines (3+ → 2)
+    s = s.replace(/\n{3,}/g, '\n\n');
+
+    return s.trim();
+  }
+
+  function cleanEntryName(name) {
+    if (!name) return '未命名';
+    // Remove leading emoji characters (common in SillyTavern preset names)
+    return name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}\u{20E3}\u{E0020}-\u{E007F}]+\s*/u, '').trim() || name.trim();
+  }
+
+  function mapRole(role) {
+    if (role === 0 || role === 'system') return 'system';
+    if (role === 1 || role === 'user') return 'user';
+    if (role === 2 || role === 'assistant') return 'assistant';
+    return 'system';
+  }
+
+  // ================================================================
+  // Boot
+  // ================================================================
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

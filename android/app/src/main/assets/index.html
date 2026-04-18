@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="入卷">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>入卷 - AI 互动小说</title>
+  <link rel="icon" href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
+  <script src="common.js?v=14"></script>
+  <style>
+    /* ── Page Layout ─────────────────────────────── */
+    body {
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .page-container {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 20px 100px;
+    }
+
+    /* ── Header Bar ──────────────────────────────── */
+    .header-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: calc(14px + env(safe-area-inset-top, var(--sat, 0px))) 20px 14px;
+      background: linear-gradient(180deg, rgba(15,12,8,0.9) 0%, rgba(15,12,8,0.6) 60%, transparent 100%);
+      pointer-events: none;
+    }
+
+    .header-bar > * {
+      pointer-events: auto;
+    }
+
+    .btn-settings {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 7px 14px;
+      color: var(--text-secondary);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all var(--transition);
+      text-decoration: none;
+    }
+
+    .btn-settings:hover {
+      color: var(--accent);
+      border-color: var(--border-strong);
+      background: var(--bg-glass-light);
+    }
+
+    /* ── Hero / Header ───────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 80px 0 44px;
+      position: relative;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .hero-ornament {
+      display: block;
+      margin: 0 auto 18px;
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.6;
+    }
+
+    .hero-title {
+      font-family: var(--font-display);
+      font-size: 72px;
+      font-weight: 700;
+      letter-spacing: 12px;
+      color: var(--text-primary);
+      line-height: 1;
+      position: relative;
+      display: inline-block;
+      text-shadow:
+        0 0 40px rgba(201, 164, 76, 0.25),
+        0 0 80px rgba(201, 164, 76, 0.1);
+    }
+
+    .hero-title::after {
+      content: '';
+      position: absolute;
+      bottom: -4px;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
+    }
+
+    .hero-subtitle {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 400;
+      letter-spacing: 5px;
+      color: var(--text-muted);
+      margin-top: 14px;
+      text-transform: uppercase;
+    }
+
+    .hero-tagline {
+      font-family: var(--font-body);
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 10px;
+      opacity: 0.7;
+      font-style: italic;
+    }
+
+    /* Decorative corner flourishes on hero */
+    .hero-flourish {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--border-strong);
+      border-style: solid;
+      opacity: 0.4;
+    }
+    .hero-flourish.tl { top: 48px; left: -10px; border-width: 1px 0 0 1px; }
+    .hero-flourish.tr { top: 48px; right: -10px; border-width: 1px 1px 0 0; }
+    .hero-flourish.bl { bottom: 14px; left: -10px; border-width: 0 0 1px 1px; }
+    .hero-flourish.br { bottom: 14px; right: -10px; border-width: 0 1px 1px 0; }
+
+    /* ── Main Content Area ───────────────────────── */
+    .main-content {
+      width: 100%;
+      max-width: 700px;
+    }
+
+    /* ── Toolbar ─────────────────────────────────── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      gap: 10px;
+    }
+
+    .toolbar-label {
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 1px;
+    }
+
+    .toolbar-count {
+      font-family: var(--font-ui);
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    .toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ── Conversation Cards ──────────────────────── */
+    .conv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .conv-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 22px;
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    .conv-card.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Parchment-like texture overlay on cards */
+    .conv-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 0%, rgba(201, 164, 76, 0.04), transparent 50%),
+        radial-gradient(ellipse at 90% 100%, rgba(201, 164, 76, 0.03), transparent 50%);
+      pointer-events: none;
+    }
+
+    .conv-card:hover {
+      border-color: var(--border-strong);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--border);
+    }
+
+    .conv-card:active {
+      transform: translateY(0);
+    }
+
+    .conv-card-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .conv-card-icon {
+      flex-shrink: 0;
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-dim);
+      border-radius: var(--radius);
+      color: var(--accent);
+      border: 1px solid rgba(201, 164, 76, 0.1);
+    }
+
+    .conv-card-icon .icon svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .conv-card-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .conv-card-name {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .conv-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 5px;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+
+    .conv-card-actions {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+      opacity: 0;
+      transition: opacity var(--transition);
+    }
+
+    .conv-card:hover .conv-card-actions {
+      opacity: 1;
+    }
+
+    .conv-card-actions .btn-icon {
+      width: 32px;
+      height: 32px;
+    }
+
+    .conv-card-actions .btn-icon:hover {
+      color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .conv-card-actions .btn-icon.btn-danger:hover {
+      color: var(--danger);
+      background: rgba(201, 106, 90, 0.12);
+    }
+
+    .conv-card-actions .btn-icon .icon svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Phase badge */
+    .phase-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .phase-badge.phase-init {
+      background: rgba(201, 164, 76, 0.12);
+      color: var(--accent);
+      border: 1px solid rgba(201, 164, 76, 0.2);
+    }
+
+    .phase-badge.phase-rp {
+      background: rgba(124, 184, 122, 0.12);
+      color: var(--success);
+      border: 1px solid rgba(124, 184, 122, 0.2);
+    }
+
+    .meta-dot {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      opacity: 0.5;
+      flex-shrink: 0;
+    }
+
+    /* ── Inline Rename Input ─────────────────────── */
+    .conv-card-rename {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      background: var(--bg-surface);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      padding: 2px 8px;
+      color: var(--text-primary);
+      width: 100%;
+      outline: none;
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+
+    /* ── Empty State ─────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      opacity: 0;
+      animation: fadeIn 0.6s ease 0.2s forwards;
+    }
+
+    .empty-quill {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 20px;
+      color: var(--text-muted);
+      opacity: 0.35;
+    }
+
+    .empty-quill svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .empty-ornament {
+      display: block;
+      margin: 0 auto 16px;
+      width: 120px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-strong), transparent);
+    }
+
+    .empty-title {
+      font-family: var(--font-display);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+
+    .empty-desc {
+      font-family: var(--font-body);
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.8;
+      max-width: 360px;
+      margin: 0 auto 32px;
+    }
+
+    .empty-actions {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .empty-cta {
+      font-size: 15px;
+      padding: 12px 36px;
+      border-radius: var(--radius-lg);
+      box-shadow: 0 2px 20px rgba(201, 164, 76, 0.25);
+    }
+
+    .empty-cta:hover {
+      box-shadow: 0 4px 28px rgba(201, 164, 76, 0.4);
+    }
+
+    /* ── Footer area (import/export) ─────────────── */
+    .footer-actions {
+      margin-top: 40px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      opacity: 0;
+      animation: fadeIn 0.5s ease 0.6s forwards;
+    }
+
+    .footer-actions .btn-ghost {
+      font-size: 12px;
+      color: var(--text-muted);
+      gap: 5px;
+    }
+
+    .footer-actions .btn-ghost .icon svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* ── FAB (Floating Action Button) ─────────────── */
+    .fab {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 100;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), #d4b05c);
+      color: #1a1510;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow:
+        0 4px 20px rgba(201, 164, 76, 0.35),
+        0 0 0 1px rgba(201, 164, 76, 0.15);
+      transition: all var(--transition);
+    }
+
+    .fab:hover {
+      transform: translateY(-3px) scale(1.05);
+      box-shadow:
+        0 8px 32px rgba(201, 164, 76, 0.45),
+        0 0 0 1px rgba(201, 164, 76, 0.3);
+    }
+
+    .fab:active {
+      transform: translateY(-1px) scale(1.02);
+    }
+
+    .fab .icon svg {
+      width: 24px;
+      height: 24px;
+      stroke-width: 2.5;
+    }
+
+    /* FAB tooltip */
+    .fab-tooltip {
+      position: absolute;
+      right: calc(100% + 12px);
+      top: 50%;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      background: var(--bg-glass);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 6px 14px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--text-secondary);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .fab:hover .fab-tooltip {
+      opacity: 1;
+    }
+
+    /* ── Create Modal Specifics ───────────────────── */
+    .create-form .form-group {
+      margin-bottom: 16px;
+    }
+
+    .create-form .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .create-form label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 6px;
+      display: block;
+    }
+
+    .model-input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .model-input-row input {
+      flex: 1;
+    }
+
+    .model-input-row .btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    /* ── Hidden file input ───────────────────────── */
+    #import-file-input,
+    #story-import-input {
+      display: none;
+    }
+
+    /* ── Responsive ──────────────────────────────── */
+    @media (max-width: 600px) {
+      .page-container {
+        padding: 0 14px 100px;
+      }
+
+      .hero {
+        padding: 60px 0 28px;
+      }
+
+      .hero-title {
+        font-size: 48px;
+        letter-spacing: 8px;
+      }
+
+      .hero-subtitle {
+        font-size: 12px;
+        letter-spacing: 3px;
+      }
+
+      .hero-flourish {
+        display: none;
+      }
+
+      .conv-card {
+        padding: 14px 16px;
+      }
+
+      .conv-card-name {
+        font-size: 17px;
+      }
+
+      .conv-card-icon {
+        width: 34px;
+        height: 34px;
+      }
+
+      .conv-card-actions {
+        opacity: 1;
+      }
+
+      .fab {
+        bottom: 20px;
+        right: 20px;
+        width: 52px;
+        height: 52px;
+      }
+
+      .fab-tooltip {
+        display: none;
+      }
+
+      .header-bar {
+        padding: 10px 14px;
+      }
+
+      .toolbar-label {
+        font-size: 16px;
+      }
+
+      .toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .toolbar-actions {
+        width: 100%;
+      }
+
+      .toolbar-actions .btn {
+        width: 100%;
+      }
+    }
+
+    /* ── Header icon buttons ──────────────────── */
+    .header-bar { gap: 8px; }
+    .btn-header-icon {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px;
+      background: var(--bg-glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text-secondary); cursor: pointer; transition: all var(--transition);
+    }
+    .btn-header-icon:hover { color: var(--accent); border-color: var(--border-strong); background: var(--bg-glass-light); }
+
+    /* ── Guide overlay ────────────────────────── */
+    .guide-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
+      display: none; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.3s ease;
+    }
+    .guide-overlay.visible { opacity: 1; }
+    .guide-box {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); max-width: 480px; width: 90%;
+      box-shadow: var(--shadow); overflow: hidden;
+    }
+    .guide-header { padding: 20px 24px 12px; text-align: center; }
+    .guide-header h2 { font-family: var(--font-display); font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: 3px; margin-bottom: 4px; }
+    .guide-header p { font-size: 12px; color: var(--text-muted); letter-spacing: 1px; }
+    .guide-body { padding: 8px 24px 20px; }
+    .guide-step { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .guide-step:last-child { border-bottom: none; }
+    .guide-num {
+      flex-shrink: 0; width: 24px; height: 24px; margin-top: 1px;
+      border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent);
+      color: var(--accent); font-size: 12px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .guide-text { font-size: 13.5px; line-height: 1.7; color: var(--text-secondary); }
+    .guide-text strong { color: var(--text-primary); font-weight: 600; }
+    .guide-text .guide-example {
+      display: block; margin-top: 6px; padding: 6px 10px;
+      background: var(--bg-elevated); border-radius: var(--radius);
+      color: var(--text-muted); font-size: 12.5px; font-style: italic;
+    }
+    .guide-footer { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: center; }
+
+    /* ── Settings panel ───────────────────────── */
+    .settings-field { margin-bottom: 16px; }
+    .settings-field label { margin-bottom: 6px; }
+    .settings-field input[type="number"] { width: 80px; text-align: center; }
+    .settings-field .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+    .chip-group { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+    .chip-group .chip {
+      padding: 6px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--bg-elevated); color: var(--text-secondary); font-size: 13px;
+      cursor: pointer; transition: all var(--transition); user-select: none;
+    }
+    .chip-group .chip:hover { border-color: var(--accent); color: var(--text-primary); }
+    .chip-group .chip.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+    .chip-group .chip-custom { display: flex; align-items: center; gap: 4px; }
+    .chip-group .chip-custom input {
+      width: 50px; padding: 2px 4px; text-align: center; font-size: 13px;
+      background: transparent; border: none; border-bottom: 1px solid var(--border); color: var(--text-primary);
+    }
+    .chip-group .chip-custom input:focus { border-color: var(--accent); outline: none; }
+    .settings-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+    .settings-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .settings-actions .btn { flex: 1; min-width: 120px; justify-content: center; }
+  </style>
+</head>
+<body>
+
+<!-- ── Guide Overlay ──────────────────────────── -->
+<div class="guide-overlay" id="guideOverlay">
+  <div class="guide-box">
+    <div class="guide-header">
+      <h2>入卷指南</h2>
+      <p>AI 互动小说</p>
+    </div>
+    <div class="guide-body">
+      <div class="guide-step">
+        <span class="guide-num">1</span>
+        <div class="guide-text">
+          <strong>新建故事</strong>后，先和 AI 聊聊你想要的世界。可以详细描述，也可以一句话概括，AI 会帮你完善。
+          <span class="guide-example">"帮我做一个修仙流、废柴逆袭的世界观，第三人称视角"</span>
+        </div>
+      </div>
+      <div class="guide-step">
+        <span class="guide-num">2</span>
+        <div class="guide-text">
+          讨论完毕后，AI 会花约 <strong>1-2 分钟</strong>生成世界观和状态栏。在右侧预览，满意后点击<strong>「确认」</strong>即可开始游玩。
+        </div>
+      </div>
+      <div class="guide-step">
+        <span class="guide-num">3</span>
+        <div class="guide-text">
+          游玩中，AI 每轮会输出故事、更新状态栏，并给出 <strong>4 个选项</strong>。请等选项全部出现后再操作。点击右上角可随时查看状态栏。
+        </div>
+      </div>
+    </div>
+    <div class="guide-footer">
+      <button class="btn btn-primary" onclick="closeGuide()" style="min-width:140px">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Fixed Header Bar ─────────────────────── -->
+<div class="header-bar">
+  <button class="btn-header-icon" onclick="showGuide()" title="使用指南" id="btn-guide">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+  </button>
+  <button class="btn-header-icon" onclick="openSettings()" title="设置" id="btn-settings-pub" style="display:none;">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  </button>
+  <a class="btn-settings" href="settings.html?v=12" id="btn-settings">
+    <span class="icon" style="width:16px;height:16px;"></span>
+    设置
+  </a>
+</div>
+
+<!-- ── Page Container ───────────────────────── -->
+<div class="page-container">
+
+  <!-- ── Hero Header ──────────────────────────── -->
+  <header class="hero">
+    <div class="hero-flourish tl"></div>
+    <div class="hero-flourish tr"></div>
+    <div class="hero-flourish bl"></div>
+    <div class="hero-flourish br"></div>
+    <span class="hero-ornament"></span>
+    <h1 class="hero-title">入卷</h1>
+    <p class="hero-subtitle">AI 互动小说</p>
+    <p class="hero-tagline">在文字与想象之间，书写属于你的故事</p>
+  </header>
+
+  <!-- ── Main Content ─────────────────────────── -->
+  <main class="main-content">
+
+    <!-- Toolbar (shown when conversations exist) -->
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="toolbar-label">
+        我的故事 <span class="toolbar-count" id="toolbar-count"></span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn btn-ghost" onclick="triggerStoryImport()" title="导入别人分享的故事" id="btn-import-story">
+          导入故事
+        </button>
+      </div>
+    </div>
+
+    <!-- Conversation List -->
+    <div class="conv-list" id="conv-list">
+      <!-- Cards rendered by JS -->
+    </div>
+
+    <!-- Footer: Import/Export -->
+    <div class="footer-actions" id="footer-actions" style="display:none;">
+      <button class="btn btn-ghost" onclick="exportAllData()" title="导出所有数据" id="btn-export">
+        导出备份
+      </button>
+      <button class="btn btn-ghost" onclick="triggerStoryImport()" title="导入别人分享的故事" id="btn-import-story-footer">
+        导入故事
+      </button>
+      <button class="btn btn-ghost" onclick="triggerImport()" title="导入数据" id="btn-import">
+        导入备份
+      </button>
+    </div>
+    <input type="file" id="import-file-input" accept=".json" onchange="importData(event)">
+    <input type="file" id="story-import-input" accept=".json,application/json,text/plain" onchange="importStoryData(event)">
+
+  </main>
+</div>
+
+<!-- ── FAB: Create New Story ──────────────── -->
+<button class="fab" id="fab-create" onclick="showCreateModal()" title="开始新故事">
+  <span class="icon" style="width:24px;height:24px;display:inline-flex;"></span>
+  <span class="fab-tooltip">开始新故事</span>
+</button>
+
+<script>
+  // ── Inject Icons ──────────────────────────────
+  (function injectStaticIcons() {
+    document.querySelector('#btn-settings .icon').innerHTML = Icons.settings;
+    document.querySelector('#fab-create > .icon').innerHTML = Icons.plus;
+
+    const btnExport = document.getElementById('btn-export');
+    const btnImportStory = document.getElementById('btn-import-story');
+    const btnImportStoryFooter = document.getElementById('btn-import-story-footer');
+    const btnImport = document.getElementById('btn-import');
+    btnExport.innerHTML = `${getIcon('download', 14)} 导出备份`;
+    btnImportStory.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入故事`;
+    btnImportStoryFooter.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入故事`;
+    btnImport.innerHTML = `<span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span> 导入备份`;
+  })();
+
+  // ── Guide ──────────────────────────────────────
+  function showGuide() {
+    const el = document.getElementById('guideOverlay');
+    el.style.display = 'flex';
+    requestAnimationFrame(() => el.classList.add('visible'));
+  }
+  function closeGuide() {
+    const el = document.getElementById('guideOverlay');
+    el.classList.remove('visible');
+    setTimeout(() => el.style.display = 'none', 300);
+  }
+
+  // ── Settings panel (public mode) ───────────────
+  function openSettings() {
+    const s = Storage.getSettings();
+    const aw = s.articleWordCount || 500;
+    const sw = s.summaryWordCount || 50;
+    const articleOpts = [300, 500, 700, 1000];
+    const summaryOpts = [50, 100, 150];
+    const awIsCustom = !articleOpts.includes(aw);
+    const swIsCustom = !summaryOpts.includes(sw);
+
+    UI.showModal({
+      title: '设置',
+      content: `
+        <div class="settings-field">
+          <label>每轮回复字数</label>
+          <div class="chip-group" id="chip-article">
+            ${articleOpts.map(v => `<span class="chip${v === aw && !awIsCustom ? ' active' : ''}" data-val="${v}" onclick="selectChip('article',${v})">${v}</span>`).join('')}
+            <span class="chip chip-custom${awIsCustom ? ' active' : ''}" onclick="selectChipCustom('article')">
+              自定义 <input type="number" id="set-article-custom" value="${awIsCustom ? aw : ''}" min="100" max="3000" onfocus="selectChipCustom('article')" onchange="selectChipCustom('article')">
+            </span>
+          </div>
+        </div>
+        <div class="settings-field">
+          <label>摘要字数</label>
+          <div class="chip-group" id="chip-summary">
+            ${summaryOpts.map(v => `<span class="chip${v === sw && !swIsCustom ? ' active' : ''}" data-val="${v}" onclick="selectChip('summary',${v})">${v}</span>`).join('')}
+            <span class="chip chip-custom${swIsCustom ? ' active' : ''}" onclick="selectChipCustom('summary')">
+              自定义 <input type="number" id="set-summary-custom" value="${swIsCustom ? sw : ''}" min="10" max="500" onfocus="selectChipCustom('summary')" onchange="selectChipCustom('summary')">
+            </span>
+          </div>
+        </div>
+        <hr class="settings-divider">
+        <div class="settings-actions">
+          <button class="btn btn-secondary" onclick="exportAllData()">导出数据</button>
+          <button class="btn btn-secondary" onclick="triggerImport()">导入数据</button>
+        </div>`,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: '保存', class: 'btn-primary', onclick: 'savePublicSettings()' },
+      ],
+    });
+  }
+
+  function selectChip(group, val) {
+    const container = document.getElementById('chip-' + group);
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    container.querySelector(`[data-val="${val}"]`).classList.add('active');
+    const customInput = document.getElementById(`set-${group}-custom`);
+    if (customInput) customInput.value = '';
+  }
+
+  function selectChipCustom(group) {
+    const container = document.getElementById('chip-' + group);
+    container.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    container.querySelector('.chip-custom').classList.add('active');
+    const customInput = document.getElementById(`set-${group}-custom`);
+    if (customInput) customInput.focus();
+  }
+
+  function getChipValue(group, fallback) {
+    const container = document.getElementById('chip-' + group);
+    const active = container.querySelector('.chip.active');
+    if (!active) return fallback;
+    if (active.classList.contains('chip-custom')) {
+      const v = parseInt(document.getElementById(`set-${group}-custom`).value);
+      return v > 0 ? v : fallback;
+    }
+    return parseInt(active.dataset.val) || fallback;
+  }
+
+  function savePublicSettings() {
+    const s = Storage.getSettings();
+    s.articleWordCount = getChipValue('article', 500);
+    s.summaryWordCount = getChipValue('summary', 50);
+    Storage.saveSettings(s);
+    UI.closeModal();
+    UI.showToast('设置已保存', 'success');
+  }
+
+  // ── State ──────────────────────────────────────
+  let conversations = [];
+
+  // ── Init ───────────────────────────────────────
+  async function init() {
+    await Config.load();
+    if (Config.isPublic()) {
+      const token = Storage.getAuthToken();
+      if (!token) { location.href = 'login.html'; return; }
+      try {
+        const res = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        const me = await res.json();
+        if (!me.ok) { Storage.clearAuthToken(); location.href = 'login.html'; return; }
+      } catch { Storage.clearAuthToken(); location.href = 'login.html'; return; }
+      // Hide full settings link, show simplified settings button
+      document.getElementById('btn-settings').style.display = 'none';
+      document.getElementById('btn-settings-pub').style.display = '';
+      // Hide footer import/export (moved into settings panel)
+      document.getElementById('btn-export').style.display = 'none';
+      document.getElementById('btn-import-story-footer').style.display = 'none';
+      document.getElementById('btn-import').style.display = 'none';
+    } else {
+      // Local mode: hide guide and public settings buttons
+      document.getElementById('btn-guide').style.display = 'none';
+      document.getElementById('btn-settings-pub').style.display = 'none';
+    }
+    await Storage.syncFromServer();
+    loadConversations();
+  }
+
+  // ── Load & Render Conversations ────────────────
+  function loadConversations() {
+    conversations = Storage.getConversationList();
+    renderList();
+  }
+
+  function renderList() {
+    const container = document.getElementById('conv-list');
+    const toolbar = document.getElementById('toolbar');
+    const footer = document.getElementById('footer-actions');
+
+    if (conversations.length === 0) {
+      toolbar.style.display = 'none';
+      footer.style.display = '';
+      container.innerHTML = renderEmptyState();
+      return;
+    }
+
+    toolbar.style.display = '';
+    footer.style.display = '';
+    document.getElementById('toolbar-count').textContent = `(${conversations.length})`;
+    container.innerHTML = conversations.map((conv, i) => renderCard(conv, i)).join('');
+
+    // Staggered fade-in animation
+    const cards = container.querySelectorAll('.conv-card');
+    cards.forEach((card, i) => {
+      setTimeout(() => {
+        card.style.transition = `opacity 0.4s ease ${i * 0.06}s, transform 0.4s ease ${i * 0.06}s`;
+        card.classList.add('visible');
+      }, 30);
+    });
+  }
+
+  function renderCard(conv, index) {
+    const phase = conv.phase || 'init';
+    const phaseLabel = phase === 'rp' ? '进行中' : '初始化';
+    const phaseClass = phase === 'rp' ? 'phase-rp' : 'phase-init';
+    const msgCount = conv.msgCount !== undefined ? conv.msgCount : (conv.messages || []).filter(m => !m.hidden).length;
+    const timeStr = conv.updatedAt ? Utils.formatRelative(conv.updatedAt) : '未知';
+    const name = Utils.escapeHtml(conv.name || '未命名故事');
+
+    return `
+      <div class="conv-card" data-id="${conv.id}" onclick="openConversation('${conv.id}', event)">
+        <div class="conv-card-header">
+          <div class="conv-card-icon">
+            ${getIcon('book', 18)}
+          </div>
+          <div class="conv-card-info">
+            <div class="conv-card-name" id="name-${conv.id}">${name}</div>
+            <div class="conv-card-meta">
+              <span class="phase-badge ${phaseClass}">${phaseLabel}</span>
+              <span class="meta-dot"></span>
+              <span>${msgCount} 条消息</span>
+              <span class="meta-dot"></span>
+              <span>${timeStr}</span>
+            </div>
+          </div>
+          <div class="conv-card-actions">
+            <button class="btn-icon" onclick="forkConversation('${conv.id}', event)" title="复制">
+              ${getIcon('copy', 15)}
+            </button>
+            <button class="btn-icon" onclick="exportConversation('${conv.id}', event)" title="导出">
+              ${getIcon('download', 15)}
+            </button>
+            <button class="btn-icon" onclick="startRename('${conv.id}', event)" title="重命名">
+              ${getIcon('edit', 15)}
+            </button>
+            <button class="btn-icon btn-danger" onclick="confirmDelete('${conv.id}', event)" title="删除">
+              ${getIcon('trash', 15)}
+            </button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderEmptyState() {
+    return `
+      <div class="empty-state">
+        <div class="empty-quill">
+          ${Icons.book}
+        </div>
+        <span class="empty-ornament"></span>
+        <div class="empty-title">卷轴尚空，故事未启</div>
+        <p class="empty-desc">
+          每一段传奇都始于第一笔墨迹。<br>
+          点击下方按钮开始创作，让AI与你共同书写独一无二的故事。
+        </p>
+        <button class="btn btn-primary empty-cta" onclick="showCreateModal()">
+          ${getIcon('plus', 16)} 开始第一个故事
+        </button>
+      </div>`;
+  }
+
+  // ── Create New Story Modal ───────────────────
+  function showCreateModal() {
+    // Public mode: simplified creation (no API profile/model selection)
+    if (Config.isPublic()) {
+      UI.showModal({
+        title: '创建新故事',
+        content: `
+          <div class="create-form">
+            <div class="form-group">
+              <label>故事名称</label>
+              <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
+            </div>
+          </div>`,
+        buttons: [
+          { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+          { text: '创建', class: 'btn-primary', onclick: 'doCreateConversation()' },
+        ],
+      });
+      setTimeout(() => {
+        const nameInput = document.getElementById('create-name');
+        if (nameInput) nameInput.focus();
+      }, 100);
+      return;
+    }
+
+    const profiles = Storage.getApiProfiles();
+    const profileList = Object.values(profiles);
+
+    // If no API profiles configured, redirect to settings
+    if (profileList.length === 0) {
+      UI.showToast('请先配置API接口', 'error');
+      setTimeout(() => { window.location.href = 'settings.html?v=12'; }, 800);
+      return;
+    }
+
+    UI.showModal({
+      title: '创建新故事',
+      content: `
+        <div class="create-form">
+          <div class="form-group">
+            <label>故事名称</label>
+            <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
+          </div>
+        </div>`,
+      buttons: [
+        { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+        { text: '创建', class: 'btn-primary', onclick: 'doCreateConversation()' },
+      ],
+    });
+
+    // Focus the name input after modal opens
+    setTimeout(() => {
+      const nameInput = document.getElementById('create-name');
+      if (nameInput) nameInput.focus();
+    }, 100);
+  }
+
+  function doCreateConversation() {
+    const name = (document.getElementById('create-name').value || '').trim() || '新的故事';
+
+    let apiProfileId, model;
+    if (Config.isPublic()) {
+      apiProfileId = '__server__';
+      model = Config.defaultModel;
+    } else {
+      const s = Storage.getSettings();
+      const profiles = Storage.getApiProfiles();
+      const profileList = Object.values(profiles);
+      apiProfileId = s.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
+      model = s.defaultModel || '';
+      if (!apiProfileId) {
+        UI.showToast('请先在设置中配置API', 'error');
+        return;
+      }
+    }
+
+    const settings = Storage.getSettings();
+    const id = Utils.generateId('conv');
+    const conv = {
+      id,
+      name,
+      phase: 'init',
+      apiProfileId,
+      model,
+      messages: [],
+      mvu: null,
+      storySetting: null,
+      worldBook: null,
+      summary: { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+
+    Storage.saveConversation(conv);
+    UI.closeModal();
+    window.location.href = `chat.html?v=12&id=${id}&new=true`;
+  }
+
+  // ── Open Conversation ──────────────────────────
+  function openConversation(id, event) {
+    // Don't navigate if clicking action buttons or rename input
+    if (event.target.closest('.conv-card-actions') || event.target.closest('.conv-card-rename')) {
+      return;
+    }
+    window.location.href = `chat.html?v=12&id=${id}`;
+  }
+
+  // ── Rename (inline) ───────────────────────────
+  function startRename(id, event) {
+    event.stopPropagation();
+    const meta = Storage.getConversation(id);
+    if (!meta) return;
+
+    const nameEl = document.getElementById(`name-${id}`);
+    if (!nameEl) return;
+
+    const currentName = meta.name || '未命名故事';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'conv-card-rename';
+    input.value = currentName;
+
+    nameEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let finished = false;
+    async function finishRename() {
+      if (finished) return;
+      finished = true;
+      const newName = input.value.trim() || currentName;
+      if (newName !== currentName) {
+        // Load full conversation from server, update name, save back
+        const conv = await Storage.loadConversation(id);
+        if (conv) {
+          conv.name = newName;
+          Storage.saveConversation(conv);
+        }
+      }
+      loadConversations();
+    }
+
+    input.addEventListener('blur', finishRename);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.value = currentName; input.blur(); }
+    });
+    input.addEventListener('click', (e) => e.stopPropagation());
+  }
+
+  // ── Delete ─────────────────────────────────────
+  function confirmDelete(id, event) {
+    event.stopPropagation();
+    const conv = Storage.getConversation(id);
+    if (!conv) return;
+
+    UI.showConfirm({
+      title: '删除故事',
+      message: `确定要删除「${Utils.escapeHtml(conv.name || '未命名故事')}」吗？此操作不可撤销。`,
+      onConfirm: () => {
+        Storage.deleteConversation(id);
+        UI.showToast('故事已删除', 'success');
+        loadConversations();
+      },
+    });
+  }
+
+  // ── Fork Conversation ────────────────────────────
+  async function forkConversation(id, event) {
+    event.stopPropagation();
+    UI.showToast('正在复制...', 'info');
+    const conv = await Storage.loadConversation(id);
+    if (!conv) { UI.showToast('无法加载对话', 'error'); return; }
+    const fork = JSON.parse(JSON.stringify(conv));
+    fork.id = Utils.generateId();
+    fork.name = (conv.name || '对话') + ' (副本)';
+    fork.createdAt = Date.now();
+    fork.updatedAt = Date.now();
+    Storage.saveConversation(fork);
+    loadConversations();
+    UI.showToast('对话已复制', 'success');
+  }
+
+  // ── Export Single Conversation ──────────────────
+  async function exportConversation(id, event) {
+    event.stopPropagation();
+    UI.showToast('正在加载对话数据...', 'info');
+    const conv = await Storage.loadConversation(id);
+    if (!conv) { UI.showToast('无法加载对话', 'error'); return; }
+    const json = JSON.stringify(conv, null, 2);
+    const name = (conv.name || '对话').replace(/[\/\\:*?"<>|]/g, '_');
+    const date = new Date().toISOString().slice(0, 16).replace(':', '');
+    Utils.downloadFile(json, `airp-conv-${name}-${date}.json`);
+    UI.showToast('对话已导出', 'success');
+  }
+
+  // ── Export All Data ────────────────────────────
+  async function exportAllData() {
+    UI.showToast('正在加载全部数据...', 'info');
+    const data = await Storage.exportAll();
+    const json = JSON.stringify(data, null, 2);
+    Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 16).replace(':', '')}.json`);
+    UI.showToast('数据已导出', 'success');
+  }
+
+  // ── Import Data ────────────────────────────────
+  function triggerImport() {
+    document.getElementById('import-file-input').click();
+  }
+
+  function triggerStoryImport() {
+    document.getElementById('story-import-input').click();
+  }
+
+  function isImportableConversation(data) {
+    return !!data && typeof data === 'object' && !Array.isArray(data) && (
+      Array.isArray(data.messages) ||
+      typeof data.storySetting !== 'undefined' ||
+      typeof data.phase === 'string' ||
+      typeof data.mvu !== 'undefined'
+    );
+  }
+
+  function extractImportableStories(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return [];
+    if (isImportableConversation(data)) return [data];
+    if (data.conversations && typeof data.conversations === 'object' && !Array.isArray(data.conversations)) {
+      return Object.values(data.conversations).filter(isImportableConversation);
+    }
+    return [];
+  }
+
+  function makeImportedStoryName(rawName, usedNames) {
+    const baseName = (rawName || '\u5bfc\u5165\u7684\u6545\u4e8b').trim() || '\u5bfc\u5165\u7684\u6545\u4e8b';
+    if (!usedNames.has(baseName)) {
+      usedNames.add(baseName);
+      return baseName;
+    }
+
+    let suffix = 1;
+    let nextName = `${baseName} (\u5bfc\u5165)`;
+    while (usedNames.has(nextName)) {
+      suffix += 1;
+      nextName = `${baseName} (\u5bfc\u5165${suffix})`;
+    }
+    usedNames.add(nextName);
+    return nextName;
+  }
+
+  function prepareImportedConversation(rawConv, usedNames) {
+    const now = Date.now();
+    const settings = Storage.getSettings();
+    const conv = JSON.parse(JSON.stringify(rawConv));
+    conv.id = Utils.generateId('conv');
+    conv.name = makeImportedStoryName(conv.name, usedNames);
+    conv.phase = conv.phase || 'init';
+    conv.messages = Array.isArray(conv.messages) ? conv.messages : [];
+    conv.mvu = conv.mvu ?? null;
+    conv.storySetting = conv.storySetting ?? null;
+    conv.worldBook = conv.worldBook ?? null;
+    conv.summary = conv.summary && typeof conv.summary === 'object'
+      ? conv.summary
+      : { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+    conv.createdAt = now;
+    conv.updatedAt = now;
+    return conv;
+  }
+
+  function importStoryData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        const stories = extractImportableStories(data);
+        if (!stories.length) throw new Error('no-story');
+
+        const count = stories.length;
+        UI.showConfirm({
+          title: '\u5bfc\u5165\u6545\u4e8b',
+          message: count === 1
+            ? '\u8fd9\u4e2a\u6587\u4ef6\u4e2d\u7684\u6545\u4e8b\u4f1a\u52a0\u5165\u201c\u6211\u7684\u6545\u4e8b\u201d\uff0c\u4e0d\u4f1a\u8986\u76d6\u4f60\u73b0\u6709\u7684\u5185\u5bb9\u3002\u786e\u5b9a\u7ee7\u7eed\u5417\uff1f'
+            : `\u5c06\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b\u5230\u201c\u6211\u7684\u6545\u4e8b\u201d\uff0c\u4e0d\u4f1a\u8986\u76d6\u4f60\u73b0\u6709\u7684\u5185\u5bb9\u3002\u786e\u5b9a\u7ee7\u7eed\u5417\uff1f`,
+          onConfirm: async () => {
+            UI.showToast(count === 1 ? '\u6b63\u5728\u5bfc\u5165\u6545\u4e8b...' : `\u6b63\u5728\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b...`, 'info');
+            const usedNames = new Set(Storage.getConversationList().map(conv => (conv.name || '').trim()).filter(Boolean));
+            for (const story of stories) {
+              const importedConv = prepareImportedConversation(story, usedNames);
+              Storage.saveConversation(importedConv);
+            }
+            UI.showToast(count === 1 ? '\u6545\u4e8b\u5bfc\u5165\u6210\u529f' : `\u5df2\u6210\u529f\u5bfc\u5165 ${count} \u4e2a\u6545\u4e8b`, 'success');
+            loadConversations();
+          },
+        });
+      } catch {
+        UI.showToast('\u6587\u4ef6\u683c\u5f0f\u65e0\u6548\uff0c\u65e0\u6cd5\u8bc6\u522b\u6545\u4e8b\u6570\u636e', 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        UI.showConfirm({
+          title: '导入数据',
+          message: '导入将覆盖当前所有数据，确定继续吗？',
+          onConfirm: async () => {
+            UI.showToast('正在导入...', 'info');
+            await Storage.importAll(data);
+            UI.showToast('数据导入成功', 'success');
+            loadConversations();
+          },
+        });
+      } catch {
+        UI.showToast('文件格式无效', 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  // ── Boot ───────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', init);
+</script>
+
+</body>
+</html>

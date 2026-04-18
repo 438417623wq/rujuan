@@ -6,3 +6,11 @@ start-public.sh
 .env.*
 CLAUDE.md
 docs/
+.claude/
+android/.gradle/
+android/.gradle-user/
+android/.android-user/
+android/app/build/
+android/local.properties
+rujuan-changes.bundle
+upstream-changes.patch

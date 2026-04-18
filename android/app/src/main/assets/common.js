@@ -249,6 +249,7 @@ const Storage = {
   _SETTINGS_DEFAULTS: {
     defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
     articleWordCount: 500, summaryWordCount: 50,
+    enableNotificationBar: true,
     showPromptInspector: false,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
     promptPresets: null, activePresetId: 'default',
@@ -384,24 +385,153 @@ const Storage = {
 // API Module
 // ============================================================
 const API = {
-  _getBaseUrl(p) {
-    if (p.baseUrl) return p.baseUrl.replace(/\/$/, '');
-    const defaults = { openai: 'https://api.openai.com/v1', claude: 'https://api.anthropic.com/v1', 'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta' };
-    return defaults[p.provider] || '';
+  _getDefaultBaseUrl(provider) {
+    const defaults = {
+      openai: 'https://api.openai.com/v1',
+      claude: 'https://api.anthropic.com/v1',
+      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
+    };
+    return defaults[provider] || '';
   },
 
-  _getHeaders(p) {
-    const h = { 'Content-Type': 'application/json' };
-    if (p.provider === 'claude') { h['x-api-key'] = p.apiKey; h['anthropic-version'] = '2023-06-01'; }
-    else if (p.provider !== 'google-ai-studio') { h['Authorization'] = `Bearer ${p.apiKey}`; }
-    return h;
+  _ensureBaseUrlScheme(raw) {
+    const value = String(raw || '').trim();
+    if (!value) return '';
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) return value;
+    if (value.startsWith('//')) return `https:${value}`;
+    const isLocal = /^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?(?:\/|$)/i.test(value);
+    return `${isLocal ? 'http' : 'https'}://${value}`;
+  },
+
+  _stripKnownEndpointSuffix(raw) {
+    return String(raw || '').replace(/\/(?:chat\/completions|responses|messages|models)$/i, '');
+  },
+
+  _appendPathSegment(path, segment) {
+    const clean = String(path || '').replace(/\/+$/, '');
+    return clean ? `${clean}/${segment}` : `/${segment}`;
+  },
+
+  _sanitizeBaseUrl(raw) {
+    let value = this._ensureBaseUrlScheme(raw);
+    if (!value) return '';
+    value = value.replace(/[?#].*$/, '');
+    value = value.replace(/\/+$/, '');
+    value = this._stripKnownEndpointSuffix(value);
+    return value.replace(/\/+$/, '');
+  },
+
+  _shouldAppendDefaultVersion(path) {
+    const clean = String(path || '').replace(/\/+$/, '');
+    if (!clean) return true;
+    if (/\/v\d+(?:beta)?$/i.test(clean)) return false;
+    return /\/(?:api|openai)$/i.test(clean);
+  },
+
+  _getBaseUrl(p) {
+    const provider = p?.provider || 'openai';
+    const rawBase = this._sanitizeBaseUrl(p?.baseUrl || '');
+    if (!rawBase) return this._getDefaultBaseUrl(provider);
+
+    try {
+      const url = new URL(rawBase);
+      let path = url.pathname.replace(/\/+$/, '');
+
+      if (provider === 'google-ai-studio') {
+        if (/generativelanguage\.googleapis/i.test(url.hostname) && !/\/v\d+(?:beta)?$/i.test(path)) {
+          path = this._appendPathSegment(path, 'v1beta');
+        }
+      } else if (provider === 'claude') {
+        if (!path || /\/(?:api|anthropic)$/i.test(path)) {
+          path = this._appendPathSegment(path, 'v1');
+        }
+      } else if (this._shouldAppendDefaultVersion(path)) {
+        path = this._appendPathSegment(path, 'v1');
+      }
+
+      url.pathname = path || '/';
+      url.search = '';
+      url.hash = '';
+      return url.toString().replace(/\/$/, '');
+    } catch {
+      let value = rawBase;
+      if (provider === 'google-ai-studio') {
+        if (!/\/v\d+(?:beta)?$/i.test(value) && /generativelanguage\.googleapis/i.test(value)) value = `${value}/v1beta`;
+      } else if (provider === 'claude') {
+        if (/^https?:\/\/[^/]+$/i.test(value) || /\/(?:api|anthropic)$/i.test(value)) value = `${value}/v1`;
+      } else if (this._shouldAppendDefaultVersion(value.replace(/^https?:\/\/[^/]+/i, ''))) {
+        value = `${value}/v1`;
+      }
+      return value.replace(/\/+$/, '');
+    }
+  },
+
+  _getRawBaseUrl(p) {
+    const value = this._sanitizeBaseUrl(p?.baseUrl || '');
+    return value || this._getDefaultBaseUrl(p?.provider || 'openai');
+  },
+
+  _parseExtraHeaders(raw = '') {
+    const text = String(raw || '').trim();
+    if (!text) return {};
+
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return Object.fromEntries(
+          Object.entries(parsed)
+            .map(([key, value]) => [String(key).trim(), value == null ? '' : String(value).trim()])
+            .filter(([key, value]) => key && value)
+        );
+      }
+    } catch {}
+
+    const headers = {};
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) throw new Error('附加请求头格式无效，请使用 JSON 或每行一个 Key: Value');
+      const key = trimmed.slice(0, idx).trim();
+      const value = trimmed.slice(idx + 1).trim();
+      if (key && value) headers[key] = value;
+    }
+    return headers;
+  },
+
+  _hasHeader(headers, name) {
+    const target = String(name || '').toLowerCase();
+    return Object.keys(headers || {}).some(key => key.toLowerCase() === target);
+  },
+
+  _getHeaders(p, options = {}) {
+    const accept = options.accept === undefined ? 'application/json' : options.accept;
+    const includeContentType = options.includeContentType !== false;
+    const extraHeaders = this._parseExtraHeaders(p?.extraHeaders || '');
+    const headers = {};
+
+    if (includeContentType) headers['Content-Type'] = 'application/json';
+    if (accept) headers['Accept'] = accept;
+
+    if (p.provider === 'claude') {
+      if (!this._hasHeader(extraHeaders, 'x-api-key') && p.apiKey) headers['x-api-key'] = p.apiKey;
+      if (!this._hasHeader(extraHeaders, 'anthropic-version')) headers['anthropic-version'] = '2023-06-01';
+    } else if (p.provider !== 'google-ai-studio') {
+      const hasCustomAuth = this._hasHeader(extraHeaders, 'authorization')
+        || this._hasHeader(extraHeaders, 'api-key')
+        || this._hasHeader(extraHeaders, 'x-api-key');
+      if (!hasCustomAuth && p.apiKey) headers['Authorization'] = `Bearer ${p.apiKey}`;
+    }
+
+    for (const [key, value] of Object.entries(extraHeaders)) headers[key] = value;
+    return headers;
   },
 
   // Detect actual provider from profile + URL + model name
   _detect(p, model = '') {
     if (p.provider === 'claude') return 'claude';
     if (p.provider === 'google-ai-studio') return 'google';
-    const url = (p.baseUrl || '').toLowerCase();
+    const url = this._getBaseUrl(p).toLowerCase();
     if (url.includes('anthropic')) return 'claude';
     if (url.includes('generativelanguage.googleapis')) return 'google';
     // OpenAI-compatible (covers proxies for Claude/Gemini too)
@@ -473,7 +603,7 @@ const API = {
       return this._sendViaProxy({ model, systemPrompt, messages });
     }
     try {
-      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
+      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, { accept: 'application/json' }), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return { success: false, error: e.error?.message || `HTTP ${res.status}` }; }
       const data = await res.json();
       return { success: true, ...this._parseResponse(p, data) };
@@ -575,7 +705,7 @@ const API = {
         onStatus?.('connecting');
         const res = await fetch(url, {
           method: 'POST',
-          headers: this._getHeaders(p),
+          headers: this._getHeaders(p, { accept: 'text/event-stream' }),
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -818,20 +948,158 @@ const API = {
     doStream();
   },
 
-  async fetchModels(apiProfileId) {
-    const p = Storage.getApiProfile(apiProfileId);
-    if (!p) return { success: false, models: [] };
-    const base = this._getBaseUrl(p);
-    const url = p.provider === 'google-ai-studio' ? `${base}/models?key=${p.apiKey}` : `${base}/models`;
+  _buildModelListCandidates(p) {
+    const provider = p?.provider || 'openai';
+    const normalizedBase = this._getBaseUrl(p);
+    if (provider === 'google-ai-studio') {
+      return [`${normalizedBase}/models?key=${encodeURIComponent(p.apiKey || '')}`];
+    }
+
+    const rawBase = this._getRawBaseUrl(p);
+    const urls = [];
+    const push = url => {
+      if (url && !urls.includes(url)) urls.push(url);
+    };
+
+    push(`${normalizedBase}/models`);
+    if (/nano-?gpt/i.test(normalizedBase)) push(`${normalizedBase}/models?detailed=true`);
+
+    if (rawBase && rawBase !== normalizedBase) {
+      push(`${rawBase}/models`);
+      if (/nano-?gpt/i.test(rawBase)) push(`${rawBase}/models?detailed=true`);
+    }
+
+    return urls;
+  },
+
+  _extractModelIds(data, provider = '') {
+    if (!data) return [];
+
+    if (provider === 'google') {
+      return (data.models || [])
+        .filter(model => model.name?.includes('gemini'))
+        .map(model => model.name.replace(/^models\//, ''));
+    }
+
+    const seen = new Set();
+    const models = [];
+    const add = value => {
+      const id = String(value || '').trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      models.push(id);
+    };
+    const collectFromArray = arr => {
+      if (!Array.isArray(arr)) return;
+      for (const item of arr) {
+        if (typeof item === 'string') add(item);
+        else if (item && typeof item === 'object') add(item.id || item.name || item.model || item.slug || item.value);
+      }
+    };
+
+    if (Array.isArray(data)) collectFromArray(data);
+    if (data && typeof data === 'object') {
+      collectFromArray(data.data);
+      collectFromArray(data.models);
+      collectFromArray(data.items);
+      collectFromArray(data.results);
+      collectFromArray(data.model_list);
+
+      if (data.data && typeof data.data === 'object') {
+        collectFromArray(data.data.models);
+        collectFromArray(data.data.items);
+      }
+      if (data.result && typeof data.result === 'object') {
+        collectFromArray(data.result.models);
+        collectFromArray(data.result.items);
+      }
+    }
+
+    return models;
+  },
+
+  _extractModelFetchError(bodyText, status = 0) {
+    const text = String(bodyText || '').trim();
+    if (!text) return status ? `HTTP ${status}` : '请求失败';
     try {
-      const res = await fetch(url, { headers: this._getHeaders(p) });
-      if (!res.ok) return { success: false, models: [] };
-      const data = await res.json();
-      let models = [];
-      if (p.provider === 'google-ai-studio') models = (data.models || []).filter(m => m.name?.includes('gemini')).map(m => m.name.replace('models/', ''));
-      else models = (data.data || []).map(m => m.id);
-      return { success: true, models };
-    } catch { return { success: false, models: [] }; }
+      const parsed = JSON.parse(text);
+      const message = parsed?.error?.message || parsed?.error || parsed?.message || parsed?.detail || parsed?.details;
+      if (message) return typeof message === 'string' ? message : JSON.stringify(message);
+    } catch {}
+    return text.length > 200 ? `${text.slice(0, 200)}...` : text;
+  },
+
+  async _fetchModelsViaBrowser(p) {
+    const provider = this._detect(p);
+    const diagnostics = [];
+    const headers = this._getHeaders(p, { accept: 'application/json', includeContentType: false });
+
+    for (const url of this._buildModelListCandidates(p)) {
+      try {
+        const res = await fetch(url, { headers });
+        const bodyText = await res.text();
+        if (!res.ok) {
+          diagnostics.push({ url, status: res.status, error: this._extractModelFetchError(bodyText, res.status) });
+          continue;
+        }
+
+        let data = {};
+        try {
+          data = bodyText ? JSON.parse(bodyText) : {};
+        } catch {
+          diagnostics.push({ url, status: res.status, error: '模型列表接口返回了无法解析的 JSON' });
+          continue;
+        }
+
+        const models = this._extractModelIds(data, provider);
+        if (models.length > 0) return { success: true, models, status: res.status, endpoint: url, source: 'browser' };
+        diagnostics.push({ url, status: res.status, error: '接口已返回成功，但未解析出可用模型列表' });
+      } catch (e) {
+        diagnostics.push({ url, status: 0, error: e.message || 'NetworkError' });
+      }
+    }
+
+    const best = diagnostics.find(item => item.status === 401 || item.status === 403)
+      || diagnostics.find(item => item.status >= 400)
+      || diagnostics[0]
+      || {};
+
+    return {
+      success: false,
+      models: [],
+      error: best.error || '未能获取模型列表',
+      status: best.status || 0,
+      endpoint: best.url || '',
+      diagnostics,
+      source: 'browser',
+    };
+  },
+
+  async fetchModels(apiProfileOrId) {
+    const p = typeof apiProfileOrId === 'string' ? Storage.getApiProfile(apiProfileOrId) : apiProfileOrId;
+    if (!p) return { success: false, models: [], error: 'API 配置不存在' };
+
+    if (Storage._isNative && window.AndroidBridge?.fetchModels) {
+      try {
+        const raw = window.AndroidBridge.fetchModels(JSON.stringify(p));
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (!Array.isArray(parsed.models)) parsed.models = [];
+            if (!parsed.source) parsed.source = 'native';
+            return parsed;
+          }
+        }
+      } catch (e) {
+        log('Native fetchModels failed, falling back to browser:', e.message);
+      }
+    }
+
+    try {
+      return await this._fetchModelsViaBrowser(p);
+    } catch (e) {
+      return { success: false, models: [], error: e.message || '未能获取模型列表', source: 'browser' };
+    }
   },
 };
 
@@ -1382,13 +1650,66 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
     if (phase === 'init') {
       const initPrompt = preset.initPrompt || this.DEFAULT_INIT_PROMPT;
       const systemPrompt = initPrompt;
-      const msgs = (conversation.messages || []).filter(m => !m.hidden && m.content?.trim()).map(m => ({ role: m.role, content: m.content }));
-      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: msgs.length });
-      return { systemPrompt, messages: msgs };
+      const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
+      const history = (conversation.messages || [])
+        .filter(m => !m.hidden && m.content?.trim())
+        .map(m => ({ role: m.role, content: m.content }));
+
+      const msgs = [];
+      if (worldBookBlocks.beforeStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      }
+      if (conversation.storySetting) {
+        msgs.push({ role: 'user', content: '【当前故事设定】\n' + conversation.storySetting });
+      }
+      if (worldBookBlocks.afterStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
+      }
+
+      let injectedInputWorldBook = false;
+      for (let i = 0; i < history.length; i++) {
+        const msg = history[i];
+        const isLatestUser = msg.role === 'user' && i === history.length - 1;
+        if (isLatestUser && worldBookBlocks.beforeInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+          injectedInputWorldBook = true;
+        }
+        msgs.push(msg);
+        if (isLatestUser && worldBookBlocks.afterInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+          injectedInputWorldBook = true;
+        }
+      }
+
+      if (!injectedInputWorldBook) {
+        if (worldBookBlocks.beforeInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+        }
+        if (worldBookBlocks.afterInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+        }
+      }
+
+      const merged = [];
+      for (const m of msgs) {
+        if (merged.length > 0 && merged[merged.length - 1].role === m.role) {
+          merged[merged.length - 1].content += '\n\n' + m.content;
+        } else {
+          merged.push({ ...m });
+        }
+      }
+
+      log('buildMessages [init]', {
+        systemLen: systemPrompt.length,
+        msgCount: merged.length,
+        worldBookActiveCount: worldBookBlocks.active?.length || 0,
+      });
+      return { systemPrompt, messages: merged };
     }
 
     // RP phase
     const entries = preset.entries || this.MINIMAL_PRESET_ENTRIES;
+    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
     let schemaDesc = '';
     if (conversation.mvu?.schema) {
       schemaDesc = '【状态栏字段】\n';
@@ -1509,12 +1830,21 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
       }
       const systemPrompt = systemParts.join('\n\n');
       const msgs = [...prefixMsgs];
+      if (worldBookBlocks.beforeStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      }
       if (conversation.storySetting) {
         msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting });
+      }
+      if (worldBookBlocks.afterStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
       }
       msgs.push(...buildSummaries(allMsgs, splitAt));
       if (conversation.writingAdvice) {
         msgs.push({ role: 'user', content: '【主人的写作建议】\n' + conversation.writingAdvice });
+      }
+      if (worldBookBlocks.beforeInput) {
+        msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
       }
       const recent = allMsgs.slice(splitAt);
       for (let i = 0; i < recent.length; i++) {
@@ -1524,6 +1854,9 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
         }
         const content = recent[i].role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(recent[i].content)) : recent[i].content;
         msgs.push({ role: recent[i].role, content });
+      }
+      if (worldBookBlocks.afterInput) {
+        msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
       }
       const merged = [];
       for (const m of msgs) {
@@ -1552,8 +1885,14 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
       if (e.slot) {
         switch (e.slot) {
           case 'story_setting':
+            if (worldBookBlocks.beforeStory) {
+              msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+            }
             if (conversation.storySetting) {
               msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting });
+            }
+            if (worldBookBlocks.afterStory) {
+              msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
             }
             break;
 
@@ -1592,8 +1931,14 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
           }
 
           case 'user_input': {
+            if (worldBookBlocks.beforeInput) {
+              msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+            }
             if (pendingUserInput) {
               msgs.push({ role: 'user', content: '[ 本轮用户消息 ]\n<interactive_input>\n' + pendingUserInput.content + '\n</interactive_input>' });
+            }
+            if (worldBookBlocks.afterInput) {
+              msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
             }
             break;
           }
@@ -1638,6 +1983,376 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
     const s = Storage.getSettings();
     const preset = this.getActivePreset(s);
     return preset.summaryPrompt || this.DEFAULT_SUMMARY_MERGE_PROMPT;
+  },
+};
+
+// ============================================================
+// WorldBook Module
+// ============================================================
+const WorldBook = {
+  DEFAULT_SETTINGS: {
+    scanDepth: 6,
+    maxEntries: 24,
+    maxChars: 8000,
+    recursiveScan: true,
+    maxRecursionSteps: 2,
+    caseSensitive: false,
+    matchWholeWords: false,
+  },
+
+  POSITION_MAP: {
+    before_char: 0,
+    after_char: 1,
+    before_input: 2,
+    after_input: 3,
+  },
+
+  LOGIC_MAP: {
+    and_any: 0,
+    and_all: 1,
+    not_any: 2,
+    not_all: 3,
+  },
+
+  createEmptyBook(name = '世界书') {
+    return {
+      version: 1,
+      name,
+      description: '',
+      settings: { ...this.DEFAULT_SETTINGS },
+      entries: [],
+    };
+  },
+
+  createEntry(partial = {}) {
+    const uid = Number(partial.uid ?? partial.id ?? (Date.now() + Math.floor(Math.random() * 1000)));
+    const secondaryKeys = this._normalizeList(partial.secondaryKeys ?? partial.keysecondary ?? []);
+    const selective = partial.selective === null || partial.selective === undefined
+      ? secondaryKeys.length > 0
+      : !!partial.selective;
+    return {
+      uid,
+      title: partial.title || partial.comment || partial.name || '新条目',
+      comment: partial.comment || partial.title || partial.name || '新条目',
+      keys: this._normalizeList(partial.keys ?? partial.key ?? []),
+      secondaryKeys,
+      selective,
+      content: String(partial.content || partial.text || ''),
+      enabled: partial.enabled !== false && partial.disable !== true && partial.disabled !== true,
+      constant: !!(partial.constant || partial.alwaysActive || partial.always_active),
+      manualActive: !!(
+        partial.manualActive
+        || partial.forceActive
+        || partial.force_active
+        || partial.forceHit
+        || partial.force_hit
+        || partial.currentHit
+        || partial.current_hit
+      ),
+      order: Number.isFinite(Number(partial.order)) ? Number(partial.order) : 100,
+      position: this._normalizePosition(partial.position),
+      selectiveLogic: this._normalizeSelectiveLogic(partial.selectiveLogic),
+      useRegex: !!(partial.useRegex || partial.use_regex),
+      matchWholeWords: partial.matchWholeWords === null || partial.matchWholeWords === undefined
+        ? (partial.match_whole_words === null || partial.match_whole_words === undefined ? null : !!partial.match_whole_words)
+        : !!partial.matchWholeWords,
+      caseSensitive: partial.caseSensitive === null || partial.caseSensitive === undefined
+        ? (partial.case_sensitive === null || partial.case_sensitive === undefined ? null : !!partial.case_sensitive)
+        : !!partial.caseSensitive,
+      disableRecursion: !!(partial.disableRecursion || partial.excludeRecursion || partial.disable_recursion),
+      probability: Number.isFinite(Number(partial.probability)) ? Math.max(0, Math.min(100, Number(partial.probability))) : 100,
+    };
+  },
+
+  normalizeBook(book, fallbackName = '世界书') {
+    if (!book || typeof book !== 'object') {
+      return this.createEmptyBook(fallbackName);
+    }
+    const settings = {
+      ...this.DEFAULT_SETTINGS,
+      ...(book.settings || {}),
+    };
+    if (book.scanDepth !== undefined) settings.scanDepth = Number(book.scanDepth) || settings.scanDepth;
+    if (book.maxEntries !== undefined) settings.maxEntries = Number(book.maxEntries) || settings.maxEntries;
+    if (book.maxChars !== undefined) settings.maxChars = Number(book.maxChars) || settings.maxChars;
+    if (book.recursiveScan !== undefined) settings.recursiveScan = !!book.recursiveScan;
+    if (book.maxRecursionSteps !== undefined) settings.maxRecursionSteps = Number(book.maxRecursionSteps) || settings.maxRecursionSteps;
+    if (book.caseSensitive !== undefined) settings.caseSensitive = !!book.caseSensitive;
+    if (book.matchWholeWords !== undefined) settings.matchWholeWords = !!book.matchWholeWords;
+
+    let rawEntries = [];
+    if (Array.isArray(book.entries)) rawEntries = book.entries;
+    else if (book.entries && typeof book.entries === 'object') rawEntries = Object.values(book.entries);
+    else if (Array.isArray(book.worldInfos)) rawEntries = book.worldInfos;
+
+    const entries = rawEntries
+      .map((entry, index) => this.createEntry({ ...entry, id: entry?.id ?? index + 1 }))
+      .filter(Boolean);
+
+    return {
+      version: 1,
+      name: String(book.name || book.title || fallbackName),
+      description: String(book.description || ''),
+      settings,
+      entries,
+    };
+  },
+
+  ensureConversation(conversation) {
+    if (!conversation) return this.createEmptyBook();
+    conversation.worldBook = this.normalizeBook(
+      conversation.worldBook,
+      (conversation.name || '未命名故事') + ' 世界书'
+    );
+    return conversation.worldBook;
+  },
+
+  buildPromptBlocks(conversation) {
+    const book = this.ensureConversation(conversation);
+    const active = this.getActiveEntries(book, conversation);
+    const buckets = {
+      beforeStory: [],
+      afterStory: [],
+      beforeInput: [],
+      afterInput: [],
+    };
+
+    for (const entry of active) {
+      const prompt = this._formatEntryPrompt(entry);
+      if (!prompt) continue;
+      if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
+      else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
+      else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
+      else buckets.afterStory.push(prompt);
+    }
+
+    return {
+      beforeStory: this._wrapPromptBucket('背景前置', buckets.beforeStory),
+      afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
+      beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
+      afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
+      active,
+    };
+  },
+
+  getActiveEntries(book, conversation) {
+    const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
+    const entries = normalized.entries.filter(entry => (
+      entry.enabled
+      && entry.content.trim()
+      && (entry.manualActive || entry.constant)
+    ));
+    if (entries.length === 0) return [];
+
+    const active = [...entries];
+    const compareEntries = (a, b) => {
+      const posA = this._positionRank(a.position);
+      const posB = this._positionRank(b.position);
+      if (posA !== posB) return posA - posB;
+      if (a.manualActive !== b.manualActive) return a.manualActive ? -1 : 1;
+      if (a.constant !== b.constant) return a.constant ? -1 : 1;
+      if (a.order !== b.order) return a.order - b.order;
+      return a.uid - b.uid;
+    };
+
+    active.sort(compareEntries);
+
+    const limited = [];
+    let totalChars = 0;
+    const addEntry = (entry, force = false) => {
+      if (!force && limited.length >= normalized.settings.maxEntries) return false;
+      const nextLen = entry.content.length;
+      if (!force && limited.length > 0 && totalChars + nextLen > normalized.settings.maxChars) return false;
+      limited.push(entry);
+      totalChars += nextLen;
+      return true;
+    };
+
+    for (const entry of active) {
+      if (!entry.manualActive) continue;
+      addEntry(entry, true);
+    }
+    for (const entry of active) {
+      if (entry.manualActive) continue;
+      if (!addEntry(entry, false)) break;
+    }
+    limited.sort(compareEntries);
+    return limited;
+  },
+
+  exportAirp(book) {
+    const normalized = this.normalizeBook(book);
+    return {
+      type: 'airp_worldbook_v1',
+      ...normalized,
+    };
+  },
+
+  exportSillyTavern(book) {
+    const normalized = this.normalizeBook(book);
+    const entries = {};
+    for (const entry of normalized.entries) {
+      entries[String(entry.uid)] = {
+        uid: entry.uid,
+        comment: entry.comment || entry.title || '',
+        content: entry.content,
+        constant: entry.constant,
+        selective: !!entry.selective && entry.secondaryKeys.length > 0,
+        key: [...entry.keys],
+        keysecondary: [...entry.secondaryKeys],
+        order: entry.order,
+        position: this.POSITION_MAP[entry.position] ?? 1,
+        disable: !entry.enabled,
+        addMemo: true,
+        excludeRecursion: entry.disableRecursion,
+        preventRecursion: entry.disableRecursion,
+        delayUntilRecursion: false,
+        scanDepth: null,
+        caseSensitive: entry.caseSensitive,
+        matchWholeWords: entry.matchWholeWords,
+        useRegex: entry.useRegex,
+        probability: entry.probability,
+        selectiveLogic: this.LOGIC_MAP[entry.selectiveLogic] ?? 0,
+      };
+    }
+    return {
+      name: normalized.name,
+      description: normalized.description,
+      entries,
+      scanDepth: normalized.settings.scanDepth,
+      tokenBudget: normalized.settings.maxChars,
+      recursiveScanning: normalized.settings.recursiveScan,
+      maxRecursionSteps: normalized.settings.maxRecursionSteps,
+      matchWholeWords: normalized.settings.matchWholeWords,
+      caseSensitive: normalized.settings.caseSensitive,
+    };
+  },
+
+  importAny(raw) {
+    return this.normalizeBook(raw);
+  },
+
+  _normalizeList(value) {
+    if (Array.isArray(value)) {
+      return value.map(v => String(v).trim()).filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      return value.split(/\r?\n|,/).map(v => v.trim()).filter(Boolean);
+    }
+    return [];
+  },
+
+  _normalizePosition(value) {
+    if (typeof value === 'number') {
+      return Object.keys(this.POSITION_MAP).find(key => this.POSITION_MAP[key] === value) || 'after_char';
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized === 'before_char' || normalized === 'after_char' || normalized === 'before_input' || normalized === 'after_input') {
+        return normalized;
+      }
+      if (normalized === 'before_an') return 'before_input';
+      if (normalized === 'after_an' || normalized === 'at_depth') return 'after_input';
+    }
+    return 'after_char';
+  },
+
+  _normalizeSelectiveLogic(value) {
+    if (typeof value === 'number') {
+      return Object.keys(this.LOGIC_MAP).find(key => this.LOGIC_MAP[key] === value) || 'and_any';
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
+      if (normalized in this.LOGIC_MAP) return normalized;
+    }
+    return 'and_any';
+  },
+
+  _positionRank(position) {
+    return this.POSITION_MAP[position] ?? 99;
+  },
+
+  _buildScanText(conversation, scanDepth) {
+    const parts = [];
+    if (conversation?.phase === 'init') {
+      if (conversation?.name) parts.push(conversation.name);
+      if (conversation?.storySetting) parts.push(conversation.storySetting);
+    }
+    const messages = (conversation?.messages || []).filter(msg => !msg.hidden && msg.content?.trim());
+    const recent = messages.slice(-Math.max(1, Number(scanDepth) || 6));
+    for (const msg of recent) {
+      const content = msg.role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(msg.content)) : msg.content;
+      parts.push(content);
+    }
+    return parts.join('\n');
+  },
+
+  _entryMatches(entry, text, defaults) {
+    const source = String(text || '');
+    if (!source.trim()) return false;
+    if (!entry.keys.length) return false;
+
+    const primaryMatched = entry.keys.some(keyword => this._matchKeyword(keyword, source, entry, defaults));
+    if (!primaryMatched) return false;
+    if (!entry.selective || !entry.secondaryKeys.length) return true;
+
+    const matches = entry.secondaryKeys.map(keyword => this._matchKeyword(keyword, source, entry, defaults));
+    switch (entry.selectiveLogic) {
+      case 'and_all': return matches.every(Boolean);
+      case 'not_any': return matches.every(result => !result);
+      case 'not_all': return !matches.every(Boolean);
+      case 'and_any':
+      default:
+        return matches.some(Boolean);
+    }
+  },
+
+  _matchKeyword(keyword, text, entry, defaults) {
+    const raw = String(keyword || '').trim();
+    if (!raw) return false;
+
+    const caseSensitive = entry.caseSensitive === null || entry.caseSensitive === undefined
+      ? defaults.caseSensitive
+      : entry.caseSensitive;
+    const wholeWords = entry.matchWholeWords === null || entry.matchWholeWords === undefined
+      ? defaults.matchWholeWords
+      : entry.matchWholeWords;
+    const haystack = caseSensitive ? text : text.toLowerCase();
+    const needle = caseSensitive ? raw : raw.toLowerCase();
+
+    if (entry.useRegex || /^\/.*\/[gimsuy]*$/.test(raw)) {
+      try {
+        if (/^\/.*\/[gimsuy]*$/.test(raw)) {
+          const lastSlash = raw.lastIndexOf('/');
+          const pattern = raw.slice(1, lastSlash);
+          const flags = raw.slice(lastSlash + 1) || '';
+          return new RegExp(pattern, caseSensitive || flags.includes('i') ? flags : flags + 'i').test(text);
+        }
+        return new RegExp(raw, caseSensitive ? '' : 'i').test(text);
+      } catch {
+        return haystack.includes(needle);
+      }
+    }
+
+    if (!wholeWords) return haystack.includes(needle);
+
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const wordRe = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, caseSensitive ? 'u' : 'iu');
+    try {
+      return wordRe.test(text);
+    } catch {
+      return haystack.includes(needle);
+    }
+  },
+
+  _formatEntryPrompt(entry) {
+    const title = entry.comment || entry.title || `条目 ${entry.uid}`;
+    return `### ${title}\n${entry.content.trim()}`;
+  },
+
+  _wrapPromptBucket(label, items) {
+    if (!items || items.length === 0) return '';
+    return `【世界书：${label}】\n` + items.join('\n\n');
   },
 };
 
@@ -2138,6 +2853,22 @@ const Summary = {
 const Exporter = {
   toMarkdown(conv) {
     let md = `# ${conv.name || '未命名故事'}\n\n`;
+    const worldBook = WorldBook.normalizeBook(conv.worldBook, (conv.name || '未命名故事') + ' 世界书');
+    if (conv.storySetting) {
+      md += `## 故事设定\n\n${conv.storySetting}\n\n`;
+    }
+    if (worldBook.entries.length > 0) {
+      md += `## 世界书\n\n`;
+      for (const entry of worldBook.entries) {
+        md += `### ${entry.comment || entry.title || ('条目 ' + entry.uid)}\n`;
+        md += `- 主关键词: ${(entry.keys || []).join(', ') || '无'}\n`;
+        md += `- 次关键词: ${(entry.secondaryKeys || []).join(', ') || '无'}\n`;
+        md += `- 位置: ${entry.position}\n`;
+        md += `- 状态: ${entry.enabled ? '启用' : '停用'}${entry.constant ? ' / 常驻' : ''}${entry.manualActive ? ' / 手动命中' : ''}\n\n`;
+        md += `${entry.content}\n\n`;
+      }
+      md += `---\n\n`;
+    }
     const mergedSm = conv.summary?.mergedSummaries || [];
     if (mergedSm.length > 0) {
       md += `## 故事总结\n`;

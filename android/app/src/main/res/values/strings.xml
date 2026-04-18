@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">入卷魔改版</string>
+    <string name="notification_channel_ai_name">AI 通知</string>
+    <string name="notification_channel_ai_description">用于显示后台生成与结果通知</string>
+    <string name="notification_ai_generating">生成中</string>
+    <string name="notification_ai_reply_fallback">生成完成</string>
+    <string name="notification_ai_background_running">软件正在后台运行</string>
+    <string name="notification_ai_background_generating">生成中</string>
+    <string name="notification_ai_background_done">生成完成</string>
+    <string name="notification_ai_background_error">生成失败</string>
+    <string name="notification_ai_background_cancelled">已取消</string>
+    <string name="notification_ai_stop_action">停止</string>
+</resources>
