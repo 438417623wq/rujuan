@@ -2225,6 +2225,66 @@ function updateAssistantBubble(msgId, content, streaming) {
 // Options Bar
 // ============================================================
 let _optionActions = [];
+let _optionsFabMoved = false;
+let _optionsFabLongPressTimer = null;
+let _optionsFabSuppressClick = false;
+const OPTIONS_FAB_LONG_PRESS_MS = 550;
+
+function getOptionsFabSendMode() {
+  const mode = Storage.getSettings().optionsFabSendMode;
+  return mode === 'append' ? 'append' : 'send';
+}
+
+function saveOptionsFabSendMode(mode) {
+  const settings = Storage.getSettings();
+  settings.optionsFabSendMode = mode === 'append' ? 'append' : 'send';
+  Storage.saveSettings(settings);
+}
+
+function openOptionsFabSettings() {
+  const mode = getOptionsFabSendMode();
+  UI.showModal({
+    title: '悬浮按钮设置',
+    content: `
+      <div style="display:grid;gap:14px;">
+        <div style="font-size:13px;color:var(--text-muted);">长按分支悬浮按钮可再次打开这里。</div>
+        <label style="display:flex;align-items:flex-start;gap:10px;margin:0;cursor:pointer;">
+          <input type="radio" name="optionsFabSendMode" value="send" ${mode === 'send' ? 'checked' : ''}>
+          <span>
+            <span style="display:block;color:var(--text-primary);font-weight:600;">直接发送</span>
+            <span style="display:block;font-size:13px;color:var(--text-secondary);">点击分支后立即代填并发送，保持当前行为。</span>
+          </span>
+        </label>
+        <label style="display:flex;align-items:flex-start;gap:10px;margin:0;cursor:pointer;">
+          <input type="radio" name="optionsFabSendMode" value="append" ${mode === 'append' ? 'checked' : ''}>
+          <span>
+            <span style="display:block;color:var(--text-primary);font-weight:600;">追加发送</span>
+            <span style="display:block;font-size:13px;color:var(--text-secondary);">点击分支后把该选项追加到输入框，不自动发送。</span>
+          </span>
+        </label>
+      </div>`,
+    buttons: [
+      { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+      { text: '保存', class: 'btn-primary', onclick: 'saveOptionsFabSettingsFromModal()' },
+    ],
+  });
+}
+
+function saveOptionsFabSettingsFromModal() {
+  const selected = document.querySelector('input[name="optionsFabSendMode"]:checked');
+  saveOptionsFabSendMode(selected?.value || 'send');
+  UI.closeModal();
+  UI.showToast(getOptionsFabSendMode() === 'append' ? '已切换为追加发送' : '已切换为直接发送', 'success');
+}
+
+function appendOptionToTextarea(textarea, text) {
+  const current = textarea.value;
+  textarea.value = current ? `${current}${/\s$/.test(current) ? '' : '\n'}${text}` : text;
+  resetTextareaHeight();
+  updateSendButton();
+  textarea.focus();
+  textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+}
 
 function renderOptionsBar(rawContent) {
   const bar = document.getElementById('optionsBar');
@@ -2277,7 +2337,16 @@ function selectOption(idx) {
   // Close mobile panel if open
   const panel = document.getElementById('optionsFabPanel');
   if (panel) panel.classList.remove('open');
-  document.getElementById('inputTextarea').value = text;
+  const textarea = document.getElementById('inputTextarea');
+  if (!textarea) return;
+
+  if (getOptionsFabSendMode() === 'append') {
+    appendOptionToTextarea(textarea, text);
+    UI.showToast('选项已追加到输入框', 'info');
+    return;
+  }
+
+  textarea.value = text;
   handleSend();
 }
 
@@ -2292,9 +2361,11 @@ function clearOptionsBar() {
 }
 
 // Mobile options FAB toggle & drag
-let _optionsFabMoved = false;
-
 function toggleOptionsFabPanel() {
+  if (_optionsFabSuppressClick) {
+    _optionsFabSuppressClick = false;
+    return;
+  }
   if (_optionsFabMoved) return;
   const panel = document.getElementById('optionsFabPanel');
   if (panel) panel.classList.toggle('open');
@@ -2306,6 +2377,22 @@ function toggleOptionsFabPanel() {
     if (!fab) return;
     let dragging = false, startX, startY, fabX, fabY;
 
+    const clearLongPress = () => {
+      if (_optionsFabLongPressTimer) {
+        clearTimeout(_optionsFabLongPressTimer);
+        _optionsFabLongPressTimer = null;
+      }
+    };
+
+    const startLongPress = () => {
+      clearLongPress();
+      _optionsFabLongPressTimer = setTimeout(() => {
+        dragging = false;
+        _optionsFabSuppressClick = true;
+        openOptionsFabSettings();
+      }, OPTIONS_FAB_LONG_PRESS_MS);
+    };
+
     fab.addEventListener('touchstart', (e) => {
       dragging = true;
       _optionsFabMoved = false;
@@ -2316,6 +2403,7 @@ function toggleOptionsFabPanel() {
       fabX = rect.left;
       fabY = rect.top;
       fab.style.transition = 'none';
+      startLongPress();
     }, { passive: true });
 
     document.addEventListener('touchmove', (e) => {
@@ -2324,6 +2412,7 @@ function toggleOptionsFabPanel() {
       const dx = t.clientX - startX;
       const dy = t.clientY - startY;
       if (Math.abs(dx) > 8 || Math.abs(dy) > 8) _optionsFabMoved = true;
+      if (_optionsFabMoved) clearLongPress();
       if (!_optionsFabMoved) return;
       const newX = Math.max(0, Math.min(window.innerWidth - 44, fabX + dx));
       const newY = Math.max(0, Math.min(window.innerHeight - 44, fabY + dy));
@@ -2334,6 +2423,7 @@ function toggleOptionsFabPanel() {
     }, { passive: true });
 
     document.addEventListener('touchend', () => {
+      clearLongPress();
       if (!dragging) return;
       dragging = false;
       fab.style.transition = '';
@@ -2348,6 +2438,21 @@ function toggleOptionsFabPanel() {
           fab.style.right = '16px';
         }
       }
+    });
+
+    fab.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      _optionsFabMoved = false;
+      startLongPress();
+    });
+
+    fab.addEventListener('mouseup', clearLongPress);
+    fab.addEventListener('mouseleave', clearLongPress);
+    fab.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      clearLongPress();
+      _optionsFabSuppressClick = true;
+      openOptionsFabSettings();
     });
   });
 })();

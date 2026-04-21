@@ -1,4 +1,4 @@
-const CACHE_NAME = 'airp-v2';
+const CACHE_NAME = 'airp-v11';
 const ASSETS = [
   '/',
   '/index.html',

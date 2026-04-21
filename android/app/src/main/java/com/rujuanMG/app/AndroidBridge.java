@@ -15,6 +15,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.widget.Toast;
 
@@ -47,6 +48,8 @@ import java.util.Locale;
 import java.util.Map;
 
 public class AndroidBridge {
+    private static final String TAG = "AndroidBridge";
+
     public interface NotificationPermissionDelegate {
         void requestNotificationPermissionIfNeeded();
     }
@@ -148,10 +151,15 @@ public class AndroidBridge {
         Intent intent = new Intent(context, NativeAiStreamService.class);
         intent.setAction(NativeAiStreamService.ACTION_START);
         intent.putExtra(NativeAiStreamService.EXTRA_PAYLOAD_JSON, payloadJson);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent);
-        } else {
-            context.startService(intent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to start native AI stream service", e);
+            return null;
         }
         return sessionId;
     }
@@ -202,7 +210,7 @@ public class AndroidBridge {
                     .setCategory(NotificationCompat.CATEGORY_PROGRESS)
                     .setPriority(NotificationCompat.PRIORITY_LOW);
 
-            NotificationManagerCompat.from(context).notify(AI_NOTIFICATION_ID, builder.build());
+            notifySafely(AI_NOTIFICATION_ID, builder);
         });
     }
 
@@ -223,7 +231,7 @@ public class AndroidBridge {
                     .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT);
 
-            NotificationManagerCompat.from(context).notify(AI_NOTIFICATION_ID, builder.build());
+            notifySafely(AI_NOTIFICATION_ID, builder);
         });
     }
 
@@ -244,13 +252,19 @@ public class AndroidBridge {
                     .setCategory(NotificationCompat.CATEGORY_ERROR)
                     .setPriority(NotificationCompat.PRIORITY_DEFAULT);
 
-            NotificationManagerCompat.from(context).notify(AI_NOTIFICATION_ID, builder.build());
+            notifySafely(AI_NOTIFICATION_ID, builder);
         });
     }
 
     @JavascriptInterface
     public void cancelAiNotification() {
-        mainHandler.post(() -> NotificationManagerCompat.from(context).cancel(AI_NOTIFICATION_ID));
+        mainHandler.post(() -> {
+            try {
+                NotificationManagerCompat.from(context).cancel(AI_NOTIFICATION_ID);
+            } catch (RuntimeException e) {
+                Log.w(TAG, "Unable to cancel AI notification", e);
+            }
+        });
     }
 
     private JSONObject fetchModelsInternal(JSONObject profile) throws JSONException {
@@ -741,7 +755,7 @@ public class AndroidBridge {
 
     private NotificationCompat.Builder createNotificationBuilder(String targetPath, String conversationTitle) {
         return new NotificationCompat.Builder(context, AI_NOTIFICATION_CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setSmallIcon(R.drawable.ic_notification_small)
                 .setContentTitle(normalizeConversationTitle(conversationTitle))
                 .setContentIntent(buildLaunchPendingIntent(targetPath));
     }
@@ -762,23 +776,37 @@ public class AndroidBridge {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return;
         }
-        NotificationManager notificationManager = context.getSystemService(NotificationManager.class);
-        if (notificationManager == null) {
-            return;
+        try {
+            NotificationManager notificationManager = context.getSystemService(NotificationManager.class);
+            if (notificationManager == null) {
+                return;
+            }
+            NotificationChannel channel = new NotificationChannel(
+                    AI_NOTIFICATION_CHANNEL_ID,
+                    context.getString(R.string.notification_channel_ai_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            channel.setDescription(context.getString(R.string.notification_channel_ai_description));
+            channel.setShowBadge(false);
+            notificationManager.createNotificationChannel(channel);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to create notification channel", e);
         }
-        NotificationChannel channel = new NotificationChannel(
-                AI_NOTIFICATION_CHANNEL_ID,
-                context.getString(R.string.notification_channel_ai_name),
-                NotificationManager.IMPORTANCE_DEFAULT
-        );
-        channel.setDescription(context.getString(R.string.notification_channel_ai_description));
-        notificationManager.createNotificationChannel(channel);
     }
 
     private boolean canPostNotifications() {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        boolean permissionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
                 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS)
                 == PackageManager.PERMISSION_GRANTED;
+        if (!permissionGranted) {
+            return false;
+        }
+        try {
+            return NotificationManagerCompat.from(context).areNotificationsEnabled();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to query notification availability", e);
+            return false;
+        }
     }
 
     private void requestNotificationPermissionIfNeeded() {
@@ -820,6 +848,14 @@ public class AndroidBridge {
             return context.getString(R.string.app_name);
         }
         return conversationTitle.trim();
+    }
+
+    private void notifySafely(int notificationId, NotificationCompat.Builder builder) {
+        try {
+            NotificationManagerCompat.from(context).notify(notificationId, builder.build());
+        } catch (RuntimeException e) {
+            Log.w(TAG, "Unable to post AI notification", e);
+        }
     }
 
     private String sha256(String value) {

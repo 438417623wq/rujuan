@@ -8,6 +8,7 @@ import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
@@ -37,6 +38,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class NativeAiStreamService extends Service {
+    private static final String TAG = "NativeAiStreamSvc";
     public static final String ACTION_START = "com.rujuanMG.app.action.START_NATIVE_AI_STREAM";
     public static final String ACTION_CANCEL = "com.rujuanMG.app.action.CANCEL_NATIVE_AI_STREAM";
     public static final String EXTRA_PAYLOAD_JSON = "payload_json";
@@ -58,6 +60,7 @@ public class NativeAiStreamService extends Service {
     private volatile BufferedReader activeReader;
     private volatile String activeSessionId;
     private volatile long lastNotificationUpdateAt;
+    private volatile boolean notificationFaulted;
     private volatile PowerManager.WakeLock wakeLock;
 
     @Override
@@ -134,26 +137,18 @@ public class NativeAiStreamService extends Service {
         activeSessionId = sessionId;
         cancelRequested.set(false);
         lastNotificationUpdateAt = 0L;
+        notificationFaulted = false;
         acquireWakeLock();
-        NativeAiStreamStore.writeState(
-                this,
-                buildBaseState(
-                        sessionId,
-                        payload.optString("conversationId"),
-                        payload.optString("conversationTitle"),
-                        payload.optString("aiMsgId")
-                )
+        JSONObject initialState = buildBaseState(
+                sessionId,
+                payload.optString("conversationId"),
+                payload.optString("conversationTitle"),
+                payload.optString("aiMsgId")
         );
-        startForeground(
-                NOTIFICATION_ID,
-                buildOngoingNotification(
-                        sessionId,
-                        payload.optString("conversationTitle"),
-                        getString(R.string.notification_ai_background_running),
-                        "",
-                        true
-                )
-        );
+        NativeAiStreamStore.writeState(this, initialState);
+        if (!startForegroundSafely(sessionId, payload.optString("conversationTitle"), startId, initialState)) {
+            return START_NOT_STICKY;
+        }
 
         executor.submit(() -> runStream(payload, startId));
         return START_REDELIVER_INTENT;
@@ -485,8 +480,7 @@ public class NativeAiStreamService extends Service {
     }
 
     private void showRetryNotification(String sessionId, String conversationTitle, int attempt) {
-        NotificationManagerCompat.from(this).notify(
-                NOTIFICATION_ID,
+        notifySafely(
                 buildOngoingNotification(
                         sessionId,
                         conversationTitle,
@@ -1028,17 +1022,23 @@ public class NativeAiStreamService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return;
         }
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        if (notificationManager == null) {
-            return;
+        try {
+            NotificationManager notificationManager = getSystemService(NotificationManager.class);
+            if (notificationManager == null) {
+                return;
+            }
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL_ID,
+                    getString(R.string.notification_channel_ai_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            channel.setDescription(getString(R.string.notification_channel_ai_description));
+            channel.setShowBadge(false);
+            notificationManager.createNotificationChannel(channel);
+        } catch (RuntimeException e) {
+            notificationFaulted = true;
+            Log.w(TAG, "Unable to create notification channel", e);
         }
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                getString(R.string.notification_channel_ai_name),
-                NotificationManager.IMPORTANCE_DEFAULT
-        );
-        channel.setDescription(getString(R.string.notification_channel_ai_description));
-        notificationManager.createNotificationChannel(channel);
     }
 
     private NotificationCompat.Builder createBaseNotification(String sessionId, String conversationTitle) {
@@ -1067,7 +1067,7 @@ public class NativeAiStreamService extends Service {
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_notify_chat)
+                .setSmallIcon(R.drawable.ic_notification_small)
                 .setContentTitle(
                         conversationTitle == null || conversationTitle.isBlank()
                                 ? getString(R.string.app_name)
@@ -1075,7 +1075,7 @@ public class NativeAiStreamService extends Service {
                 )
                 .setContentIntent(openPendingIntent)
                 .setOnlyAlertOnce(true)
-                .addAction(0, getString(R.string.notification_ai_stop_action), cancelPendingIntent);
+                .addAction(R.drawable.ic_notification_stop, getString(R.string.notification_ai_stop_action), cancelPendingIntent);
     }
 
     private android.app.Notification buildOngoingNotification(
@@ -1103,8 +1103,7 @@ public class NativeAiStreamService extends Service {
         lastNotificationUpdateAt = now;
         String elapsed = ((now - startedAt) / 1000) + "s";
         String preview = normalizePreviewText(fullText);
-        NotificationManagerCompat.from(this).notify(
-                NOTIFICATION_ID,
+        notifySafely(
                 buildOngoingNotification(
                         sessionId,
                         conversationTitle,
@@ -1122,7 +1121,59 @@ public class NativeAiStreamService extends Service {
                 .setAutoCancel(true)
                 .setCategory(NotificationCompat.CATEGORY_MESSAGE)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());
+        notifySafely(builder.build());
+    }
+
+    private boolean startForegroundSafely(
+            String sessionId,
+            String conversationTitle,
+            int startId,
+            JSONObject initialState
+    ) {
+        if (notificationFaulted) {
+            failStartup(initialState, startId, "Notifications are unavailable on this device.");
+            return false;
+        }
+
+        try {
+            startForeground(
+                    NOTIFICATION_ID,
+                    buildOngoingNotification(
+                            sessionId,
+                            conversationTitle,
+                            getString(R.string.notification_ai_background_running),
+                            "",
+                            true
+                    )
+            );
+            return true;
+        } catch (RuntimeException e) {
+            notificationFaulted = true;
+            Log.w(TAG, "Unable to enter foreground mode", e);
+            failStartup(initialState, startId, "Unable to start background generation on this device.");
+            return false;
+        }
+    }
+
+    private void failStartup(JSONObject state, int startId, String message) {
+        putStatus(state, "error");
+        putError(state, message);
+        putUpdatedAt(state);
+        NativeAiStreamStore.writeState(this, state);
+        releaseWakeLock();
+        stopSelf(startId);
+    }
+
+    private void notifySafely(android.app.Notification notification) {
+        if (notificationFaulted) {
+            return;
+        }
+        try {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification);
+        } catch (RuntimeException e) {
+            notificationFaulted = true;
+            Log.w(TAG, "Unable to update foreground notification", e);
+        }
     }
 
     private String normalizePreviewText(String text) {

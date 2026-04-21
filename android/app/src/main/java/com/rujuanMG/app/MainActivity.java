@@ -72,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
         );
 
         configureWebView();
+        webView.clearCache(true);
         if (savedInstanceState == null) {
             webView.loadUrl(resolveLaunchUrl(getIntent()));
         }

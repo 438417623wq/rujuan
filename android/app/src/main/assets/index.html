@@ -12,7 +12,7 @@
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=14"></script>
+  <script src="common.js?v=23"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -1123,6 +1123,7 @@
       mvu: null,
       storySetting: null,
       worldBook: null,
+      worldBookState: null,
       summary: { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 },
       createdAt: Date.now(),
       updatedAt: Date.now(),

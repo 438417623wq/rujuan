@@ -252,6 +252,7 @@ const Storage = {
     showPromptInspector: false,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
     promptPresets: null, activePresetId: 'default',
+    optionsFabSendMode: 'send',
   },
   getSettings() {
     const saved = this._get(this.KEYS.SETTINGS, null);
