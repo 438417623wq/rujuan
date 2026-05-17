@@ -39,6 +39,22 @@
       margin-bottom: 24px;
     }
 
+    .settings-title {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .header-save-btn {
+      color: var(--accent);
+      border: 1px solid var(--border);
+      background: var(--bg-glass);
+      flex-shrink: 0;
+    }
+
+    .header-save-btn:active {
+      transform: scale(0.96);
+    }
+
     .settings-header h1 {
       font-family: var(--font-display);
       font-size: 28px;
@@ -652,10 +668,13 @@
     <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=12'" title="返回">
       <!-- icon injected by JS -->
     </button>
-    <div>
+    <div class="settings-title">
       <h1>Settings <small>设置</small></h1>
       <span class="header-ornament"></span>
     </div>
+    <button class="btn-icon header-save-btn" id="btnSaveSettings" onclick="saveCurrentSettings()" title="保存">
+      <!-- icon injected by JS -->
+    </button>
   </header>
 
   <!-- ══════════════════════════════════════════ -->
@@ -841,6 +860,7 @@
   function injectIcons() {
     // Header back button
     document.getElementById('btnBack').innerHTML = getIcon('back', 22);
+    document.getElementById('btnSaveSettings').innerHTML = getIcon('save', 20);
 
     // Section title icons
     const titleIcons = {
@@ -1210,6 +1230,32 @@
     settings.exportFormat = document.getElementById('selExportFormat').value;
     settings.showPromptInspector = document.getElementById('chkPromptInspector').checked;
     Storage.saveSettings(settings);
+  }
+
+  function saveCurrentSettings() {
+    const apiEl = document.getElementById('selDefaultApi');
+    const exportEl = document.getElementById('selExportFormat');
+    const inspectorEl = document.getElementById('chkPromptInspector');
+    const notificationEl = document.getElementById('chkNotificationBar');
+    const apiId = apiEl ? apiEl.value : settings.defaultApiProfileId;
+    const model = getSelectedModel();
+
+    settings.defaultApiProfileId = apiId;
+    settings.defaultModel = model;
+    if (exportEl) settings.exportFormat = exportEl.value;
+    if (inspectorEl) settings.showPromptInspector = inspectorEl.checked;
+    if (notificationEl) settings.enableNotificationBar = notificationEl.checked;
+
+    if (apiId && model) {
+      const profile = Storage.getApiProfile(apiId);
+      if (profile) {
+        profile.defaultModel = model;
+        Storage.saveApiProfile(profile);
+      }
+    }
+
+    Storage.saveSettings(settings);
+    UI.showToast('已保存', 'success');
   }
 
   function showModelInput() {

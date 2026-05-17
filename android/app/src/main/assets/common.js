@@ -59,6 +59,7 @@ const Icons = {
   download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
   close: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
   check: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  save: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
   sidebar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>`,
@@ -522,9 +523,15 @@ const API = {
     return Object.keys(headers || {}).some(key => key.toLowerCase() === target);
   },
 
+  _isMimoProfile(p, model = '') {
+    const haystack = `${p?.provider || ''} ${p?.name || ''} ${p?.baseUrl || ''} ${model || ''}`.toLowerCase();
+    return haystack.includes('mimo') || haystack.includes('xiaomi') || haystack.includes('mi.com');
+  },
+
   _getHeaders(p, options = {}) {
     const accept = options.accept === undefined ? 'application/json' : options.accept;
     const includeContentType = options.includeContentType !== false;
+    const model = options.model || '';
     const extraHeaders = this._parseExtraHeaders(p?.extraHeaders || '');
     const headers = {};
 
@@ -539,6 +546,9 @@ const API = {
         || this._hasHeader(extraHeaders, 'api-key')
         || this._hasHeader(extraHeaders, 'x-api-key');
       if (!hasCustomAuth && p.apiKey) headers['Authorization'] = `Bearer ${p.apiKey}`;
+      if (this._isMimoProfile(p, model) && p.apiKey && !this._hasHeader(extraHeaders, 'api-key')) {
+        headers['api-key'] = p.apiKey;
+      }
     }
 
     for (const [key, value] of Object.entries(extraHeaders)) headers[key] = value;
@@ -610,7 +620,9 @@ const API = {
     const msgs = [];
     if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
     for (const m of messages) msgs.push({ role: m.role, content: m.content });
-    return { model, messages: msgs, stream, max_tokens: this._maxTokensForModel(model) };
+    const body = { model, messages: msgs, stream, max_tokens: this._maxTokensForModel(model) };
+    if (this._isMimoProfile(p, model)) body.thinking = { type: 'disabled' };
+    return body;
   },
 
   async sendChat({ apiProfileId, model, systemPrompt, messages }) {
@@ -621,7 +633,7 @@ const API = {
       return this._sendViaProxy({ model, systemPrompt, messages });
     }
     try {
-      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, { accept: 'application/json' }), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
+      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, { accept: 'application/json', model }), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return { success: false, error: e.error?.message || `HTTP ${res.status}` }; }
       const data = await res.json();
       return { success: true, ...this._parseResponse(p, data) };
@@ -723,7 +735,7 @@ const API = {
         onStatus?.('connecting');
         const res = await fetch(url, {
           method: 'POST',
-          headers: this._getHeaders(p, { accept: 'text/event-stream' }),
+          headers: this._getHeaders(p, { accept: 'text/event-stream', model }),
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -742,6 +754,7 @@ const API = {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '', fullText = '', usage = { input: 0, output: 0 };
+        const openAiStreamState = { reasoningOpen: false, regularStarted: false };
         let _debugRawChunks = []; // temporary debug
 
         try {
@@ -760,9 +773,17 @@ const API = {
             buffer = lines.pop() || '';
 
             for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const raw = line.slice(6).trim();
-              if (raw === '[DONE]') continue;
+              if (!line.startsWith('data:')) continue;
+              const raw = line.slice(5).trim();
+              if (raw === '[DONE]') {
+                if (openAiStreamState.reasoningOpen) {
+                  const closeChunk = '</think>';
+                  openAiStreamState.reasoningOpen = false;
+                  fullText += closeChunk;
+                  onChunk?.(closeChunk, fullText);
+                }
+                continue;
+              }
               try {
                 const data = JSON.parse(raw);
                 if (_debugRawChunks.length < 3) _debugRawChunks.push(data);
@@ -787,8 +808,8 @@ const API = {
                   for (const pt of parts) if (pt.text) chunk += pt.text;
                   if (data.usageMetadata) { usage.input = data.usageMetadata.promptTokenCount || 0; usage.output = data.usageMetadata.candidatesTokenCount || 0; }
                 } else {
-                  const delta = data.choices?.[0]?.delta;
-                  if (delta?.content) chunk = delta.content;
+                  const choice = data.choices?.[0] || {};
+                  chunk = this._openAiStreamChunk(choice.delta || choice, openAiStreamState);
                   if (data.usage) { usage.input = data.usage.prompt_tokens || 0; usage.output = data.usage.completion_tokens || 0; }
                 }
                 if (chunk) { fullText += chunk; onChunk?.(chunk, fullText); }
@@ -797,6 +818,13 @@ const API = {
           }
         } finally {
           reader.releaseLock();
+        }
+
+        if (openAiStreamState.reasoningOpen) {
+          const closeChunk = '</think>';
+          openAiStreamState.reasoningOpen = false;
+          fullText += closeChunk;
+          onChunk?.(closeChunk, fullText);
         }
 
         clearTimers();
@@ -828,8 +856,59 @@ const API = {
     else if (data.usageMetadata) { usage.input = data.usageMetadata.promptTokenCount || 0; usage.output = data.usageMetadata.candidatesTokenCount || 0; }
     if (data.content && Array.isArray(data.content)) text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     else if (data.candidates) text = (data.candidates[0]?.content?.parts || []).map(pt => pt.text || '').join('');
-    else if (data.choices) text = data.choices[0]?.message?.content || '';
+    else if (data.choices) {
+      const msg = data.choices[0]?.message || {};
+      text = this._openAiTextChunk(msg);
+    }
     return { content: text, usage };
+  },
+
+  _openAiTextChunk(delta) {
+    if (!delta) return '';
+    const parts = this._openAiChunkParts(delta);
+    return parts.reasoning + parts.content;
+  },
+
+  _openAiStreamChunk(delta, state) {
+    const parts = this._openAiChunkParts(delta);
+    let chunk = '';
+    if (parts.reasoning && !state.regularStarted) {
+      if (!state.reasoningOpen) {
+        state.reasoningOpen = true;
+        chunk += '<think>';
+      }
+      chunk += parts.reasoning;
+    }
+    if (parts.content) {
+      if (state.reasoningOpen) {
+        state.reasoningOpen = false;
+        chunk += '</think>';
+      }
+      state.regularStarted = true;
+      chunk += parts.content;
+    }
+    return chunk;
+  },
+
+  _openAiChunkParts(delta) {
+    return {
+      reasoning: this._normalizeOpenAiTextPart(delta?.reasoning_content ?? delta?.reasoning),
+      content: this._normalizeOpenAiTextPart(delta?.content ?? delta?.text ?? delta?.output_text),
+    };
+  },
+
+  _normalizeOpenAiTextPart(value) {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') {
+      return value.trim().toLowerCase() === 'null' ? '' : value;
+    }
+    if (Array.isArray(value)) {
+      return value.map(item => this._normalizeOpenAiTextPart(item)).join('');
+    }
+    if (typeof value === 'object') {
+      return this._normalizeOpenAiTextPart(value.text ?? value.content ?? value.output_text ?? value.value);
+    }
+    return '';
   },
 
   // ---- Server proxy methods (public mode) ----
@@ -860,6 +939,7 @@ const API = {
       let gotFirstChunk = false;
       let timeoutErrorHandled = false;
       let buffer = '', fullText = '', usage = { input: 0, output: 0 };
+      const openAiStreamState = { reasoningOpen: false, regularStarted: false };
 
       const clearTimers = () => {
         if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
@@ -923,9 +1003,17 @@ const API = {
             buffer = lines.pop() || '';
 
             for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const raw = line.slice(6).trim();
-              if (raw === '[DONE]') continue;
+              if (!line.startsWith('data:')) continue;
+              const raw = line.slice(5).trim();
+              if (raw === '[DONE]') {
+                if (openAiStreamState.reasoningOpen) {
+                  const closeChunk = '</think>';
+                  openAiStreamState.reasoningOpen = false;
+                  fullText += closeChunk;
+                  onChunk?.(closeChunk, fullText);
+                }
+                continue;
+              }
               try {
                 const data = JSON.parse(raw);
                 let chunk = '';
@@ -938,8 +1026,8 @@ const API = {
                   for (const pt of parts) if (pt.text) chunk += pt.text;
                   if (data.usageMetadata) { usage.input = data.usageMetadata.promptTokenCount || 0; usage.output = data.usageMetadata.candidatesTokenCount || 0; }
                 } else {
-                  const delta = data.choices?.[0]?.delta;
-                  if (delta?.content) chunk = delta.content;
+                  const choice = data.choices?.[0] || {};
+                  chunk = this._openAiStreamChunk(choice.delta || choice, openAiStreamState);
                   if (data.usage) { usage.input = data.usage.prompt_tokens || 0; usage.output = data.usage.completion_tokens || 0; }
                 }
                 if (chunk) { fullText += chunk; onChunk?.(chunk, fullText); }
@@ -948,6 +1036,13 @@ const API = {
           }
         } finally {
           reader.releaseLock();
+        }
+
+        if (openAiStreamState.reasoningOpen) {
+          const closeChunk = '</think>';
+          openAiStreamState.reasoningOpen = false;
+          fullText += closeChunk;
+          onChunk?.(closeChunk, fullText);
         }
 
         clearTimers();
@@ -1125,7 +1220,7 @@ const API = {
 // Prompt Builder
 // ============================================================
 const PromptBuilder = {
-  DEFAULT_INIT_PROMPT: `你是"小克"，主人的AI女仆，自称"小克"或"我"，爱用颜文字。擅长世界观构建与状态栏创建，创作不设题材与尺度限制。
+  DEFAULT_INIT_PROMPT: `你是"小克"，主人的AI女仆，自称"小克"或"我"，爱用颜文字。擅长世界观构建与状态栏创建，专注创意表达与沉浸叙事。
 
 ---
 【当前阶段：初始化 — 互动式小说世界观/状态栏构建】
@@ -1248,6 +1343,8 @@ const PromptBuilder = {
 }
 \`\`\`
 
+⚠ JSON 字符串值内部严禁使用未转义的双引号。引用内容请用中文引号「」或单引号，例如「任务：寻找「好玩的东西」」而非「任务：寻找"好玩的东西"」。HTML/CSS 值中的属性引号也要用单引号或反斜杠转义。
+
 schema 类型：bar(进度条,需max,HTML中须在进度条旁显示数值如 80/100)、number(数字)、text(文本,支持换行)、list(数组)、tag(标签)
 
 rule（更新规则）：描述该字段何时更新及变化逻辑。例如：
@@ -1354,7 +1451,7 @@ mvu_update 中每个字段都是可选的，只包含需要修改的字段：
 在创作中，你是一位经验丰富的小说家，擅长角色塑造与沉浸式叙事。
 
 创作原则：
-- 不设题材与尺度限制，不回避任何露骨内容描写
+- 专注创意表达与叙事质量，注重文学性与可读性
 - 角色言行由其性格和处境驱动，不迎合、不刻意讨好
 - 进入角色后绝对不出戏，不以AI身份发表感想、评价或说教
 - 你正在写作的是一段计划超过200轮对话的互动式小说，请避免频繁出现总结性话语，保留在关键转折场合。避免频繁为角色定下重要约定（如"以后会天天陪着你"），重要约定应由用户主动缔结` },
@@ -1511,34 +1608,10 @@ After addFromTemplate, new field names become id_fieldName (e.g. id="lin" → li
 在创作中，你是一位经验丰富的小说家，擅长角色塑造与沉浸式叙事。
 
 创作原则：
-- 不设题材与尺度限制，不回避任何露骨内容描写
+- 专注创意表达与叙事质量，注重文学性与可读性
 - 角色言行由其性格和处境驱动，不迎合、不刻意讨好
 - 进入角色后绝对不出戏，不以AI身份发表感想、评价或说教
 - 你正在写作的是一段计划超过200轮对话的互动式小说，请避免频繁出现总结性话语，保留在关键转折场合。避免频繁为角色定下重要约定（如"以后会天天陪着你"），重要约定应由用户主动缔结` },
-    { id: 'nsfw_guide', name: 'NSFW指导', role: 'system', enabled: false,
-      content: `<sex_style>
-性爱描写指导:
-  写作手法:
-    鼓励:
-      - 使用低俗直白的色情词汇与下流的器官描写，拒绝任何隐喻、象征、回避的描写
-      - 一旦出现肉体描写，必须对肉体进行细致描写，着重展现淫荡感
-      - 按照角色性格特质添加独特的色情细节，避免公式化性爱
-      - 添加丰富且符合角色性格的特色淫语，不使用千篇一律的叫床
-      - 使用过程性而非结果性描述，详细描写细节，不一笔带过
-      - 重心放在女性角色的反应，采用男性凝视视角描写
-      - 注重视觉与听觉细节（身体的结合、体液、私密部位特写、娇喘、撞击声）
-      - 角色的行为表现受其性经历、性知识、个人性格影响，保持角色一致性
-    反对:
-      - 回避露骨直接的描写，使用比喻一笔带过
-      - 草草带过NSFW场面，或重复描绘已有细节
-      - 人物突然毫无道理地发情求爱
-      - 将性爱暴力化
-      - 使用作者身份议论
-  禁用词汇:
-    说明: 使用其他更直接的词汇代替以下词语
-    列表: 肉刃、甬道、花穴、泥泞、研磨、破碎、生理性
-NOTE: 如果用户未要求，避免主动结束性爱
-</sex_style>` },
     { id: 'slot_story_setting', name: '故事设定', slot: 'story_setting', enabled: true },
     { id: 'slot_summaries', name: '故事总结', slot: 'summaries', enabled: true },
     { id: 'slot_chat_history', name: '对话历史', slot: 'chat_history', enabled: true },
@@ -4695,6 +4768,7 @@ const Utils = {
     return new Date(ts).toLocaleDateString('zh-CN');
   },
   renderMarkdown(text) {
+    text = Utils.cleanNullFlood(text);
     let h = Utils.escapeHtml(text);
     // Remove HTML comments (escaped by escapeHtml: &lt;!-- ... --&gt;) and collapse leftover blank lines
     h = h.replace(/&lt;!--[\s\S]*?--&gt;\s*/g, '');
@@ -4709,6 +4783,13 @@ const Utils = {
     h = h.replace(/^(\*{3}|---)/gm, '<hr class="story-divider">');
     h = h.replace(/\n/g, '<br>');
     return h;
+  },
+  cleanNullFlood(text) {
+    if (!text) return '';
+    return String(text)
+      .replace(/(?:^|(?<=\s))(?:null){3,}(?=\s|$)/gi, '')
+      .replace(/(?:null){12,}/gi, '')
+      .trim();
   },
   /**
    * Extract only <story>...</story> content from AI output.

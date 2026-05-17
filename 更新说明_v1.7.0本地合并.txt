@@ -1,0 +1,40 @@
+更新说明 - v1.7.0 本地合并版
+日期：2026-05-17
+
+本次更新基于上游 rook1ess/rujuan v1.7.0 进行定向合并，并保留当前项目已有的 Android APK、小米 MiMo 模型兼容和设置页修复。
+
+一、合并上游 v1.7.0
+1. 修复聊天消息右上角操作按钮 hover 时容易消失的问题。
+2. 调整默认提示词措辞，改为更偏创意表达、沉浸叙事和文学可读性的描述。
+3. 增加 JSON 字符串值内部双引号必须转义的提示，减少状态栏初始化时 JSON 生成错误。
+4. 移除最小预设中默认禁用的 NSFW 指导项，与上游 v1.7.0 保持一致。
+
+二、小米 MiMo 模型兼容修复
+1. 修复使用小米 MiMo 模型时可能连续输出 nullnullnull 的问题。
+2. Android 原生流式服务中过滤 JSON null 和字符串 "null"，避免错误拼接进最终回复。
+3. 兼容 reasoning_content、reasoning、content、text、output_text 等不同响应字段。
+4. 对 reasoning 内容自动包裹 think 标签，普通正文开始时自动关闭。
+5. 支持 data: 和 data: 后带空格两种 SSE 格式。
+6. 为 MiMo / Xiaomi / mi.com 相关配置补充 api-key 请求头。
+7. 为 MiMo 请求添加 thinking: { type: "disabled" }，减少不兼容输出。
+8. 前端增加 null 洪泛文本清理兜底，避免异常内容直接显示。
+
+三、设置页修复
+1. 修复设置界面右上角缺失保存按钮的问题。
+2. 增加保存图标，并同步到 Web 页面和 Android assets 页面。
+
+四、APK 构建验证
+1. 已通过 common.js 语法检查。
+2. 已通过 Android debug 构建。
+3. 生成路径：
+   android/app/build/outputs/apk/debug/app-debug.apk
+
+五、涉及文件
+1. chat.html
+2. common.js
+3. settings.html
+4. server.py
+5. android/app/src/main/assets/chat.html
+6. android/app/src/main/assets/common.js
+7. android/app/src/main/assets/settings.html
+8. android/app/src/main/java/com/rujuanMG/app/NativeAiStreamService.java

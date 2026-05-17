@@ -705,7 +705,8 @@
       animation: fadeIn 0.4s ease forwards;
       opacity: 0;
     }
-    .message:hover .message-actions {
+    .message:hover .message-actions,
+    .message-actions:hover {
       opacity: 1;
       pointer-events: auto;
     }
@@ -4398,7 +4399,7 @@ function handleNativeStreamCancelled(aiMsg, state) {
   clearNativeStreamState(state.sessionId);
   clearNativeStreamTracking();
   removeStreamStatus();
-  aiMsg.content = state.fullText || '';
+  aiMsg.content = Utils.cleanNullFlood(state.fullText || '');
   handleStreamStopped(aiMsg);
 }
 
@@ -4406,7 +4407,7 @@ function handleNativeStreamCompleted(aiMsg, state) {
   clearNativeStreamState(state.sessionId);
   clearNativeStreamTracking();
   removeStreamStatus();
-  const fullText = state.fullText || '';
+  const fullText = Utils.cleanNullFlood(state.fullText || '');
   if (!fullText.trim()) {
     handleEmptyAiResponse(aiMsg);
     return;
@@ -4416,7 +4417,7 @@ function handleNativeStreamCompleted(aiMsg, state) {
 }
 
 function updateNativeStreamUi(aiMsg, state) {
-  const fullText = state.fullText || '';
+  const fullText = Utils.cleanNullFlood(state.fullText || '');
   aiMsg.content = fullText;
   updateAssistantBubble(aiMsg.id, fullText, state.status !== 'completed');
   if (state.status === 'starting') {

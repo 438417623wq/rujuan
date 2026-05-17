@@ -34,6 +34,11 @@ API_MODEL = os.environ.get('AIRP_API_MODEL', '')
 API_MAX_TOKENS = int(os.environ.get('AIRP_API_MAX_TOKENS', '20000'))
 DAILY_LIMIT = int(os.environ.get('AIRP_DAILY_LIMIT', '300'))
 
+
+def _is_mimo_model(model=''):
+    haystack = f'{API_PROVIDER} {API_BASE_URL} {model}'.lower()
+    return 'mimo' in haystack or 'xiaomi' in haystack or 'mi.com' in haystack
+
 # ── Database (public mode + DATABASE_URL) ──────────────────
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 USE_DB = PUBLIC_MODE and bool(DATABASE_URL)
@@ -215,6 +220,8 @@ def _build_upstream_headers():
         h['anthropic-version'] = '2023-06-01'
     elif API_PROVIDER != 'google-ai-studio':
         h['Authorization'] = f'Bearer {API_KEY}'
+        if _is_mimo_model(API_MODEL):
+            h['api-key'] = API_KEY
     return h
 
 
@@ -257,6 +264,8 @@ def _build_upstream_body(model, system_prompt, messages, stream):
     body = {'model': model, 'messages': msgs, 'stream': stream}
     if max_tokens > 0:
         body['max_tokens'] = max_tokens
+    if _is_mimo_model(model):
+        body['thinking'] = {'type': 'disabled'}
     return body
 
 
@@ -279,8 +288,33 @@ def _parse_non_stream_response(data):
         parts = (data['candidates'][0].get('content', {}).get('parts') or [])
         text = ''.join(p.get('text', '') for p in parts)
     elif 'choices' in data:
-        text = (data['choices'][0].get('message', {}).get('content') or '')
+        text = _openai_text_from_delta(data['choices'][0].get('message', {}))
     return text, usage
+
+
+def _openai_text_from_delta(delta):
+    if not delta:
+        return ''
+    parts = []
+    for key in ('content', 'reasoning_content', 'text'):
+        text = _normalize_openai_text_part(delta.get(key))
+        if text:
+            parts.append(text)
+    return ''.join(parts)
+
+
+def _normalize_openai_text_part(value):
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return '' if value.strip().lower() == 'null' else value
+    if isinstance(value, list):
+        return ''.join(_normalize_openai_text_part(item) for item in value)
+    if isinstance(value, dict):
+        return _normalize_openai_text_part(
+            value.get('text') or value.get('content') or value.get('output_text') or value.get('value')
+        )
+    return ''
 
 
 # ── DB conversation helpers ─────────────────────────────────

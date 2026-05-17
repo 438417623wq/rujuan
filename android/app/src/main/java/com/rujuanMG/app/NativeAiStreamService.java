@@ -237,7 +237,7 @@ public class NativeAiStreamService extends Service {
                     connection.setDoOutput(true);
                     connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
                     connection.setReadTimeout(READ_TIMEOUT_MS);
-                    setHeaders(connection, profile, provider);
+                    setHeaders(connection, profile, provider, model);
 
                     byte[] bodyBytes = requestBody.toString().getBytes(StandardCharsets.UTF_8);
                     try (OutputStream os = connection.getOutputStream()) {
@@ -250,17 +250,31 @@ public class NativeAiStreamService extends Service {
                         throw new HttpStatusException(statusCode, extractErrorMessage(errorText, statusCode));
                     }
 
+                    NativeOpenAiStreamState openAiState = new NativeOpenAiStreamState();
                     try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                         activeReader = reader;
                         String line;
                         long startedAt = System.currentTimeMillis();
                         while (!cancelRequested.get() && (line = reader.readLine()) != null) {
-                            if (line.isBlank() || !line.startsWith("data: ")) {
+                            if (line.isBlank() || !line.startsWith("data:")) {
                                 continue;
                             }
 
-                            String raw = line.substring(6).trim();
-                            if (raw.isBlank() || "[DONE]".equals(raw)) {
+                            String raw = line.substring(5).trim();
+                            if (raw.isBlank()) {
+                                continue;
+                            }
+                            if ("[DONE]".equals(raw)) {
+                                String closeChunk = closeOpenAiReasoning(openAiState);
+                                if (!closeChunk.isEmpty()) {
+                                    fullText += closeChunk;
+                                    putStatus(state, "streaming");
+                                    putFullText(state, fullText);
+                                    putUsage(state, usage);
+                                    putUpdatedAt(state);
+                                    NativeAiStreamStore.writeState(this, state);
+                                    updateOngoingNotification(sessionId, conversationTitle, fullText, startedAt);
+                                }
                                 continue;
                             }
 
@@ -275,7 +289,7 @@ public class NativeAiStreamService extends Service {
                                 throw new IOException(extractErrorFromEvent(event));
                             }
 
-                            String chunk = extractChunk(provider, event, usage);
+                            String chunk = extractChunk(provider, event, usage, openAiState);
                             if (!chunk.isEmpty()) {
                                 fullText += chunk;
                                 putStatus(state, "streaming");
@@ -286,6 +300,11 @@ public class NativeAiStreamService extends Service {
                                 updateOngoingNotification(sessionId, conversationTitle, fullText, startedAt);
                             }
                         }
+                    }
+
+                    String closeChunk = closeOpenAiReasoning(openAiState);
+                    if (!closeChunk.isEmpty()) {
+                        fullText += closeChunk;
                     }
 
                     if (cancelRequested.get()) {
@@ -491,10 +510,10 @@ public class NativeAiStreamService extends Service {
         );
     }
 
-    private void setHeaders(HttpURLConnection connection, JSONObject profile, String provider) {
+    private void setHeaders(HttpURLConnection connection, JSONObject profile, String provider, String model) {
         connection.setRequestProperty("Cache-Control", "no-cache");
         connection.setRequestProperty("Connection", "keep-alive");
-        for (Map.Entry<String, String> entry : buildRequestHeaders(profile, provider, "text/event-stream", true).entrySet()) {
+        for (Map.Entry<String, String> entry : buildRequestHeaders(profile, provider, model, "text/event-stream", true).entrySet()) {
             if (entry.getKey() == null || entry.getValue() == null) continue;
             String key = entry.getKey().trim();
             String value = entry.getValue().trim();
@@ -595,11 +614,15 @@ public class NativeAiStreamService extends Service {
                         .put("content", message.optString("content", "")));
             }
         }
-        return new JSONObject()
+        JSONObject body = new JSONObject()
                 .put("model", model)
                 .put("messages", openAiMessages)
                 .put("stream", stream)
                 .put("max_tokens", maxTokensForModel(model));
+        if (isMimoProfile(profile, model)) {
+            body.put("thinking", new JSONObject().put("type", "disabled"));
+        }
+        return body;
     }
 
     private String buildUrl(JSONObject profile, String model, boolean stream) {
@@ -638,6 +661,7 @@ public class NativeAiStreamService extends Service {
     private Map<String, String> buildRequestHeaders(
             JSONObject profile,
             String provider,
+            String model,
             String accept,
             boolean includeContentType
     ) {
@@ -662,10 +686,23 @@ public class NativeAiStreamService extends Service {
             if (!hasCustomAuth && !apiKey.isBlank()) {
                 headers.put("Authorization", "Bearer " + apiKey);
             }
+            if (isMimoProfile(profile, model) && !hasHeader(extraHeaders, "api-key") && !apiKey.isBlank()) {
+                headers.put("api-key", apiKey);
+            }
         }
 
         headers.putAll(extraHeaders);
         return headers;
+    }
+
+    private boolean isMimoProfile(JSONObject profile, String model) {
+        String haystack = (
+                profile.optString("provider", "") + " "
+                        + profile.optString("name", "") + " "
+                        + profile.optString("baseUrl", "") + " "
+                        + model
+        ).toLowerCase(Locale.US);
+        return haystack.contains("mimo") || haystack.contains("xiaomi") || haystack.contains("mi.com");
     }
 
     private Map<String, String> parseExtraHeaders(String raw) {
@@ -819,11 +856,16 @@ public class NativeAiStreamService extends Service {
         return 64000;
     }
 
-    private String extractChunk(String provider, JSONObject data, JSONObject usage) throws JSONException {
+    private static class NativeOpenAiStreamState {
+        boolean reasoningOpen = false;
+        boolean regularStarted = false;
+    }
+
+    private String extractChunk(String provider, JSONObject data, JSONObject usage, NativeOpenAiStreamState openAiState) throws JSONException {
         if ("claude".equals(provider)) {
             if ("content_block_delta".equals(data.optString("type"))) {
                 JSONObject delta = data.optJSONObject("delta");
-                return delta == null ? "" : delta.optString("text", "");
+                return delta == null ? "" : normalizeJsonText(delta.opt("text"));
             }
             if ("message_delta".equals(data.optString("type"))) {
                 JSONObject usageData = data.optJSONObject("usage");
@@ -869,7 +911,7 @@ public class NativeAiStreamService extends Service {
             for (int i = 0; i < parts.length(); i++) {
                 JSONObject part = parts.optJSONObject(i);
                 if (part != null) {
-                    builder.append(part.optString("text", ""));
+                    builder.append(normalizeJsonText(part.opt("text")));
                 }
             }
             return builder.toString();
@@ -892,7 +934,73 @@ public class NativeAiStreamService extends Service {
         if (delta == null) {
             return "";
         }
-        return delta.optString("content", "");
+        return extractOpenAiTextDelta(delta, openAiState);
+    }
+
+    private String extractOpenAiTextDelta(JSONObject delta, NativeOpenAiStreamState state) {
+        String reasoning = normalizeJsonText(delta.opt("reasoning_content"));
+        if (reasoning.isEmpty()) {
+            reasoning = normalizeJsonText(delta.opt("reasoning"));
+        }
+        String content = normalizeJsonText(delta.opt("content"));
+        if (content.isEmpty()) {
+            content = normalizeJsonText(delta.opt("text"));
+        }
+        if (content.isEmpty()) {
+            content = normalizeJsonText(delta.opt("output_text"));
+        }
+
+        StringBuilder chunk = new StringBuilder();
+        if (!reasoning.isEmpty() && !state.regularStarted) {
+            if (!state.reasoningOpen) {
+                state.reasoningOpen = true;
+                chunk.append("<think>");
+            }
+            chunk.append(reasoning);
+        }
+        if (!content.isEmpty()) {
+            if (state.reasoningOpen) {
+                state.reasoningOpen = false;
+                chunk.append("</think>");
+            }
+            state.regularStarted = true;
+            chunk.append(content);
+        }
+        return chunk.toString();
+    }
+
+    private String closeOpenAiReasoning(NativeOpenAiStreamState state) {
+        if (state != null && state.reasoningOpen) {
+            state.reasoningOpen = false;
+            return "</think>";
+        }
+        return "";
+    }
+
+    private String normalizeJsonText(Object value) {
+        if (value == null || value == JSONObject.NULL) {
+            return "";
+        }
+        if (value instanceof JSONArray) {
+            JSONArray array = (JSONArray) value;
+            StringBuilder builder = new StringBuilder();
+            for (int i = 0; i < array.length(); i++) {
+                builder.append(normalizeJsonText(array.opt(i)));
+            }
+            return builder.toString();
+        }
+        if (value instanceof JSONObject) {
+            JSONObject object = (JSONObject) value;
+            String text = normalizeJsonText(object.opt("text"));
+            if (!text.isEmpty()) return text;
+            text = normalizeJsonText(object.opt("content"));
+            if (!text.isEmpty()) return text;
+            text = normalizeJsonText(object.opt("output_text"));
+            if (!text.isEmpty()) return text;
+            return normalizeJsonText(object.opt("value"));
+        }
+        String text = String.valueOf(value);
+        return "null".equalsIgnoreCase(text.trim()) ? "" : text;
     }
 
     private String readFully(InputStream inputStream) throws IOException {
