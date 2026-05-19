@@ -1320,9 +1320,8 @@ const PromptBuilder = {
 主角文本：status_effects(text, rule:"受到buff/debuff时更新，持续时间结束时清除"), title(text, rule:"获得新头衔/称号时更新")
 技能列表：skills(list, rule:"习得新技能或技能升级时更新") — 每项格式如"基础剑法 Lv.3 | 熟练度60% | 以气御剑的入门剑术"
 物品栏：inventory(list, rule:"获得/使用/丢失物品时增删")
-任务：main_quest(text, rule:"主线推进或完成时更新"), side_quests(list, rule:"接取/推进/完成支线时更新") — 每项格式如"寻找灵草 | 目标：采集3株冰心草 | 进度：1/3"
-角色-林婉儿：lin_profile(text,基础档案), lin_outfit(text, rule:"换装/装备变化时更新"), lin_affection(bar, rule:"互动后±1~5"), lin_relation(tag, rule:"关系阶段转变时更新"), lin_personality(text, rule:"性格明显转变时更新"), lin_attitude(text, rule:"对主角态度变化时更新"), lin_thoughts(text, rule:"每轮更新内心想法"), lin_location(text, rule:"角色移动后更新")
-角色-配角张三：zhang_profile(text,简要), zhang_relation(tag, rule:"关系变化时更新"), zhang_affection(number, rule:"互动后±1~3"), zhang_location(text, rule:"角色移动后更新")
+任务：main_quests(list, rule:"出现新的主线阶段/目标时追加对象；推进/完成/失败时更新对应对象，不要覆盖其他任务"), side_quests(list, rule:"接取新支线时追加对象；推进/完成/失败时更新对应对象") — 每项推荐对象格式 {"id":"quest_id","title":"任务名","status":"进行中","objective":"目标","progress":"进度","reward":"","notes":""}
+角色集合：characters(list, rule:"遇到新角色时追加对象；关系、好感、位置、穿着、想法变化时更新对应对象，不要把多个角色合并到一个档案") — 每项推荐对象格式 {"id":"lin","name":"林婉儿","profile":"基础档案","outfit":"当前穿着","affection":0,"relation":"关系","personality":"当前性格","attitude":"对主角态度","thoughts":"内心想法","location":"位置"}
 \`\`\`
 以上仅为参考，请根据用户讨论的具体题材灵活设计——关键是覆盖全面、信息充分，并且鼓励添加更多有趣的、题材特色的追踪维度。
 
@@ -1377,6 +1376,8 @@ templates（模板）——【必须创建】用于RP阶段动态添加新遇到
   系统自动处理切换逻辑，data-tab 与 data-tab-panel 值一一对应即可，默认显示第一个。Tab 可嵌套使用（外层切角色，内层切装备部位）。
 - 如果使用了角色模板，在HTML中放置对应容器元素（如 <div id="mvu-characters"></div>）
 - 可更新元素用 data-field="字段名"，进度条用 data-field-bar="字段名"，列表用 data-field-list="字段名"
+- 交互增强（必须优先支持）：物品、角色、任务、技能、地点等可点击对象可添加 data-mvu-detail，并可附加 data-mvu-title、data-mvu-type、data-mvu-desc、data-mvu-field。系统会在美化视图中自动弹出精美详情卡。不要写 <script>、onclick 或自定义 JavaScript。
+- 可增长集合要求：任务必须优先使用 main_quests/side_quests 对象数组，角色必须优先使用 characters 对象数组。遇到新任务/新角色时后续 RP 更新应向数组追加对象，不要长期覆盖单个 main_quest 或单个 *_profile 字段。
 - 视觉设计要求：
   · 为这个故事选择一个大胆且明确的美学方向，让状态栏一眼就能感受到题材氛围。不要默认使用安全的深色面板——修仙、校园、赛博、奇幻应该有截然不同的视觉语言
   · 字体是个性的核心。通过 Google Fonts 选择有辨识度的字体，避免 Arial、Inter、Roboto 等通用字体
@@ -1597,7 +1598,8 @@ Output template (must preserve tags exactly, placed before abstract):
 }
 \`\`\`
 Operations: replace, delta (numeric increment, e.g. -15), add (list append), remove (list delete), addFromTemplate (create new entry from template), removeFromTemplate (delete entry)
-After addFromTemplate, new field names become id_fieldName (e.g. id="lin" → lin_profile), subsequently use replace/delta for normal updates.` },
+After addFromTemplate, new field names become id_fieldName (e.g. id="lin" → lin_profile), subsequently use replace/delta for normal updates.
+For task and character growth, prefer add to /main_quests/-, /side_quests/-, and /characters/- with object values when a new task/character appears. Do not keep overwriting a single main_quest or one *_profile field for the entire playthrough.` },
   ],
 
   // 初始预设 — 最精简，只有人设 + slot + AIRP 必需格式
@@ -1704,7 +1706,8 @@ Output template (must preserve tags exactly, placed before abstract):
   ]
 }
 \`\`\`
-Operations: replace, delta (numeric increment, e.g. -15), add (list append), remove (list delete), addFromTemplate (create new entry from template), removeFromTemplate (delete entry)` },
+Operations: replace, delta (numeric increment, e.g. -15), add (list append), remove (list delete), addFromTemplate (create new entry from template), removeFromTemplate (delete entry)
+For task and character growth, prefer add to /main_quests/-, /side_quests/-, and /characters/- with object values when a new task/character appears. Do not keep overwriting a single main_quest or one *_profile field for the entire playthrough.` },
     { id: 'abstract_req', name: '摘要格式', role: 'user', enabled: true,
       content: `[Output the summary at the end after all other content is complete, following the format below, wrap it inside <details>]
 
@@ -4212,6 +4215,54 @@ const WorldBook = {
 // MVU Module
 // ============================================================
 const MVU = {
+  BASE_STYLE: `
+    .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: 14px; }
+    .mvu-panel, .mvu-section { border: 1px solid rgba(201,164,76,0.16); background: rgba(255,255,255,0.025); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--accent); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
+    details.mvu-section > summary::-webkit-details-marker { display: none; }
+    details.mvu-section > summary small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
+    .mvu-managed-body { display: grid; gap: 2px; }
+    .mvu-managed-field { border-radius: 7px; padding-left: 6px; padding-right: 6px; background: rgba(255,255,255,0.025); }
+    .mvu-section-title, .mvu-title { color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
+    .mvu-field { display: grid; grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mvu-field:last-child { border-bottom: 0; }
+    .mvu-label { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+    .mvu-value, [data-field] { color: var(--text-primary); font-size: 13px; line-height: 1.55; word-break: break-word; }
+    .mvu-bar-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,0.08); margin-top: 4px; }
+    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #e1bd64); transition: width 0.35s ease; }
+    .mvu-list-item { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); margin-bottom: 5px; font-size: 12px; line-height: 1.45; }
+    .mvu-character-grid { display: grid; gap: 8px; }
+    .mvu-character-card { display: grid; gap: 6px; padding: 10px; border: 1px solid rgba(201,164,76,0.18); border-radius: 8px; background: linear-gradient(135deg, rgba(201,164,76,0.10), rgba(255,255,255,0.035)); cursor: pointer; }
+    .mvu-character-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .mvu-character-name { color: var(--accent); font-size: 14px; font-weight: 700; }
+    .mvu-character-role { color: var(--text-muted); font-size: 11px; }
+    .mvu-character-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+    .mvu-character-chip { color: var(--text-secondary); font-size: 11px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 2px 7px; background: rgba(0,0,0,0.12); }
+    .mvu-character-desc { color: var(--text-primary); font-size: 12px; line-height: 1.55; opacity: 0.92; }
+    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(201,164,76,0.22); color: var(--text-secondary); background: rgba(255,255,255,0.03); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
+    .mvu-tab.active { color: #1a1510; background: var(--accent); border-color: var(--accent); }
+    .mvu-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
+    .mvu-field-changed { animation: mvuPulseChanged 1.4s ease; }
+    @keyframes mvuPulseChanged { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: rgba(201,164,76,0.0); } 18% { box-shadow: 0 0 0 2px rgba(201,164,76,0.28); background-color: rgba(201,164,76,0.12); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: transparent; } }
+    .mvu-data-view { display: flex; flex-direction: column; gap: 10px; }
+    .mvu-data-group { border: 1px solid rgba(201,164,76,0.16); border-radius: 8px; background: rgba(255,255,255,0.025); overflow: hidden; }
+    .mvu-data-group summary { cursor: pointer; list-style: none; padding: 10px 12px; color: var(--accent); font-size: 13px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mvu-data-group summary::-webkit-details-marker { display: none; }
+    .mvu-data-fields { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+    .mvu-data-field { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mvu-data-field:last-child { border-bottom: 0; padding-bottom: 0; }
+    .mvu-data-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+    .mvu-data-label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+    .mvu-data-key { color: var(--text-muted); font-size: 11px; font-family: monospace; }
+    .mvu-data-input, .mvu-data-textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.18); color: var(--text-primary); padding: 8px 9px; font-size: 12px; }
+    .mvu-data-textarea { min-height: 68px; resize: vertical; line-height: 1.45; }
+    .mvu-data-range-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 8px; align-items: center; }
+    .mvu-data-list { display: flex; flex-direction: column; gap: 6px; }
+    .mvu-data-list-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 6px; align-items: center; }
+    .mvu-data-mini-btn { height: 30px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--text-secondary); cursor: pointer; }
+    .mvu-data-mini-btn:hover { color: var(--accent); border-color: var(--accent); }
+    .mvu-data-empty { color: var(--text-muted); text-align: center; font-size: 12px; padding: 24px 8px; }
+  `,
   parseStorySetting(text) {
     const m = text.match(/```text:story_setting\s*\n([\s\S]*?)\n```/);
     return m ? m[1].trim() : null;
@@ -4404,15 +4455,62 @@ const MVU = {
   applyPatch(state, patchData) {
     const patches = Array.isArray(patchData) ? patchData : (patchData.patches || []);
     const s = JSON.parse(JSON.stringify(state));
+    const resolveParent = (root, parts, create = false) => {
+      let target = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const key = Array.isArray(target) ? (parts[i] === '-' ? target.length : Number(parts[i])) : parts[i];
+        if (target[key] === undefined) {
+          if (!create) return null;
+          const nextIsIndex = /^\d+$/.test(parts[i + 1]) || parts[i + 1] === '-';
+          target[key] = nextIsIndex ? [] : {};
+        }
+        target = target[key];
+        if (target === null || typeof target !== 'object') return null;
+      }
+      return target;
+    };
+    const assignKey = (target, keyPart, value) => {
+      if (!target) return;
+      if (Array.isArray(target)) {
+        if (keyPart === '-') target.push(value);
+        else target[Number(keyPart)] = value;
+      } else {
+        target[keyPart] = value;
+      }
+    };
+    const removeValue = (target, keyPart, value) => {
+      if (!target) return;
+      if (Array.isArray(target)) {
+        if (keyPart !== undefined && keyPart !== '' && keyPart !== '-') {
+          const idx = Number(keyPart);
+          if (Number.isInteger(idx)) target.splice(idx, 1);
+        } else {
+          const idx = target.findIndex(item => JSON.stringify(item) === JSON.stringify(value) || item === value);
+          if (idx >= 0) target.splice(idx, 1);
+        }
+      } else if (keyPart) {
+        delete target[keyPart];
+      }
+    };
     for (const p of patches) {
       if (p.op === 'addFromTemplate' || p.op === 'removeFromTemplate') continue; // handled separately
       const path = p.path.replace(/^\//, '');
       const parts = path.split('/');
       const field = parts[0];
-      if (p.op === 'replace') { if (parts.length === 1) s[field] = p.value; }
-      else if (p.op === 'delta') { if (parts.length === 1 && typeof s[field] === 'number') s[field] = s[field] + p.value; }
-      else if (p.op === 'add') { if (parts[1] === '-' && Array.isArray(s[field])) s[field].push(p.value); }
-      else if (p.op === 'remove') { if (Array.isArray(s[field])) { const idx = s[field].indexOf(p.value); if (idx >= 0) s[field].splice(idx, 1); } }
+      if (p.op === 'replace') {
+        if (parts.length === 1) s[field] = p.value;
+        else assignKey(resolveParent(s, parts, true), parts[parts.length - 1], p.value);
+      } else if (p.op === 'delta') {
+        const parent = parts.length === 1 ? s : resolveParent(s, parts, false);
+        const key = parts.length === 1 ? field : parts[parts.length - 1];
+        if (parent && typeof parent[key] === 'number') parent[key] = parent[key] + p.value;
+      } else if (p.op === 'add') {
+        const parent = resolveParent(s, parts, true);
+        assignKey(parent, parts[parts.length - 1], p.value);
+      } else if (p.op === 'remove') {
+        if (parts.length === 1 && Array.isArray(s[field])) removeValue(s[field], '', p.value);
+        else removeValue(resolveParent(s, parts, false), parts[parts.length - 1], p.value);
+      }
     }
     return s;
   },
@@ -4475,23 +4573,93 @@ const MVU = {
     if (container) this._bindTabs(container);
   },
 
-  updateDOM(container, state, schema) {
+  _formatDisplayValue(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return value.map(v => this._formatDisplayValue(v)).filter(Boolean).join('、');
+    if (typeof value === 'object') {
+      const title = value.title || value.name || value.label || value.objective || value.profile || value.desc || value.description || '';
+      const status = value.status ? `（${value.status}）` : '';
+      const progress = value.progress ? ` - ${value.progress}` : '';
+      if (title) return `${title}${status}${progress}`;
+      return Object.entries(value).map(([k, v]) => `${k}: ${this._formatDisplayValue(v)}`).join('；');
+    }
+    return String(value);
+  },
+
+  _renderListItem(value) {
+    const text = this._formatDisplayValue(value);
+    if (value && typeof value === 'object') {
+      const title = value.title || value.name || value.label || text;
+      const type = value.type || value.status || value.category || '详情';
+      const desc = value.desc || value.description || value.objective || value.profile || value.progress || text;
+      return `<div class="mvu-list-item" data-mvu-detail data-mvu-title="${Utils.escapeHtml(String(title))}" data-mvu-type="${Utils.escapeHtml(String(type))}" data-mvu-desc="${Utils.escapeHtml(String(desc))}">${Utils.escapeHtml(text)}</div>`;
+    }
+    return `<div class="mvu-list-item">${Utils.escapeHtml(text)}</div>`;
+  },
+
+  _renderCharacterCards(value) {
+    if (!Array.isArray(value) || !value.length) return '<div class="mvu-list-item">暂无角色记录</div>';
+    const cards = value.map((character, index) => {
+      if (!character || typeof character !== 'object') return this._renderListItem(character);
+      const name = character.name || character.title || character.label || `角色 ${index + 1}`;
+      const role = character.role || character.identity || character.relation || character.status || '角色';
+      const desc = character.profile || character.desc || character.description || character.thoughts || character.note || this._formatDisplayValue(character);
+      const chips = [
+        character.status && `状态：${character.status}`,
+        character.location && `位置：${character.location}`,
+        character.affection !== undefined && character.affection !== '' && `好感：${character.affection}`,
+        character.relation && `关系：${character.relation}`,
+      ].filter(Boolean).slice(0, 4);
+      const fallback = Object.entries(character)
+        .filter(([key, val]) => !['id', 'name', 'title', 'label', 'role', 'identity', 'profile', 'desc', 'description', 'note'].includes(key) && val !== '' && val !== undefined && val !== null)
+        .map(([key, val]) => `${key}: ${this._formatDisplayValue(val)}`)
+        .join('\n');
+      return `<div class="mvu-character-card" data-mvu-detail data-mvu-title="${Utils.escapeHtml(String(name))}" data-mvu-type="${Utils.escapeHtml(String(role))}" data-mvu-desc="${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}">
+        <div class="mvu-character-head">
+          <span class="mvu-character-name">${Utils.escapeHtml(String(name))}</span>
+          <span class="mvu-character-role">${Utils.escapeHtml(String(role))}</span>
+        </div>
+        ${chips.length ? `<div class="mvu-character-meta">${chips.map(chip => `<span class="mvu-character-chip">${Utils.escapeHtml(String(chip))}</span>`).join('')}</div>` : ''}
+        <div class="mvu-character-desc">${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}</div>
+      </div>`;
+    }).join('');
+    return `<div class="mvu-character-grid">${cards}</div>`;
+  },
+
+  _renderList(field, value) {
+    if (field === 'characters') return this._renderCharacterCards(value);
+    return value.map(v => this._renderListItem(v)).join('');
+  },
+
+  updateDOM(container, state, schema, changedFields = []) {
     if (!container) return;
+    const changed = new Set(changedFields || []);
+    container.querySelectorAll('.mvu-field-changed').forEach(el => el.classList.remove('mvu-field-changed'));
     for (const [field, value] of Object.entries(state)) {
       const def = schema?.[field];
-      const el = container.querySelector(`[data-field="${field}"]`);
-      if (el) {
-        const text = Array.isArray(value) ? value.join('、') : String(value);
+      const els = [...container.querySelectorAll(`[data-field="${field}"]`)];
+      for (const el of els) {
+        const text = this._formatDisplayValue(value);
         if (text.includes('\n')) {
           el.innerHTML = Utils.escapeHtml(text).replace(/\n/g, '<br>');
         } else {
           el.textContent = text;
         }
       }
-      const barEl = container.querySelector(`[data-field-bar="${field}"]`);
-      if (barEl && def?.max) barEl.style.width = Math.max(0, Math.min(100, (value / def.max) * 100)) + '%';
-      const listEl = container.querySelector(`[data-field-list="${field}"]`);
-      if (listEl && Array.isArray(value)) listEl.innerHTML = value.map(v => `<div class="mvu-list-item">${Utils.escapeHtml(String(v))}</div>`).join('');
+      const barEls = [...container.querySelectorAll(`[data-field-bar="${field}"]`)];
+      for (const barEl of barEls) {
+        if (def?.max) barEl.style.width = Math.max(0, Math.min(100, (value / def.max) * 100)) + '%';
+      }
+      const listEls = [...container.querySelectorAll(`[data-field-list="${field}"]`)];
+      for (const listEl of listEls) {
+        if (Array.isArray(value)) listEl.innerHTML = this._renderList(field, value, def);
+      }
+      if (changed.has(field)) {
+        for (const target of [...els, ...barEls, ...listEls]) {
+          if (!target) continue;
+          (target.closest('.mvu-field') || target).classList.add('mvu-field-changed');
+        }
+      }
     }
   },
 
@@ -4522,11 +4690,98 @@ const MVU = {
     }
   },
 
+  renderDataView(container, mvuData, options = {}) {
+    if (!container || !mvuData) return;
+    let styleEl = document.getElementById('mvu-custom-style');
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'mvu-custom-style'; document.head.appendChild(styleEl); }
+    styleEl.textContent = this.BASE_STYLE + '\n' + (mvuData.css || '');
+
+    const schema = mvuData.schema || {};
+    const state = mvuData.state || {};
+    const changed = new Set(mvuData._changedFields || []);
+    const query = (options.query || '').trim().toLowerCase();
+    const groups = new Map();
+    const entries = Object.entries(state).filter(([field, value]) => {
+      const def = schema[field] || {};
+      const valueText = Array.isArray(value) ? value.join(' ') : String(value ?? '');
+      const haystack = `${field} ${def.label || ''} ${def.group || ''} ${valueText}`.toLowerCase();
+      return !query || haystack.includes(query);
+    });
+
+    for (const [field, value] of entries) {
+      const def = schema[field] || {};
+      const group = def.group || this._inferGroup(field, def);
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push([field, value, def]);
+    }
+
+    if (!entries.length) {
+      container.innerHTML = '<div class="mvu-data-empty">没有匹配的变量</div>';
+      return;
+    }
+
+    let html = '<div class="mvu-data-view">';
+    for (const [group, fields] of groups) {
+      html += `<details class="mvu-data-group" open><summary>${Utils.escapeHtml(group)} · ${fields.length}</summary><div class="mvu-data-fields">`;
+      for (const [field, value, def] of fields) html += this._renderDataField(field, value, def, changed.has(field));
+      html += '</div></details>';
+    }
+    html += '</div>';
+    container.innerHTML = html;
+  },
+
+  _inferGroup(field, def) {
+    if (def?.label && String(def.label).includes(' - ')) return String(def.label).split(' - ')[0];
+    const parts = String(field).split('_');
+    return parts.length > 1 ? parts[0] : '基础变量';
+  },
+
+  _renderDataField(field, value, def = {}, isChanged = false) {
+    const type = def.type || (Array.isArray(value) ? 'list' : typeof value === 'number' ? 'number' : 'text');
+    const label = def.label || field;
+    const changedClass = isChanged ? ' mvu-field-changed' : '';
+    const fieldArg = JSON.stringify(field);
+    let control = '';
+
+    if (type === 'bar') {
+      const max = Number(def.max || 100);
+      const num = Number(value || 0);
+      control = `<div class="mvu-data-range-row">
+        <input class="mvu-data-input" type="range" min="0" max="${max}" value="${num}" oninput='handleMvuFieldInput(${fieldArg}, "bar", this.value)'>
+        <input class="mvu-data-input" type="number" min="0" max="${max}" value="${num}" onchange='handleMvuFieldInput(${fieldArg}, "bar", this.value)'>
+      </div>`;
+    } else if (type === 'number') {
+      control = `<input class="mvu-data-input" type="number" value="${Utils.escapeHtml(String(value ?? ''))}" onchange='handleMvuFieldInput(${fieldArg}, "number", this.value)'>`;
+    } else if (type === 'list' && Array.isArray(value)) {
+      control = '<div class="mvu-data-list">';
+      value.forEach((item, idx) => {
+        const itemText = item && typeof item === 'object' ? JSON.stringify(item, null, 2) : String(item ?? '');
+        control += `<div class="mvu-data-list-row">
+          <textarea class="mvu-data-textarea" onchange='handleMvuListItemInput(${fieldArg}, ${idx}, this.value)'>${Utils.escapeHtml(itemText)}</textarea>
+          <button class="mvu-data-mini-btn" onclick='removeMvuListItem(${fieldArg}, ${idx})'>×</button>
+        </div>`;
+      });
+      control += `<button class="mvu-data-mini-btn" onclick='addMvuListItem(${fieldArg})'>添加条目</button></div>`;
+    } else if (type === 'tag') {
+      control = `<input class="mvu-data-input" value="${Utils.escapeHtml(String(value ?? ''))}" onchange='handleMvuFieldInput(${fieldArg}, "tag", this.value)'>`;
+    } else {
+      control = `<textarea class="mvu-data-textarea" onchange='handleMvuFieldInput(${fieldArg}, "text", this.value)'>${Utils.escapeHtml(String(value ?? ''))}</textarea>`;
+    }
+
+    return `<div class="mvu-data-field${changedClass}">
+      <div class="mvu-data-head">
+        <span class="mvu-data-label">${Utils.escapeHtml(label)}</span>
+        <span class="mvu-data-key">${Utils.escapeHtml(field)}</span>
+      </div>
+      ${control}
+    </div>`;
+  },
+
   render(container, mvuData) {
     if (!container || !mvuData) return;
     let styleEl = document.getElementById('mvu-custom-style');
     if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'mvu-custom-style'; document.head.appendChild(styleEl); }
-    styleEl.textContent = mvuData.css || '';
+    styleEl.textContent = this.BASE_STYLE + '\n' + (mvuData.css || '');
     container.innerHTML = mvuData.html || '<div class="mvu-empty">状态栏未初始化</div>';
     // Re-render template instances (persisted across page loads)
     const templates = mvuData.templates || {};
@@ -4534,7 +4789,7 @@ const MVU = {
       const tpl = templates[inst.template];
       if (tpl) this._insertTemplateHtml(tpl, inst.id, inst.name, container);
     }
-    if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema);
+    if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema, mvuData._changedFields || []);
     // Tab component: bind click events for data-tab / data-tab-panel pairs
     this._bindTabs(container);
   },

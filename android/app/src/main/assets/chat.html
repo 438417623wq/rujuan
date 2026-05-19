@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -1203,6 +1203,855 @@
     .mvu-content {
       min-height: 40px;
     }
+    .mvu-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .mvu-toolbar-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .mvu-toolbar-title {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+    .mvu-toolbar-title strong {
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .mvu-toolbar-title span {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .mvu-toolbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .mvu-toolbar-actions .btn-icon svg {
+      width: 16px;
+      height: 16px;
+    }
+    .mvu-view-toggle {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.03);
+    }
+    .mvu-view-btn {
+      border: 0;
+      border-radius: calc(var(--radius) - 2px);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      min-height: 30px;
+      cursor: pointer;
+    }
+    .mvu-view-btn.active {
+      background: var(--accent);
+      color: #1a1510;
+      font-weight: 700;
+    }
+    .mvu-search {
+      display: none;
+      width: 100%;
+      min-height: 34px;
+      font-size: 12px;
+      padding: 8px 10px;
+    }
+    .mvu-search.visible {
+      display: block;
+    }
+    .mvu-change-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(201,164,76,0.12);
+      color: var(--accent);
+      font-size: 11px;
+      border: 1px solid rgba(201,164,76,0.24);
+    }
+    .mvu-game-view {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 10px;
+      min-height: 100%;
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(12,11,8,0.54), rgba(12,11,8,0.82));
+      border: 1px solid rgba(201,164,76,0.22);
+    }
+    .mvu-game-hero {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(201,164,76,0.24);
+      border-radius: 10px;
+      padding: 14px;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.06), rgba(0,0,0,0.22)),        linear-gradient(135deg, rgba(201,164,76,0.16), rgba(255,255,255,0.025)),
+        rgba(0,0,0,0.14);
+    }
+    .mvu-game-hero::after {
+      content: '';
+      position: absolute;
+      inset: auto -20px -34px auto;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      border: 1px solid rgba(201,164,76,0.22);
+      opacity: 0.55;
+      pointer-events: none;
+    }
+    .mvu-game-eyebrow {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    .mvu-game-title {
+      color: var(--accent);
+      font-family: var(--font-display);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .mvu-game-subtitle {
+      margin-top: 6px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.5;
+      word-break: break-word;
+    }
+    .mvu-cultivation-core {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .mvu-realm-badge {
+      display: inline-flex;
+      width: fit-content;
+      max-width: 100%;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(103,199,180,0.36);
+      background: rgba(103,199,180,0.12);
+      color: #9de6d8;
+      font-size: 12px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+    .mvu-game-tabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid rgba(201,164,76,0.18);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.18);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .mvu-game-tab {
+      min-height: 34px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+    }
+    .mvu-game-tab.active {
+      color: #1a1510;
+      background: linear-gradient(135deg, var(--accent), #67c7b4);
+      font-weight: 800;
+    }
+    .mvu-game-tab svg {
+      width: 15px;
+      height: 15px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex: 0 0 auto;
+    }
+    .mvu-game-pane {
+      display: grid;
+      gap: 12px;
+    }
+    .mvu-game-layout {
+      display: grid;
+      gap: 10px;
+    }
+    .mvu-game-list,
+    .mvu-game-list-grid {
+      display: grid;
+      gap: 8px;
+    }
+    .mvu-game-list-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .mvu-game-entry {
+      width: 100%;
+      min-height: 48px;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-left: 3px solid transparent;
+      border-radius: 8px;
+      background:
+        linear-gradient(90deg, rgba(22,20,14,0.82), rgba(12,12,10,0.68));
+      color: var(--text-secondary);
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    }
+    .mvu-game-entry:hover {
+      border-color: rgba(201,164,76,0.36);
+      background: rgba(201,164,76,0.08);
+      transform: translateY(-1px);
+    }
+    .mvu-game-entry.active {
+      border-color: rgba(201,164,76,0.58);
+      border-left-color: var(--accent);
+      background: linear-gradient(90deg, rgba(201,164,76,0.18), rgba(255,255,255,0.035));
+    }
+    .mvu-game-entry-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #e7c764;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(103,199,180,0.26), transparent 44%),
+        linear-gradient(135deg, rgba(42,34,21,0.95), rgba(11,12,10,0.9));
+      flex: 0 0 auto;
+      border: 1px solid rgba(201,164,76,0.44);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07), 0 0 10px rgba(201,164,76,0.14);
+    }
+    .mvu-game-entry-icon svg {
+      width: 21px;
+      height: 21px;
+      display: block;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 4px rgba(201,164,76,0.28));
+    }
+    .mvu-game-entry-icon .mvu-icon-fill,
+    .mvu-game-modal-icon .mvu-icon-fill {
+      fill: currentColor;
+      stroke: none;
+      opacity: 0.2;
+    }
+    .mvu-game-entry-icon.character,
+    .mvu-game-modal-icon.character { color: #e7c764; }
+    .mvu-game-entry-icon.inventory,
+    .mvu-game-modal-icon.inventory { color: #e8bf5a; }
+    .mvu-game-entry-icon.skills,
+    .mvu-game-modal-icon.skills { color: #8de8d4; }
+    .mvu-game-entry-icon.quests,
+    .mvu-game-modal-icon.quests { color: #f0c86b; }
+    .mvu-game-entry-icon.world,
+    .mvu-game-modal-icon.world { color: #8de8d4; }
+    .mvu-game-entry-main {
+      min-width: 0;
+      display: grid;
+      gap: 3px;
+    }
+    .mvu-game-entry-title {
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+    .mvu-game-entry-sub {
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .mvu-game-entry-tag {
+      align-self: start;
+      max-width: 76px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      color: #9de6d8;
+      background: rgba(103,199,180,0.12);
+      border: 1px solid rgba(103,199,180,0.2);
+      font-size: 10px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mvu-game-detail {
+      border: 1px solid rgba(201,164,76,0.24);
+      border-radius: 10px;
+      padding: 12px;
+      background:
+        linear-gradient(135deg, rgba(201,164,76,0.12), rgba(103,199,180,0.055)),
+        rgba(0,0,0,0.18);
+      display: grid;
+      gap: 10px;
+    }
+    .mvu-game-detail-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .mvu-game-detail-title {
+      color: var(--accent);
+      font-size: 15px;
+      font-weight: 900;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .mvu-game-detail-type {
+      flex: 0 0 auto;
+      padding: 3px 7px;
+      border-radius: 999px;
+      color: #1a1510;
+      background: var(--accent);
+      font-size: 10px;
+      font-weight: 900;
+      max-width: 92px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mvu-game-detail-text {
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.55;
+      word-break: break-word;
+      white-space: normal;
+    }
+    .mvu-game-detail-attrs {
+      display: grid;
+      gap: 6px;
+    }
+    .mvu-game-detail-attr {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      gap: 8px;
+      padding: 7px 8px;
+      border-radius: 7px;
+      background: rgba(0,0,0,0.16);
+      border: 1px solid rgba(255,255,255,0.06);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .mvu-game-detail-attr span:first-child {
+      color: var(--text-muted);
+      font-weight: 800;
+    }
+    .mvu-game-detail-attr span:last-child {
+      color: var(--text-secondary);
+      word-break: break-word;
+    }
+    .mvu-game-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(0,0,0,0.48);
+      backdrop-filter: blur(3px);
+    }
+    .mvu-game-modal.visible {
+      display: flex;
+    }
+    .mvu-game-modal-card {
+      width: min(420px, 94vw);
+      max-height: min(74vh, 640px);
+      overflow: auto;
+      position: relative;
+      border: 1px solid rgba(226,190,91,0.56);
+      border-radius: 14px;
+      padding: 15px;
+      background:
+        linear-gradient(180deg, rgba(28,24,16,0.88), rgba(11,12,10,0.96));
+      box-shadow: 0 18px 50px rgba(0,0,0,0.46), inset 0 0 34px rgba(201,164,76,0.09);
+    }
+    .mvu-game-modal-card::before {
+      content: '';
+      position: absolute;
+      inset: 8px;
+      border: 1px solid rgba(201,164,76,0.18);
+      border-radius: 10px;
+      pointer-events: none;
+    }
+    .mvu-game-modal-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 1;
+      width: 30px;
+      height: 30px;
+      border: 1px solid rgba(201,164,76,0.36);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.28);
+      color: var(--accent);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .mvu-game-modal-head {
+      display: grid;
+      grid-template-columns: 44px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding-right: 34px;
+      margin-bottom: 12px;
+    }
+    .mvu-game-modal-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background:
+        radial-gradient(circle at 35% 25%, rgba(103,199,180,0.28), transparent 44%),
+        linear-gradient(135deg, rgba(42,34,21,0.95), rgba(11,12,10,0.9));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #e7c764;
+      border: 1px solid rgba(201,164,76,0.52);
+      font-weight: 900;
+      box-shadow: 0 0 16px rgba(201,164,76,0.2);
+    }
+    .mvu-game-modal-icon svg {
+      width: 30px;
+      height: 30px;
+      display: block;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 5px rgba(201,164,76,0.3));
+    }
+    .mvu-game-modal-title {
+      color: var(--accent);
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 900;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .mvu-game-modal-subtitle {
+      margin-top: 3px;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .mvu-game-modal-badge {
+      max-width: 86px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: linear-gradient(135deg, var(--accent), #67c7b4);
+      color: #1a1510;
+      font-size: 11px;
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mvu-game-modal-desc {
+      margin: 8px 0 12px;
+      padding: 10px;
+      border-radius: 9px;
+      color: var(--text-secondary);
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(255,255,255,0.07);
+      font-size: 13px;
+      line-height: 1.65;
+      word-break: break-word;
+    }
+    .mvu-game-modal-attrs {
+      display: grid;
+      gap: 7px;
+    }
+    .mvu-game-modal-attr {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid rgba(201,164,76,0.14);
+      font-size: 12px;
+      line-height: 1.5;
+    }
+    .mvu-game-modal-attr span:first-child {
+      color: var(--accent);
+      font-weight: 900;
+    }
+    .mvu-game-modal-attr span:last-child {
+      color: var(--text-secondary);
+      word-break: break-word;
+    }
+    .mvu-game-section {
+      border: 1px solid rgba(201,164,76,0.16);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.025);
+      overflow: hidden;
+    }
+    .mvu-game-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .mvu-game-section-title {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .mvu-game-section-count {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .mvu-game-grid {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+    }
+    .mvu-game-bars {
+      display: grid;
+      gap: 9px;
+      padding: 10px;
+    }
+    .mvu-game-bar-card,
+    .mvu-game-card,
+    .mvu-game-item,
+    .mvu-game-skill,
+    .mvu-game-quest {
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.16);
+      transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    }
+    .mvu-game-bar-card:hover,
+    .mvu-game-card:hover,
+    .mvu-game-item:hover,
+    .mvu-game-skill:hover,
+    .mvu-game-quest:hover {
+      border-color: rgba(201,164,76,0.42);
+      background: rgba(201,164,76,0.08);
+      transform: translateY(-1px);
+    }
+    .mvu-game-bar-card {
+      padding: 9px;
+    }
+    .mvu-game-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .mvu-game-label {
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-weight: 700;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .mvu-game-value {
+      color: var(--text-muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .mvu-game-track {
+      height: 8px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.08);
+    }
+    .mvu-game-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), #e1bd64);
+      min-width: 2px;
+    }
+    .mvu-game-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px;
+    }
+    .mvu-game-chip {
+      display: inline-flex;
+      max-width: 100%;
+      padding: 5px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(201,164,76,0.2);
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.035);
+      font-size: 11px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .mvu-game-card {
+      padding: 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .mvu-game-card-title {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 700;
+      word-break: break-word;
+    }
+    .mvu-game-card-meta {
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .mvu-game-inventory {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px;
+    }
+    .mvu-game-item {
+      min-height: 72px;
+      padding: 8px;
+      display: grid;
+      align-content: space-between;
+      gap: 6px;
+      position: relative;
+    }
+    .mvu-game-item-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1510;
+      background: var(--accent);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .mvu-game-item-name {
+      color: var(--text-secondary);
+      font-size: 11px;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+    .mvu-game-item-count {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      padding: 0 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1510;
+      background: var(--accent);
+      font-size: 10px;
+      font-weight: 800;
+    }
+    .mvu-game-quest,
+    .mvu-game-skill {
+      padding: 10px;
+      display: grid;
+      gap: 7px;
+    }
+    .mvu-game-empty {
+      padding: 22px 10px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      border: 1px dashed rgba(201,164,76,0.2);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .mvu-interactive {
+      cursor: pointer;
+      position: relative;
+      transition: background-color 0.18s ease, outline-color 0.18s ease, transform 0.18s ease;
+      outline: 1px solid transparent;
+      outline-offset: 2px;
+    }
+    .mvu-interactive:hover,
+    .mvu-interactive:focus-visible {
+      outline-color: rgba(201,164,76,0.42);
+      background-color: rgba(201,164,76,0.08);
+    }
+    .mvu-detail-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(0,0,0,0.58);
+      backdrop-filter: blur(5px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+    .mvu-detail-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .mvu-detail-card {
+      width: min(430px, 92vw);
+      max-height: min(680px, 88vh);
+      overflow: auto;
+      position: relative;
+      border: 1px solid rgba(214,184,91,0.66);
+      border-radius: 18px;
+      background:
+        linear-gradient(180deg, rgba(34,31,22,0.9), rgba(9,10,8,0.97)),
+        radial-gradient(circle at 20% 10%, rgba(103,199,180,0.14), transparent 30%);
+      box-shadow: 0 28px 90px rgba(0,0,0,0.58), inset 0 0 42px rgba(201,164,76,0.08);
+      transform: translateY(8px) scale(0.98);
+      transition: transform 0.18s ease;
+    }
+    .mvu-detail-card::before {
+      content: '';
+      position: absolute;
+      inset: 10px;
+      border: 1px solid rgba(201,164,76,0.23);
+      border-radius: 14px;
+      pointer-events: none;
+    }
+    .mvu-detail-overlay.visible .mvu-detail-card {
+      transform: translateY(0) scale(1);
+    }
+    .mvu-detail-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 22px 22px 8px;
+    }
+    .mvu-detail-title {
+      color: var(--accent);
+      font-family: var(--font-display);
+      font-size: 26px;
+      line-height: 1.22;
+      font-weight: 900;
+      word-break: break-word;
+    }
+    .mvu-detail-type {
+      display: inline-flex;
+      margin-top: 7px;
+      width: fit-content;
+      padding: 5px 10px;
+      border-radius: 999px;
+      color: #1a1510;
+      background: linear-gradient(135deg, var(--accent), #8de8d4);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .mvu-detail-close {
+      width: 38px;
+      height: 38px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(201,164,76,0.38);
+      border-radius: 999px;
+      background: rgba(0,0,0,0.22);
+      color: var(--accent);
+      font-size: 22px;
+      cursor: pointer;
+    }
+    .mvu-detail-close:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    .mvu-detail-body {
+      display: grid;
+      gap: 12px;
+      padding: 10px 22px 22px;
+    }
+    .mvu-detail-desc {
+      color: var(--text-primary);
+      font-size: 15px;
+      line-height: 1.72;
+      white-space: pre-wrap;
+    }
+    .mvu-detail-grid {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.22);
+      border: 1px solid rgba(201,164,76,0.16);
+    }
+    .mvu-detail-row {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.025);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .mvu-detail-row span:first-child {
+      color: var(--accent);
+      font-weight: 900;
+    }
+    .mvu-detail-row span:last-child {
+      color: var(--text-secondary);
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .mvu-detail-actions {
+      display: none;
+    }
+    .mvu-detail-actions .btn {
+      min-height: 34px;
+      padding: 7px 12px;
+      font-size: 12px;
+    }
 
     /* ---- Summary Sidebar ---- */
     .summary-sidebar {
@@ -1978,6 +2827,15 @@
         justify-content: center;
         min-height: 44px;
       }
+      .mvu-detail-overlay {
+        align-items: center;
+        padding: 18px;
+      }
+      .mvu-detail-card {
+        width: min(430px, 94vw);
+        max-height: 78vh;
+        border-radius: 18px;
+      }
       .options-bar {
         padding: 4px 14px 2px;
         gap: 6px;
@@ -2107,6 +2965,7 @@
       <button class="sidebar-close-btn" onclick="toggleSidebar()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
+      <div class="mvu-toolbar" id="mvuToolbar"></div>
       <div class="mvu-content" id="mvuContent"></div>
     </div>
 
@@ -2130,6 +2989,20 @@
 
 <!-- Offline banner -->
 <div class="offline-banner" id="offlineBanner">网络已断开，请检查网络连接</div>
+
+<!-- MVU detail overlay -->
+<div class="mvu-detail-overlay" id="mvuDetailOverlay" onclick="if(event.target===this)closeMvuDetail()">
+  <div class="mvu-detail-card" role="dialog" aria-modal="true" aria-labelledby="mvuDetailTitle">
+    <div class="mvu-detail-header">
+      <div>
+        <div class="mvu-detail-title" id="mvuDetailTitle"></div>
+        <div class="mvu-detail-type" id="mvuDetailType"></div>
+      </div>
+      <button class="mvu-detail-close" onclick="closeMvuDetail()" aria-label="关闭">×</button>
+    </div>
+    <div class="mvu-detail-body" id="mvuDetailBody"></div>
+  </div>
+</div>
 
 <!-- World Setting Modal -->
 <div class="world-setting-overlay" id="worldSettingOverlay" onclick="if(event.target===this)closeWorldSetting()">
@@ -2303,6 +3176,17 @@ let summaryPanelOpen = false;
 let editMvuMode = false;
 let editMvuMessages = [];
 let editMvuBackup = null;
+let mvuViewMode = 'visual';
+let mvuGameTab = 'character';
+let mvuGameSelection = {
+  character: null,
+  inventory: null,
+  skills: null,
+  quests: null,
+  world: null,
+};
+let mvuGameDetailOpen = false;
+let mvuSearchQuery = '';
 let userScrolledUp = false;
 let _lastBuiltPrompt = null; // cached prompt snapshot for debug inspector
 
@@ -2553,6 +3437,10 @@ async function init() {
   }
   if (!conversation.summary.mergedSummaries) {
     conversation.summary.mergedSummaries = [];
+  }
+  const mvuNormalized = normalizeMvuStructure(['characters', 'main_quests', 'side_quests']);
+  if (mvuNormalized.changed) {
+    Storage.saveConversation(conversation);
   }
 
   // Mobile: move sidebar out of overflow:hidden parent to fix touch scrolling
@@ -4181,8 +5069,9 @@ function renderSummaryPanel() {
 
 function renderMvuSidebar() {
   const container = document.getElementById('mvuContent');
+  renderMvuToolbar();
 
-  if (conversation.phase === 'init' || !conversation.mvu?.html) {
+  if (conversation.phase === 'init' || !conversation.mvu) {
     container.innerHTML = `
       <div class="mvu-placeholder">
         <div class="icon" style="width:32px;height:32px;display:block;margin:0 auto 12px;">${Icons.book}</div>
@@ -4193,8 +5082,1254 @@ function renderMvuSidebar() {
     return;
   }
 
-  // RP phase with data - render MVU
-  MVU.render(container, conversation.mvu);
+  if (mvuViewMode === 'data') {
+    MVU.renderDataView(container, conversation.mvu, { query: mvuSearchQuery });
+  } else {
+    const normalized = normalizeMvuStructure(['characters', 'main_quests', 'side_quests']);
+    if (normalized.changed) Storage.saveConversation(conversation);
+    MVU.render(container, conversation.mvu);
+    MVUInteraction.enhance(container, conversation.mvu);
+  }
+}
+
+function renderMvuToolbar() {
+  const toolbar = document.getElementById('mvuToolbar');
+  if (!toolbar) return;
+  const hasMvu = conversation?.phase === 'rp' && !!conversation?.mvu;
+  const fieldCount = hasMvu ? Object.keys(conversation.mvu.state || {}).length : 0;
+  const changedCount = hasMvu ? (conversation.mvu._changedFields || []).length : 0;
+  const visualActive = mvuViewMode === 'visual' ? ' active' : '';
+  const dataActive = mvuViewMode === 'data' ? ' active' : '';
+  const disabled = hasMvu ? '' : ' disabled';
+
+  toolbar.innerHTML = `
+    <div class="mvu-toolbar-top">
+      <div class="mvu-toolbar-title">
+        <strong>状态栏</strong>
+        <span>${hasMvu ? `${fieldCount} 个变量` : '等待初始化'} ${changedCount ? ` · 本轮更新 ${changedCount}` : ''}</span>
+      </div>
+      <div class="mvu-toolbar-actions">
+        ${changedCount ? `<span class="mvu-change-pill">${changedCount}项变化</span>` : ''}
+        <button class="btn-icon" title="刷新状态栏" onclick="refreshMvuSidebar()"${disabled}>${Icons.refresh}</button>
+        <button class="btn-icon" title="编辑状态栏" onclick="enterEditMvuMode()"${disabled}>${Icons.edit}</button>
+      </div>
+    </div>
+    <div class="mvu-view-toggle">
+      <button class="mvu-view-btn${visualActive}" onclick="setMvuViewMode('visual')"${disabled}>美化视图</button>
+      <button class="mvu-view-btn${dataActive}" onclick="setMvuViewMode('data')"${disabled}>变量视图</button>
+    </div>
+    <input class="mvu-search${mvuViewMode === 'data' ? ' visible' : ''}" value="${Utils.escapeHtml(mvuSearchQuery)}" placeholder="搜索变量、分组或内容" oninput="handleMvuSearch(this.value)"${disabled}>
+  `;
+}
+
+function setMvuViewMode(mode) {
+  mvuViewMode = ['visual', 'data'].includes(mode) ? mode : 'visual';
+  if (mvuViewMode === 'visual' && syncMvuHtmlWithState()) {
+    Storage.saveConversation(conversation);
+  }
+  renderMvuSidebar();
+}
+
+function setMvuGameTab(tab) {
+  mvuGameTab = ['character', 'inventory', 'skills', 'quests', 'world'].includes(tab) ? tab : 'character';
+  renderMvuSidebar();
+}
+
+function selectMvuGameItem(tab, id) {
+  if (!['character', 'inventory', 'skills', 'quests', 'world'].includes(tab)) return;
+  mvuGameSelection[tab] = id;
+  renderMvuSidebar();
+}
+
+function openMvuGameDetail(tab, id) {
+  if (!['character', 'inventory', 'skills', 'quests', 'world'].includes(tab)) return;
+  mvuGameSelection[tab] = id;
+  mvuGameDetailOpen = true;
+  MVUGameRenderer.openDetail(tab, id);
+}
+
+function closeMvuGameDetail() {
+  mvuGameDetailOpen = false;
+  const overlay = document.getElementById('mvuGameDetailOverlay');
+  if (overlay) overlay.classList.remove('visible');
+}
+
+function handleMvuSearch(value) {
+  mvuSearchQuery = value || '';
+  renderMvuSidebar();
+}
+
+function refreshMvuSidebar() {
+  renderMvuSidebar();
+  UI.showToast('状态栏已刷新', 'success');
+}
+
+function markMvuFieldsChanged(fields) {
+  if (!conversation?.mvu) return;
+  conversation.mvu._changedFields = [...new Set((fields || []).filter(Boolean))];
+}
+
+function handleMvuFieldInput(field, type, value) {
+  if (!conversation?.mvu?.state || !(field in conversation.mvu.state)) return;
+  let nextValue = value;
+  if (type === 'number' || type === 'bar') {
+    const parsed = Number(value);
+    nextValue = Number.isFinite(parsed) ? parsed : 0;
+  }
+  conversation.mvu.state[field] = nextValue;
+  markMvuFieldsChanged([field]);
+  syncMvuHtmlWithState();
+  Storage.saveConversation(conversation);
+  renderMvuSidebar();
+}
+
+function handleMvuListItemInput(field, index, value) {
+  if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  const oldValue = conversation.mvu.state[field][index];
+  let nextValue = value;
+  if (oldValue && typeof oldValue === 'object') {
+    try { nextValue = JSON.parse(value); } catch { nextValue = value; }
+  }
+  conversation.mvu.state[field][index] = nextValue;
+  markMvuFieldsChanged([field]);
+  syncMvuHtmlWithState();
+  Storage.saveConversation(conversation);
+  renderMvuSidebar();
+}
+
+function addMvuListItem(field) {
+  if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  const list = conversation.mvu.state[field];
+  const sample = list.find(item => item && typeof item === 'object');
+  if (sample) {
+    const next = {};
+    for (const [key, value] of Object.entries(sample)) {
+      if (key === 'id') next[key] = `${field}_${Date.now()}`;
+      else if (typeof value === 'number') next[key] = 0;
+      else next[key] = '';
+    }
+    list.push(next);
+  } else {
+    list.push('');
+  }
+  markMvuFieldsChanged([field]);
+  syncMvuHtmlWithState();
+  Storage.saveConversation(conversation);
+  renderMvuSidebar();
+}
+
+function removeMvuListItem(field, index) {
+  if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  conversation.mvu.state[field].splice(index, 1);
+  markMvuFieldsChanged([field]);
+  syncMvuHtmlWithState();
+  Storage.saveConversation(conversation);
+  renderMvuSidebar();
+}
+
+function migrateMvuExpandableCollections() {
+  const mvu = conversation?.mvu;
+  if (!mvu?.state || !mvu?.schema) return false;
+  let changed = false;
+  const state = mvu.state;
+  const schema = mvu.schema;
+
+  if (state.main_quest && !Array.isArray(state.main_quests)) {
+    schema.main_quests = schema.main_quests || {
+      type: 'list',
+      label: '主线任务',
+      group: '任务',
+      rule: '新增主线阶段时追加对象；推进、完成或失败时更新对应对象，不要覆盖其他任务',
+    };
+    state.main_quests = [{
+      id: 'main_quest_1',
+      title: '主线任务',
+      status: '进行中',
+      objective: String(state.main_quest || ''),
+      progress: String(state.main_quest || ''),
+      notes: '',
+    }];
+    changed = true;
+  }
+
+  const legacyCharacterFields = Object.keys(state).filter(key => /_(name|profile|outfit|affection|relation|personality|attitude|thoughts|location|status|role|identity|desc|description|note)$/.test(key));
+  const profileFields = Object.keys(state).filter(key => /_profile$/.test(key));
+  if ((profileFields.length || legacyCharacterFields.length) && !Array.isArray(state.characters)) {
+    schema.characters = schema.characters || {
+      type: 'list',
+      label: '角色档案',
+      group: '角色',
+      rule: '遇到新角色时追加对象；角色关系、状态、位置或想法变化时更新对应对象，不要把多个角色合并到一个档案',
+    };
+    state.characters = profileFields.map(field => {
+      const id = field.replace(/_profile$/, '');
+      const profile = String(state[field] || '');
+      const name = profile.split(/\n|，|,|：|:/).map(s => s.trim()).find(Boolean) || id;
+      return {
+        id,
+        name,
+        profile,
+        outfit: state[`${id}_outfit`] || '',
+        affection: state[`${id}_affection`] ?? '',
+        relation: state[`${id}_relation`] || '',
+        personality: state[`${id}_personality`] || '',
+        attitude: state[`${id}_attitude`] || '',
+        thoughts: state[`${id}_thoughts`] || '',
+        location: state[`${id}_location`] || '',
+      };
+    });
+    changed = true;
+  }
+
+  if (Array.isArray(state.characters)) {
+    schema.characters = schema.characters || {
+      type: 'list',
+      label: '角色档案',
+      group: '角色',
+      rule: '遇到新角色时追加对象；角色关系、状态、位置或想法变化时更新对应对象，不要把多个角色合并到一个档案',
+    };
+    const before = JSON.stringify(state.characters);
+    state.characters = normalizeMvuCharacters(state.characters, state, schema);
+    if (JSON.stringify(state.characters) !== before) changed = true;
+  }
+
+  return changed;
+}
+
+function normalizeMvuCharacters(characters, state, schema) {
+  const knownKeys = ['name', 'profile', 'outfit', 'affection', 'relation', 'personality', 'attitude', 'thoughts', 'location', 'status', 'role', 'identity', 'desc', 'description', 'note'];
+  const byId = new Map();
+  const addCharacter = (id, data = {}) => {
+    const safeId = String(id || data.id || data.name || `character_${byId.size + 1}`).trim();
+    if (!safeId) return null;
+    const current = byId.get(safeId) || { id: safeId };
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined && value !== null && value !== '') current[key] = value;
+    }
+    byId.set(safeId, current);
+    return current;
+  };
+
+  for (const item of characters || []) {
+    if (!item || typeof item !== 'object') {
+      addCharacter('', { name: String(item || '') });
+      continue;
+    }
+    const id = item.id || item.key || item.name || item.title || `character_${byId.size + 1}`;
+    const normalized = { id: String(id) };
+    for (const [key, value] of Object.entries(item)) {
+      const prefixed = String(key).match(/^(.+)_(name|profile|outfit|affection|relation|personality|attitude|thoughts|location|status|role|identity|desc|description|note)$/);
+      if (prefixed && String(id) === prefixed[1]) normalized[prefixed[2]] = value;
+      else normalized[key] = value;
+    }
+    if (!normalized.name && normalized.title) normalized.name = normalized.title;
+    addCharacter(normalized.id, normalized);
+  }
+
+  const legacyPattern = /^(.+)_(name|profile|outfit|affection|relation|personality|attitude|thoughts|location|status|role|identity|desc|description|note)$/;
+  for (const [field, value] of Object.entries(state || {})) {
+    const match = field.match(legacyPattern);
+    if (!match) continue;
+    const [, id, key] = match;
+    addCharacter(id, { [key]: value });
+  }
+
+  const result = [...byId.values()].map((character, index) => {
+    const id = character.id || `character_${index + 1}`;
+    const cleaned = { id };
+    for (const key of knownKeys) {
+      const prefixedKey = `${id}_${key}`;
+      if (character[key] !== undefined && character[key] !== null && character[key] !== '') cleaned[key] = character[key];
+      else if (character[prefixedKey] !== undefined && character[prefixedKey] !== null && character[prefixedKey] !== '') cleaned[key] = character[prefixedKey];
+    }
+    if (!cleaned.name) cleaned.name = character.title || character.label || id;
+    for (const [key, value] of Object.entries(character)) {
+      if (key === 'id' || knownKeys.includes(key) || key.startsWith(`${id}_`)) continue;
+      if (value !== undefined && value !== null && value !== '') cleaned[key] = value;
+    }
+    return cleaned;
+  });
+
+  for (const field of Object.keys(state || {})) {
+    if (!legacyPattern.test(field)) continue;
+    delete state[field];
+    if (schema) delete schema[field];
+  }
+
+  return result;
+}
+
+function syncMvuHtmlWithState() {
+  const mvu = conversation?.mvu;
+  if (!mvu?.html) return false;
+
+  const host = document.createElement('div');
+  host.innerHTML = mvu.html;
+  host.querySelectorAll('[data-auto-sync="1"]').forEach(el => el.remove());
+  const nextHtml = host.innerHTML;
+  if (nextHtml !== mvu.html) {
+    mvu.html = nextHtml;
+    return true;
+  }
+  return false;
+}
+
+function isInternalMvuField(field) {
+  return /^(templates?|templateInstances|schema|html|css)$/i.test(field)
+    || /^_/.test(field)
+    || /(_template|_templates|_instances|_schema|_html|_css)$/i.test(field);
+}
+
+function getMvuBoundFields(html) {
+  return getMvuBindingSets(html).all;
+}
+
+function getMvuBindingSets(html) {
+  const host = document.createElement('div');
+  host.innerHTML = html || '';
+  const direct = new Set();
+  const list = new Set();
+  const bar = new Set();
+  host.querySelectorAll('[data-field]').forEach(el => direct.add(el.dataset.field));
+  host.querySelectorAll('[data-field-list]').forEach(el => list.add(el.dataset.fieldList));
+  host.querySelectorAll('[data-field-bar]').forEach(el => bar.add(el.dataset.fieldBar));
+  return { direct, list, bar, all: new Set([...direct, ...list, ...bar]) };
+}
+
+function getUnboundMvuFields(fields = null) {
+  const mvu = conversation?.mvu;
+  if (!mvu?.state || !mvu?.html) return [];
+  const bindings = getMvuBindingSets(mvu.html);
+  const targets = Array.isArray(fields) && fields.length ? fields : Object.keys(mvu.state);
+  return [...new Set(targets)]
+    .filter(field => field in mvu.state)
+    .filter(field => {
+      if (isInternalMvuField(field)) return false;
+      const value = mvu.state[field];
+      if (Array.isArray(value)) return !bindings.list.has(field);
+      return !bindings.all.has(field);
+    });
+}
+
+function getMvuFieldDisplayGroup(field, def = {}, value) {
+  const haystack = `${field} ${def.label || ''} ${def.group || ''}`.toLowerCase();
+  if (/main_quests|main_quest|主线/.test(haystack)) return { key: 'quests-main', title: '主线任务', hint: '当前主线推进' };
+  if (/side_quests|side_quest|支线/.test(haystack)) return { key: 'quests-side', title: '支线任务', hint: '支线与委托' };
+  if (/quest|task|任务|委托|目标/.test(haystack)) return { key: 'quests', title: '任务记录', hint: '当前目标' };
+  if (/characters|character|npc|profile|role|角色|人物|关系/.test(haystack)) return { key: 'characters', title: '角色档案', hint: '人物关系与状态' };
+  if (/inventory|items|item|bag|weapon|armor|equipment|物品|道具|装备|背包/.test(haystack)) return { key: 'items', title: '物品行囊', hint: '道具与装备' };
+  if (/skill|ability|spell|talent|技能|法术|功法|天赋/.test(haystack)) return { key: 'skills', title: '能力技艺', hint: '技能与成长' };
+  if (/location|place|map|world|time|weather|地点|位置|地图|世界|时间|天气/.test(haystack)) return { key: 'world', title: '世界状态', hint: '环境与位置' };
+  if (def.type === 'bar' || typeof value === 'number') return { key: 'status', title: '状态概览', hint: '数值状态' };
+  return { key: 'notes', title: '状态记录', hint: '补充信息' };
+}
+
+function createMvuManagedFieldHtml(field, def = {}, value) {
+  const type = def.type || (Array.isArray(value) ? 'list' : typeof value === 'number' ? 'number' : 'text');
+  const label = Utils.escapeHtml(def.label || field);
+  const safeField = Utils.escapeHtml(field);
+  if (type === 'list' || Array.isArray(value)) {
+    const renderAs = field === 'characters' ? ' data-render-as="character-cards"' : '';
+    return `<div class="mvu-field mvu-managed-field" data-mvu-detail data-mvu-title="${label}" data-mvu-field="${safeField}"><div class="mvu-label">${label}</div><div class="mvu-list" data-field-list="${safeField}"${renderAs}></div></div>`;
+  }
+  if (type === 'bar') {
+    const max = Utils.escapeHtml(String(def.max || 100));
+    return `<div class="mvu-field mvu-managed-field" data-mvu-detail data-mvu-title="${label}" data-mvu-field="${safeField}"><div class="mvu-label">${label}</div><div class="mvu-value" data-field="${safeField}"></div><div class="mvu-bar-track" aria-valuemax="${max}"><span class="mvu-bar-fill" data-field-bar="${safeField}"></span></div></div>`;
+  }
+  return `<div class="mvu-field mvu-managed-field" data-mvu-detail data-mvu-title="${label}" data-mvu-field="${safeField}"><div class="mvu-label">${label}</div><div class="mvu-value" data-field="${safeField}"></div></div>`;
+}
+
+function findMvuSemanticSection(host, key) {
+  if (!host) return null;
+  const managed = host.querySelector(`[data-mvu-managed-section="${key}"], [data-mvu-section="${key}"]`);
+  if (managed) return managed;
+  const list = key === 'characters' ? host.querySelector('[data-field-list="characters"]') : null;
+  if (list) return list.closest('.mvu-section, details, section, article, .mvu-panel, div') || list;
+  const labels = key === 'characters' ? ['角色档案', '角色', '人物关系'] : [];
+  if (!labels.length) return null;
+  const candidates = [...host.querySelectorAll('.mvu-section, details, section, article, .mvu-panel, div')]
+    .filter(el => el !== host)
+    .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length);
+  return candidates.find(el => labels.some(label => (el.textContent || '').includes(label))) || null;
+}
+
+function upgradeMvuSemanticSection(host, key, field, def, value) {
+  const group = getMvuFieldDisplayGroup(field, def, value);
+  const sections = [...host.querySelectorAll(`[data-mvu-managed-section="${key}"], [data-mvu-section="${key}"]`)];
+  const found = findMvuSemanticSection(host, key);
+  let section = found || sections[0];
+  if (!section) return null;
+
+  for (const duplicate of sections) {
+    if (duplicate !== section && !duplicate.contains(section)) duplicate.remove();
+  }
+
+  section.classList.add('mvu-section', 'mvu-managed-section');
+  section.dataset.mvuManagedSection = key;
+  section.dataset.mvuSection = key;
+  if (section.tagName === 'DETAILS') section.open = true;
+  section.innerHTML = `<summary><span>${Utils.escapeHtml(group.title)}</span><small>${Utils.escapeHtml(group.hint)}</small></summary><div class="mvu-managed-body">${createMvuManagedFieldHtml(field, def, value)}</div>`;
+  return section;
+}
+
+function ensureMvuHtmlBindings(fields = []) {
+  const mvu = conversation?.mvu;
+  if (!mvu?.state) return [];
+  if (!mvu.html) mvu.html = '<div class="mvu-root"></div>';
+
+  const missing = getUnboundMvuFields(fields);
+  if (!missing.length) return [];
+
+  const host = document.createElement('div');
+  host.innerHTML = mvu.html;
+  let root = host.firstElementChild;
+  if (!root) {
+    root = document.createElement('div');
+    root.className = 'mvu-root';
+    host.appendChild(root);
+  }
+
+  const repaired = [];
+  for (const field of missing) {
+    const value = mvu.state[field];
+    const def = mvu.schema?.[field] || {};
+    const group = getMvuFieldDisplayGroup(field, def, value);
+    let section = upgradeMvuSemanticSection(host, group.key, field, def, value) || host.querySelector(`[data-mvu-managed-section="${group.key}"]`);
+    if (!section) {
+      section = document.createElement('details');
+      section.className = 'mvu-section mvu-managed-section';
+      section.dataset.mvuManagedSection = group.key;
+      section.dataset.mvuSection = group.key;
+      section.open = true;
+      section.innerHTML = `<summary><span>${Utils.escapeHtml(group.title)}</span><small>${Utils.escapeHtml(group.hint)}</small></summary><div class="mvu-managed-body"></div>`;
+      root.appendChild(section);
+    }
+    const hasBinding = section.querySelector(`[data-field="${field}"], [data-field-list="${field}"], [data-field-bar="${field}"]`);
+    if (!hasBinding) {
+      const body = section.querySelector('.mvu-managed-body') || section;
+      body.insertAdjacentHTML('beforeend', createMvuManagedFieldHtml(field, def, value));
+    }
+    repaired.push(field);
+  }
+
+  if (repaired.length) mvu.html = host.innerHTML;
+  return repaired;
+}
+
+function auditMvuStructure() {
+  const mvu = conversation?.mvu;
+  const result = {
+    unboundFields: [],
+    duplicateBindings: [],
+    staleBindings: [],
+    legacyFields: [],
+    conflictingCollections: [],
+    staticSections: [],
+  };
+  if (!mvu?.state) return result;
+  const state = mvu.state || {};
+  const schema = mvu.schema || {};
+  const host = document.createElement('div');
+  host.innerHTML = mvu.html || '';
+  const counts = new Map();
+  const bump = field => {
+    if (!field) return;
+    counts.set(field, (counts.get(field) || 0) + 1);
+    if (!(field in state)) result.staleBindings.push(field);
+  };
+  host.querySelectorAll('[data-field]').forEach(el => bump(el.dataset.field));
+  host.querySelectorAll('[data-field-list]').forEach(el => bump(el.dataset.fieldList));
+  host.querySelectorAll('[data-field-bar]').forEach(el => bump(el.dataset.fieldBar));
+  result.duplicateBindings = [...counts.entries()].filter(([, count]) => count > 1).map(([field, count]) => ({ field, count }));
+  result.unboundFields = getUnboundMvuFields();
+  result.staleBindings = [...new Set(result.staleBindings)];
+  result.legacyFields = Object.keys(state).filter(field => /_(name|profile|outfit|affection|relation|personality|attitude|thoughts|location|status|role|identity|desc|description|note)$/.test(field));
+  if ('main_quest' in state && Array.isArray(state.main_quests)) result.conflictingCollections.push('main_quest/main_quests');
+  if ('side_quest' in state && Array.isArray(state.side_quests)) result.conflictingCollections.push('side_quest/side_quests');
+  for (const [field] of Object.entries(schema)) {
+    if (!(field in state) && !isInternalMvuField(field)) result.staleBindings.push(`schema:${field}`);
+  }
+  const characterSection = findMvuSemanticSection(host, 'characters');
+  if (characterSection && !characterSection.querySelector('[data-field-list="characters"]')) result.staticSections.push('characters');
+  return result;
+}
+
+function normalizeMvuHtmlSections(fields = []) {
+  const mvu = conversation?.mvu;
+  if (!mvu?.html || !mvu?.state) return false;
+  const host = document.createElement('div');
+  host.innerHTML = mvu.html;
+  let changed = false;
+  const specs = [
+    { key: 'characters', field: 'characters' },
+    { key: 'quests-main', field: 'main_quests' },
+    { key: 'quests-side', field: 'side_quests' },
+  ];
+  const targets = fields?.length ? new Set(fields) : null;
+
+  for (const spec of specs) {
+    if (targets && !targets.has(spec.field)) continue;
+    if (!Array.isArray(mvu.state[spec.field])) continue;
+    const def = mvu.schema?.[spec.field] || {};
+    const value = mvu.state[spec.field];
+    const selectors = [
+      `[data-mvu-managed-section="${spec.key}"]`,
+      `[data-mvu-section="${spec.key}"]`,
+      `[data-field-list="${spec.field}"]`,
+    ];
+    let sections = [...host.querySelectorAll(selectors.join(','))]
+      .map(el => el.matches('[data-field-list]') ? (el.closest('.mvu-section, details, section, article, .mvu-panel, div') || el) : el);
+    sections = [...new Set(sections)].filter(Boolean);
+    const semantic = findMvuSemanticSection(host, spec.key);
+    if (semantic && !sections.includes(semantic)) sections.push(semantic);
+    if (!sections.length) continue;
+
+    const keep = sections.find(section => section.querySelector(`[data-field-list="${spec.field}"]`)) || sections[0];
+    for (const section of sections) {
+      if (section !== keep && !section.contains(keep)) {
+        section.remove();
+        changed = true;
+      }
+    }
+    keep.classList.add('mvu-section', 'mvu-managed-section');
+    keep.dataset.mvuManagedSection = spec.key;
+    keep.dataset.mvuSection = spec.key;
+    if (keep.tagName === 'DETAILS') keep.open = true;
+    if (!keep.querySelector(`[data-field-list="${spec.field}"]`)) {
+      const group = getMvuFieldDisplayGroup(spec.field, def, value);
+      keep.innerHTML = `<summary><span>${Utils.escapeHtml(group.title)}</span><small>${Utils.escapeHtml(group.hint)}</small></summary><div class="mvu-managed-body">${createMvuManagedFieldHtml(spec.field, def, value)}</div>`;
+      changed = true;
+    }
+  }
+
+  const nextHtml = host.innerHTML;
+  if (changed && nextHtml !== mvu.html) mvu.html = nextHtml;
+  return changed;
+}
+
+function normalizeMvuStructure(fields = []) {
+  const mvu = conversation?.mvu;
+  if (!mvu?.state || !mvu?.schema) return { changed: false, repaired: [], audit: auditMvuStructure() };
+  let changed = false;
+  changed = migrateMvuExpandableCollections() || changed;
+  changed = syncMvuHtmlWithState() || changed;
+
+  const state = mvu.state;
+  const schema = mvu.schema;
+  if (Array.isArray(state.main_quests) && state.main_quest !== undefined) {
+    delete state.main_quest;
+    delete schema.main_quest;
+    changed = true;
+  }
+  if (Array.isArray(state.side_quests) && state.side_quest !== undefined) {
+    delete state.side_quest;
+    delete schema.side_quest;
+    changed = true;
+  }
+  for (const key of Object.keys(schema)) {
+    if (!(key in state) && !isInternalMvuField(key)) {
+      delete schema[key];
+      changed = true;
+    }
+  }
+
+  changed = normalizeMvuHtmlSections(fields) || changed;
+  const repaired = ensureMvuHtmlBindings(fields);
+  if (repaired.length) changed = true;
+  return { changed, repaired, audit: auditMvuStructure() };
+}
+
+function warnUnboundMvuFields(prefix = '美化视图未同步', fields = null) {
+  const missing = getUnboundMvuFields(fields);
+  if (!missing.length) return false;
+  UI.showToast(`${prefix}：${missing.slice(0, 3).join('、')}${missing.length > 3 ? ' 等' : ''}`, 'info');
+  return true;
+}
+
+const MVUGameIcons = {
+  character: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7.5" r="3.4"></circle><path d="M5.5 19.2c1.3-4.4 11.7-4.4 13 0"></path><path d="M7.8 5.4c1.2-2 7.2-2 8.4 0"></path></svg>',
+  status: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h4l2-6 4 11 2-5h4"></path><path d="M12 3v2"></path><path d="M12 19v2"></path></svg>',
+  inventory: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8c.4-3 2-4.5 5-4.5S16.6 5 17 8"></path><path d="M5.5 8.5h13l1.2 10.5H4.3L5.5 8.5z"></path><path d="M8.5 12h7"></path><path d="M12 10v6"></path></svg>',
+  item: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v7c0 3.2-2.8 5.4-7 7-4.2-1.6-7-3.8-7-7V7l7-4z"></path><path d="M12 7v10"></path><path d="M8.5 10.5h7"></path></svg>',
+  skills: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5.5c4-1.5 8-1.5 12 0v13c-4-1.5-8-1.5-12 0v-13z"></path><path d="M12 5v13"></path><path d="M8 9h2"></path><path d="M14 9h2"></path><path d="M9 13h6"></path></svg>',
+  quests: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10l1.5 3-1.5 3H7L5.5 7 7 4z"></path><path d="M8 10v10"></path><path d="M6 20h5"></path><path d="M10 7h5"></path></svg>',
+  world: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 17.5l5-7 4 5 3-4 5 6"></path><path d="M5 18.5h14"></path><circle cx="17.5" cy="6.5" r="2.2"></circle></svg>',
+  location: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s6-5.3 6-11a6 6 0 1 0-12 0c0 5.7 6 11 6 11z"></path><circle cx="12" cy="10" r="2.2"></circle></svg>',
+};
+
+const MVUGameRenderer = {
+  detailMap: new Map(),
+
+  render(container, mvuData, options = {}) {
+    if (!container || !mvuData) return;
+    const model = this.buildModel(mvuData, options);
+    this.detailMap = new Map();
+    let html = '<div class="mvu-game-view">';
+    html += this.renderHero(model);
+    html += this.renderTabs(model);
+    html += `<div class="mvu-game-pane">${this.renderActivePane(model)}</div>`;
+    html += this.renderDetailModal();
+    html += '</div>';
+    container.innerHTML = html;
+  },
+
+  openDetail(tab, id) {
+    const item = this.detailMap.get(`${tab}:${id}`);
+    const overlay = document.getElementById('mvuGameDetailOverlay');
+    const body = document.getElementById('mvuGameDetailBody');
+    if (!item || !overlay || !body) return;
+    body.innerHTML = this.renderGameDetail(item);
+    overlay.classList.add('visible');
+  },
+
+  buildModel(mvuData, options = {}) {
+    const schema = mvuData.schema || {};
+    const state = mvuData.state || {};
+    const query = (options.query || '').trim().toLowerCase();
+    const model = { player: [], world: [], characters: new Map(), inventory: [], quests: [], skills: [], other: [] };
+
+    for (const [field, value] of Object.entries(state)) {
+      const def = schema[field] || {};
+      const entry = { field, value, def, label: def.label || field, text: this.formatValue(value) };
+      const searchable = `${field} ${entry.label} ${entry.text}`.toLowerCase();
+      if (query && !searchable.includes(query)) continue;
+      const category = this.classify(entry);
+
+      if (category === 'inventory') this.pushListEntries(model.inventory, entry, 'item');
+      else if (category === 'quest') this.pushListEntries(model.quests, entry, 'quest');
+      else if (category === 'skill') this.pushListEntries(model.skills, entry, 'skill');
+      else if (category === 'character') this.addCharacter(model.characters, entry);
+      else if (category === 'world') model.world.push(entry);
+      else if (category === 'player') model.player.push(entry);
+      else model.other.push(entry);
+    }
+
+    model.characters = Array.from(model.characters.values());
+    return model;
+  },
+
+  classify(entry) {
+    const key = `${entry.field} ${entry.label}`.toLowerCase();
+    if (/inventory|items|item|bag|equipment|weapon|armor|物品|道具|背包|装备|武器|防具/.test(key)) return 'inventory';
+    if (/quest|task|objective|mission|任务|目标|委托|主线|支线/.test(key)) return 'quest';
+    if (/skill|ability|spell|talent|技能|能力|法术|天赋|熟练/.test(key)) return 'skill';
+    if (/character|npc|role|profile|affection|relation|attitude|thought|outfit|角色|人物|好感|关系|态度|心理|服装/.test(key)) return 'character';
+    if (/date|time|location|weather|environment|world|faction|place|时间|日期|地点|位置|天气|环境|世界|势力/.test(key)) return 'world';
+    if (/hp|mp|sp|sanity|health|stamina|energy|hunger|exp|level|money|coin|gold|title|status|生命|体力|精力|理智|经验|等级|金钱|金币|称号|状态/.test(key)) return 'player';
+    if (entry.def.type === 'bar' || entry.def.type === 'number' || typeof entry.value === 'number') return 'player';
+    return 'other';
+  },
+
+  pushListEntries(target, entry, type) {
+    if (Array.isArray(entry.value)) {
+      entry.value.forEach((item, index) => target.push({ ...entry, item, index, type, id: this.idFor(type, entry.field, index) }));
+    } else {
+      target.push({ ...entry, item: entry.value, index: -1, type, id: this.idFor(type, entry.field, -1) });
+    }
+  },
+
+  idFor(type, field, index = -1) {
+    return `${type}:${encodeURIComponent(String(field || 'item'))}:${index}`;
+  },
+
+  addCharacter(map, entry) {
+    const prefix = this.prefixOf(entry.field);
+    const id = prefix || entry.field;
+    if (!map.has(id)) map.set(id, { id, title: this.characterTitle(id, entry), fields: [] });
+    const group = map.get(id);
+    group.fields.push(entry);
+    if (/profile|name|角色|人物|档案/.test(`${entry.field} ${entry.label}`.toLowerCase())) {
+      group.title = this.shortValue(entry.value) || group.title;
+    }
+  },
+
+  prefixOf(field) {
+    const parts = String(field).split('_');
+    return parts.length > 1 ? parts[0] : '';
+  },
+
+  characterTitle(id, entry) {
+    if (entry.label && entry.label.includes(' - ')) return entry.label.split(' - ')[0];
+    return id || entry.label || entry.field;
+  },
+
+  renderHero(model) {
+    const location = model.world.find(e => /location|place|地点|位置/.test(`${e.field} ${e.label}`.toLowerCase()));
+    const time = model.world.find(e => /date|time|日期|时间/.test(`${e.field} ${e.label}`.toLowerCase()));
+    const realm = this.findFirst(model.player, /realm|level|cultivation|境界|修为|等级|称号/);
+    const title = realm ? this.shortValue(realm.value) : '无名修士';
+    const subtitle = [location ? `所在：${this.shortValue(location.value)}` : '', time ? `${time.label}: ${this.shortValue(time.value)}` : ''].filter(Boolean).join(' / ');
+    const keyBars = model.player.filter(e => e.def.type === 'bar' || typeof e.value === 'number').slice(0, 3);
+    return `<div class="mvu-game-hero mvu-interactive" data-mvu-detail data-mvu-title="${this.attr(title)}" data-mvu-type="修行总览" data-mvu-desc="${this.attr(subtitle)}">
+      <div class="mvu-game-eyebrow">Cultivation Chronicle</div>
+      <div class="mvu-game-title">${this.esc(title)}</div>
+      <div class="mvu-realm-badge">${this.esc(realm ? realm.label : '修行中')}</div>
+      <div class="mvu-game-subtitle">${this.esc(subtitle || '状态栏游戏视图')}</div>
+      <div class="mvu-cultivation-core">
+        ${keyBars.map(entry => this.renderMiniBar(entry)).join('')}
+      </div>
+    </div>`;
+  },
+
+  findFirst(entries, regex) {
+    return entries.find(e => regex.test(`${e.field} ${e.label}`.toLowerCase()));
+  },
+
+  renderMiniBar(entry) {
+    const max = Number(entry.def.max || (Number(entry.value) > 100 ? Number(entry.value) : 100));
+    const num = Number(entry.value);
+    const isNumeric = Number.isFinite(num);
+    const pct = isNumeric && max ? Math.max(0, Math.min(100, (num / max) * 100)) : 0;
+    return `<div class="mvu-game-bar-card" data-mvu-detail data-mvu-field="${this.attr(entry.field)}">
+      <div class="mvu-game-row">
+        <span class="mvu-game-label">${this.esc(entry.label)}</span>
+        <span class="mvu-game-value">${this.esc(isNumeric ? `${num}/${max}` : this.shortValue(entry.value))}</span>
+      </div>
+      ${isNumeric ? `<div class="mvu-game-track"><div class="mvu-game-fill" style="width:${pct}%"></div></div>` : ''}
+    </div>`;
+  },
+
+  renderTabs(model) {
+    const tabs = [
+      ['character', '人物', model.player.length + model.characters.length],
+      ['inventory', '储物', model.inventory.length],
+      ['skills', '功法', model.skills.length],
+      ['quests', '任务', model.quests.length],
+      ['world', '世界', model.world.length],
+    ];
+    return `<div class="mvu-game-tabs">${tabs.map(([id, label, count]) => `
+      <button class="mvu-game-tab${mvuGameTab === id ? ' active' : ''}" onclick="setMvuGameTab('${id}')">${this.renderIcon(id)}<span>${label}</span><span class="mvu-game-section-count"> ${count}</span></button>
+    `).join('')}</div>`;
+  },
+
+  renderActivePane(model) {
+    if (mvuGameTab === 'inventory') return this.renderListPane('inventory', this.inventoryItems(model.inventory), '储物袋空空如也', true);
+    if (mvuGameTab === 'skills') return this.renderListPane('skills', this.skillItems(model.skills), '尚未记录功法/术法');
+    if (mvuGameTab === 'quests') return this.renderListPane('quests', this.questItems(model.quests), '暂无任务因果');
+    if (mvuGameTab === 'world') return this.renderListPane('world', this.worldItems(model.world, model.other), '暂无世界信息');
+    return this.renderListPane('character', this.characterItems(model), '暂无人物状态');
+  },
+
+  renderListPane(tab, items, emptyText, grid = false) {
+    if (!items.length) return this.empty(emptyText);
+    const selected = this.ensureSelection(tab, items);
+    items.forEach(item => this.detailMap.set(`${tab}:${item.id}`, item));
+    return `<div class="mvu-game-layout">
+      <div class="${grid ? 'mvu-game-list-grid' : 'mvu-game-list'}">${items.map(item => this.renderEntry(tab, item, selected?.id === item.id)).join('')}</div>
+    </div>`;
+  },
+
+  ensureSelection(tab, items) {
+    if (!items.length) {
+      mvuGameSelection[tab] = null;
+      return null;
+    }
+    const current = mvuGameSelection[tab];
+    const selected = items.find(item => item.id === current) || items[0];
+    if (selected.id !== current) mvuGameSelection[tab] = selected.id;
+    return selected;
+  },
+
+  renderEntry(tab, item, active) {
+    const sub = item.sub || item.desc || '';
+    return `<button type="button" class="mvu-game-entry${active ? ' active' : ''}" onclick="openMvuGameDetail('${tab}', '${this.attr(item.id)}')">
+      <span class="mvu-game-entry-icon ${tab}">${this.renderIcon(item.iconType || tab, item.icon || this.firstChar(item.title))}</span>
+      <span class="mvu-game-entry-main">
+        <span class="mvu-game-entry-title">${this.esc(item.title)}</span>
+        ${sub ? `<span class="mvu-game-entry-sub">${this.esc(this.shortText(sub, 48))}</span>` : ''}
+      </span>
+      <span class="mvu-game-entry-tag">${this.esc(item.type || '详情')}</span>
+    </button>`;
+  },
+
+  renderDetailModal() {
+    return `<div class="mvu-game-modal" id="mvuGameDetailOverlay" onclick="if(event.target===this) closeMvuGameDetail()">
+      <div class="mvu-game-modal-card">
+        <button type="button" class="mvu-game-modal-close" onclick="closeMvuGameDetail()" aria-label="关闭">×</button>
+        <div id="mvuGameDetailBody"></div>
+      </div>
+    </div>`;
+  },
+
+  renderGameDetail(item) {
+    const attrs = (item.attrs || []).filter(row => row[1] !== undefined && row[1] !== '');
+    return `<div class="mvu-game-modal-head">
+        <div class="mvu-game-modal-icon ${this.esc(item.tab || '')}">${this.renderIcon(item.iconType || item.tab, item.icon || this.firstChar(item.title))}</div>
+        <div>
+          <div class="mvu-game-modal-title">${this.esc(item.title)}</div>
+          <div class="mvu-game-modal-subtitle">${this.esc(item.sub || this.typeSubtitle(item))}</div>
+        </div>
+        <div class="mvu-game-modal-badge">${this.esc(item.type || '详情')}</div>
+      </div>
+      ${item.desc ? `<div class="mvu-game-modal-desc">${this.esc(item.desc).replace(/\n/g, '<br>')}</div>` : ''}
+      ${attrs.length ? `<div class="mvu-game-modal-attrs">${attrs.map(([label, value]) => `
+        <div class="mvu-game-modal-attr"><span>${this.esc(label)}</span><span>${this.esc(this.formatValue(value)).replace(/\n/g, '<br>')}</span></div>
+      `).join('')}</div>` : ''}
+    `;
+  },
+
+  typeSubtitle(item) {
+    const map = { character: '人物档案', inventory: '储物说明', skills: '功法秘录', quests: '任务卷宗', world: '世界情报' };
+    return map[item.tab] || '详情';
+  },
+
+  renderIcon(type, fallback) {
+    return MVUGameIcons[type] || MVUGameIcons.item || `<span>${this.esc(fallback || '?')}</span>`;
+  },
+
+  characterItems(model) {
+    const stats = model.player.slice(0, 10).map(entry => ({
+      id: this.idFor('player', entry.field, -1),
+      tab: 'character',
+      iconType: 'status',
+      title: entry.label,
+      type: entry.def.type === 'bar' ? '状态条' : '状态',
+      icon: this.firstChar(entry.label),
+      sub: this.shortValue(entry.value),
+      desc: this.formatValue(entry.value),
+      attrs: this.entryAttrs(entry),
+    }));
+    const chars = model.characters.slice(0, 10).map(char => ({
+      id: this.idFor('character', char.id, -1),
+      tab: 'character',
+      iconType: 'character',
+      title: char.title,
+      type: '角色',
+      icon: this.firstChar(char.title),
+      sub: char.fields.slice(0, 2).map(e => `${e.label}: ${this.shortValue(e.value)}`).join(' / '),
+      desc: char.fields.slice(0, 4).map(e => `${e.label}：${this.shortValue(e.value)}`).join('\n'),
+      attrs: char.fields.slice(0, 8).map(e => [e.label, e.value]),
+    }));
+    return [...stats, ...chars];
+  },
+
+  inventoryItems(items) {
+    return items.slice(0, 30).map(entry => {
+      const name = this.itemName(entry.item);
+      const count = this.itemCount(entry.item);
+      return {
+        id: entry.id,
+        tab: 'inventory',
+        iconType: 'inventory',
+        title: name,
+        type: this.objectProp(entry.item, ['type', 'category', 'rarity']) || '物品',
+        icon: this.firstChar(name),
+        sub: count ? `数量 ${count}` : (this.itemDesc(entry.item) || entry.label),
+        desc: this.itemDesc(entry.item) || `${name} 记录在「${entry.label}」中。`,
+        attrs: this.itemAttrs(entry, [['数量', count], ['来源', entry.label]]),
+      };
+    });
+  },
+
+  questItems(quests) {
+    return quests.slice(0, 12).map(entry => {
+      const title = this.itemName(entry.item);
+      return {
+        id: entry.id,
+        tab: 'quests',
+        iconType: 'quests',
+        title,
+        type: this.objectProp(entry.item, ['status', 'stage', 'type']) || '任务',
+        icon: '令',
+        sub: this.itemDesc(entry.item) || this.shortValue(entry.item),
+        desc: this.itemDesc(entry.item) || this.formatValue(entry.item),
+        attrs: this.itemAttrs(entry, [['归属', entry.label]]),
+      };
+    });
+  },
+
+  skillItems(skills) {
+    return skills.slice(0, 14).map(entry => {
+      const title = this.itemName(entry.item);
+      return {
+        id: entry.id,
+        tab: 'skills',
+        iconType: 'skills',
+        title,
+        type: this.objectProp(entry.item, ['realm', 'level', 'type', 'category']) || '功法',
+        icon: '法',
+        sub: this.objectProp(entry.item, ['effect', 'status']) || this.itemDesc(entry.item) || this.shortValue(entry.item),
+        desc: this.itemDesc(entry.item) || this.formatValue(entry.item),
+        attrs: this.itemAttrs(entry, [['来源', entry.label]]),
+      };
+    });
+  },
+
+  worldItems(world, other) {
+    return [...world, ...other].slice(0, 24).map(entry => ({
+      id: this.idFor('world', entry.field, -1),
+      tab: 'world',
+      iconType: /location|place|地点|位置/.test(`${entry.field} ${entry.label}`.toLowerCase()) ? 'location' : 'world',
+      title: entry.label,
+      type: /location|place|地点|位置/.test(`${entry.field} ${entry.label}`.toLowerCase()) ? '地点' : '世界',
+      icon: this.firstChar(entry.label),
+      sub: this.shortValue(entry.value),
+      desc: this.formatValue(entry.value),
+      attrs: this.entryAttrs(entry),
+    }));
+  },
+
+  entryAttrs(entry) {
+    const rows = [];
+    if (entry.def?.max !== undefined) rows.push(['上限', entry.def.max]);
+    if (entry.def?.rule) rows.push(['规则', entry.def.rule]);
+    rows.push(['当前', entry.value]);
+    return rows;
+  },
+
+  itemAttrs(entry, baseRows = []) {
+    const rows = baseRows.filter(row => row[1] !== undefined && row[1] !== '');
+    if (entry.item && typeof entry.item === 'object') {
+      for (const [key, value] of Object.entries(entry.item)) {
+        if (['name', 'title', 'label', 'desc', 'detail', 'description', 'note'].includes(key)) continue;
+        rows.push([this.prettyKey(key), value]);
+      }
+    }
+    return rows.length ? rows : [['记录', this.formatValue(entry.item)]];
+  },
+
+  objectProp(item, keys) {
+    if (!item || typeof item !== 'object') return '';
+    for (const key of keys) {
+      if (item[key] !== undefined && item[key] !== '') return String(item[key]);
+    }
+    return '';
+  },
+
+  firstChar(text) {
+    return String(text || '?').trim().charAt(0) || '?';
+  },
+
+  shortText(value, max = 80) {
+    const text = this.formatValue(value).replace(/\s+/g, ' ').trim();
+    return text.length > max ? text.slice(0, Math.max(0, max - 3)) + '...' : text;
+  },
+
+  renderBars(entries) {
+    if (!entries.length) return '';
+    const bars = entries.slice(0, 8).map(entry => {
+      const max = Number(entry.def.max || (Number(entry.value) > 100 ? Number(entry.value) : 100));
+      const num = Number(entry.value);
+      const pct = Number.isFinite(num) && max ? Math.max(0, Math.min(100, (num / max) * 100)) : 0;
+      const isNumeric = Number.isFinite(num);
+      return `<div class="mvu-game-bar-card" data-mvu-detail data-mvu-field="${this.attr(entry.field)}">
+        <div class="mvu-game-row">
+          <span class="mvu-game-label">${this.esc(entry.label)}</span>
+          <span class="mvu-game-value">${this.esc(isNumeric ? `${num}/${max}` : this.shortValue(entry.value))}</span>
+        </div>
+        ${isNumeric ? `<div class="mvu-game-track"><div class="mvu-game-fill" style="width:${pct}%"></div></div>` : ''}
+      </div>`;
+    }).join('');
+    return this.section('主角状态', entries.length, `<div class="mvu-game-bars">${bars}</div>`);
+  },
+
+  renderWorld(entries) {
+    if (!entries.length) return '';
+    const chips = entries.slice(0, 10).map(entry => `<span class="mvu-game-chip" data-mvu-detail data-mvu-field="${this.attr(entry.field)}">${this.esc(entry.label)}：${this.esc(this.shortValue(entry.value))}</span>`).join('');
+    return this.section('世界信息', entries.length, `<div class="mvu-game-chip-row">${chips}</div>`);
+  },
+
+  renderCharacters(characters) {
+    if (!characters.length) return '';
+    const cards = characters.slice(0, 8).map(char => {
+      const meta = char.fields.slice(0, 3).map(e => `${e.label}: ${this.shortValue(e.value)}`).join('\n');
+      return `<div class="mvu-game-card" data-mvu-detail data-mvu-title="${this.attr(char.title)}" data-mvu-type="角色" data-mvu-desc="${this.attr(meta)}">
+        <div class="mvu-game-card-title">${this.esc(char.title)}</div>
+        <div class="mvu-game-card-meta">${this.esc(meta || `${char.fields.length} 个角色字段`).replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }).join('');
+    return this.section('角色', characters.length, `<div class="mvu-game-grid">${cards}</div>`);
+  },
+
+  renderInventory(items) {
+    if (!items.length) return '';
+    const html = items.slice(0, 24).map(entry => {
+      const name = this.itemName(entry.item);
+      const count = this.itemCount(entry.item);
+      const desc = this.itemDesc(entry.item) || `${entry.label}: ${name}`;
+      return `<div class="mvu-game-item" data-mvu-detail data-mvu-field="${this.attr(entry.field)}" data-mvu-title="${this.attr(name)}" data-mvu-type="物品" data-mvu-desc="${this.attr(desc)}">
+        ${count ? `<span class="mvu-game-item-count">${this.esc(count)}</span>` : ''}
+        <span class="mvu-game-item-icon">${this.esc(name.charAt(0) || '?')}</span>
+        <span class="mvu-game-item-name">${this.esc(name)}</span>
+      </div>`;
+    }).join('');
+    return this.section('背包', items.length, `<div class="mvu-game-inventory">${html}</div>`);
+  },
+
+  renderQuests(quests) {
+    if (!quests.length) return '';
+    const html = quests.slice(0, 8).map(entry => {
+      const title = this.itemName(entry.item);
+      const desc = this.itemDesc(entry.item) || this.formatValue(entry.item);
+      return `<div class="mvu-game-quest" data-mvu-detail data-mvu-field="${this.attr(entry.field)}" data-mvu-title="${this.attr(title)}" data-mvu-type="任务" data-mvu-desc="${this.attr(desc)}">
+        <div class="mvu-game-card-title">${this.esc(title)}</div>
+        <div class="mvu-game-card-meta">${this.esc(desc).replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }).join('');
+    return this.section('任务', quests.length, `<div class="mvu-game-grid">${html}</div>`);
+  },
+
+  renderSkills(skills) {
+    if (!skills.length) return '';
+    const html = skills.slice(0, 10).map(entry => {
+      const title = this.itemName(entry.item);
+      const desc = this.itemDesc(entry.item) || this.formatValue(entry.item);
+      return `<div class="mvu-game-skill" data-mvu-detail data-mvu-field="${this.attr(entry.field)}" data-mvu-title="${this.attr(title)}" data-mvu-type="技能" data-mvu-desc="${this.attr(desc)}">
+        <div class="mvu-game-card-title">${this.esc(title)}</div>
+        <div class="mvu-game-card-meta">${this.esc(desc).replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }).join('');
+    return this.section('技能', skills.length, `<div class="mvu-game-grid">${html}</div>`);
+  },
+
+  renderOther(entries) {
+    if (!entries.length) return '';
+    const chips = entries.slice(0, 14).map(entry => `<span class="mvu-game-chip" data-mvu-detail data-mvu-field="${this.attr(entry.field)}">${this.esc(entry.label)}：${this.esc(this.shortValue(entry.value))}</span>`).join('');
+    return this.section('其他', entries.length, `<div class="mvu-game-chip-row">${chips}</div>`);
+  },
+
+  section(title, count, body) {
+    return `<section class="mvu-game-section">
+      <div class="mvu-game-section-head"><span class="mvu-game-section-title">${this.esc(title)}</span><span class="mvu-game-section-count">${count}</span></div>
+      ${body}
+    </section>`;
+  },
+
+  empty(text) {
+    return `<div class="mvu-game-empty">${this.esc(text)}</div>`;
+  },
+
+  itemName(item) {
+    if (item && typeof item === 'object') return String(item.name || item.title || item.label || item.id || '未命名');
+    return this.shortValue(item) || '未命名';
+  },
+
+  itemDesc(item) {
+    if (item && typeof item === 'object') return String(item.desc || item.detail || item.description || item.effect || item.note || '');
+    return '';
+  },
+
+  itemCount(item) {
+    if (item && typeof item === 'object' && item.count !== undefined) return String(item.count);
+    return '';
+  },
+
+  prettyKey(key) {
+    const map = {
+      effect: '效果',
+      count: '数量',
+      rarity: '稀有度',
+      status: '状态',
+      location: '位置',
+      owner: '持有者',
+      realm: '境界',
+      level: '层级',
+      progress: '进度',
+      relation: '关系',
+      faction: '势力',
+      type: '类型',
+      category: '类别',
+    };
+    return map[key] || key;
+  },
+
+  shortValue(value) {
+    const text = this.formatValue(value).replace(/\s+/g, ' ').trim();
+    return text.length > 80 ? text.slice(0, 77) + '...' : text;
+  },
+
+  formatValue(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return value.map(v => this.formatValue(v)).join('\n');
+    if (typeof value === 'object') return Object.entries(value).map(([k, v]) => `${k}: ${this.formatValue(v)}`).join('\n');
+    return String(value);
+  },
+
+  esc(value) { return Utils.escapeHtml(String(value ?? '')); },
+  attr(value) { return this.esc(value).replace(/`/g, '&#96;'); },
+};
+
+const MVUInteraction = {
+  passiveSelector: 'button,input,textarea,select,a,summary,.mvu-tab,[data-tab],[data-no-mvu-popup]',
+  explicitSelector: '[data-mvu-detail],[data-mvu-action],[data-mvu-field-detail]',
+  inferredSelector: '.mvu-list-item,.mvu-item,.mvu-card,.mvu-chip,.mvu-tag,[data-role="item"],[data-role="character"],[data-role="quest"],[data-role="skill"]',
+
+  enhance(container, mvuData) {
+    if (!container || !mvuData) return;
+    container._mvuInteractionData = mvuData;
+    if (!container.dataset.mvuInteractionBound) {
+      container.dataset.mvuInteractionBound = '1';
+      container.addEventListener('click', (event) => this.handleClick(event, container, container._mvuInteractionData));
+      container.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const target = event.target.closest('.mvu-interactive');
+        if (!target || !container.contains(target)) return;
+        event.preventDefault();
+        this.openForElement(target, container, container._mvuInteractionData);
+      });
+    }
+    this.markInteractive(container);
+  },
+
+  markInteractive(container) {
+    container.querySelectorAll('.mvu-interactive').forEach(el => {
+      el.classList.remove('mvu-interactive');
+      el.removeAttribute('tabindex');
+    });
+
+    const candidates = new Set();
+    container.querySelectorAll(this.explicitSelector).forEach(el => candidates.add(el));
+    container.querySelectorAll('[data-field],[data-field-bar]').forEach(el => candidates.add(el));
+    container.querySelectorAll('[data-field-list]').forEach(list => {
+      Array.from(list.children).forEach(child => candidates.add(child));
+    });
+    container.querySelectorAll(this.inferredSelector).forEach(el => candidates.add(el));
+
+    for (const el of candidates) {
+      if (!this.canEnhance(el, container)) continue;
+      el.classList.add('mvu-interactive');
+      if (!el.hasAttribute('tabindex')) el.tabIndex = 0;
+    }
+  },
+
+  canEnhance(el, container) {
+    if (!el || !container.contains(el)) return false;
+    if (el.closest(this.passiveSelector)) return false;
+    if (el.closest('.mvu-tabs')) return false;
+    const text = (el.innerText || el.textContent || '').trim();
+    if (!text && !el.dataset.field && !el.dataset.fieldBar && !el.dataset.mvuTitle) return false;
+    if (text.length > 180 && !el.matches(this.explicitSelector) && !el.dataset.field && !el.dataset.fieldBar) return false;
+    return true;
+  },
+
+  handleClick(event, container, mvuData) {
+    if (event.target.closest(this.passiveSelector)) return;
+    const target = event.target.closest('.mvu-interactive');
+    if (!target || !container.contains(target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.openForElement(target, container, mvuData);
+  },
+
+  openForElement(el, container, mvuData) {
+    const detail = this.buildDetail(el, container, mvuData);
+    if (detail) openMvuDetail(detail);
+  },
+
+  buildDetail(el, container, mvuData) {
+    const schema = mvuData?.schema || {};
+    const state = mvuData?.state || {};
+    const listEl = el.closest('[data-field-list]');
+    const directField = el.dataset.mvuField || el.dataset.mvuFieldDetail || el.dataset.field || el.dataset.fieldBar;
+    const field = directField || listEl?.dataset.fieldList || '';
+    const def = field ? (schema[field] || {}) : {};
+    const value = field ? state[field] : undefined;
+    const listIndex = listEl ? Array.from(listEl.children).indexOf(el) : -1;
+    const itemValue = listIndex >= 0 && Array.isArray(value) ? value[listIndex] : undefined;
+    const objectValue = itemValue && typeof itemValue === 'object' ? itemValue : null;
+
+    const rawTitle = el.dataset.mvuTitle || objectValue?.name || objectValue?.title || objectValue?.label
+      || this.cleanText(el.innerText || el.textContent) || def.label || field || '详情';
+    const title = this.cleanText(rawTitle);
+    const type = el.dataset.mvuType || objectValue?.type || objectValue?.category || this.inferType(field, def, el, listEl);
+    const desc = el.dataset.mvuDesc || objectValue?.desc || objectValue?.detail || objectValue?.description
+      || objectValue?.note || def.rule || this.fallbackDescription(title, field, itemValue ?? value);
+
+    const rows = [];
+    if (def.max !== undefined) rows.push(['上限', def.max]);
+    if (listIndex >= 0) rows.push(['序号', String(listIndex + 1)]);
+    if (objectValue) {
+      for (const [key, val] of Object.entries(objectValue)) {
+        if (['name', 'title', 'label', 'type', 'category', 'desc', 'detail', 'description', 'note'].includes(key)) continue;
+        rows.push([this.prettyKey(key), this.formatValue(val)]);
+      }
+    } else if (itemValue !== undefined) {
+      rows.push(['当前项', this.formatValue(itemValue)]);
+    } else if (value !== undefined) {
+      rows.push(['当前', this.formatValue(value)]);
+    }
+    if (def.rule) rows.push(['来源', def.rule]);
+
+    return { title, type, desc: this.formatValue(desc), field, rows };
+  },
+
+  cleanText(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+  },
+
+  formatValue(value) {
+    if (value === null || value === undefined) return '';
+    if (Array.isArray(value)) return value.map(v => this.formatValue(v)).join('\n');
+    if (typeof value === 'object') {
+      return Object.entries(value).map(([k, v]) => `${this.prettyKey(k)}：${this.formatValue(v)}`).join('\n');
+    }
+    return String(value);
+  },
+
+  prettyKey(key) {
+    const map = { effect: '效果', count: '数量', rarity: '稀有度', status: '状态', location: '位置', owner: '持有者' };
+    return map[key] || key;
+  },
+
+  inferType(field, def, el, listEl) {
+    const haystack = `${field || ''} ${def.label || ''} ${el.className || ''} ${listEl?.dataset.fieldList || ''}`.toLowerCase();
+    if (/inventory|item|bag|weapon|armor|物品|道具|装备/.test(haystack)) return '物品';
+    if (/quest|task|任务|委托|目标/.test(haystack)) return '任务';
+    if (/skill|ability|spell|技能|法术|能力/.test(haystack)) return '技能';
+    if (/character|npc|role|profile|关系|角色|人物/.test(haystack)) return '角色';
+    if (/location|map|place|地点|位置|地图/.test(haystack)) return '地点';
+    if (def.type === 'bar') return '状态条';
+    return def.type ? `变量 · ${def.type}` : '详情';
+  },
+
+  fallbackDescription(title, field, value) {
+    const formatted = this.formatValue(value);
+    if (formatted) return formatted;
+    return field ? `关于「${title}」的记录。` : '可交互对象。';
+  },
+};
+
+function openMvuDetail(detail) {
+  const overlay = document.getElementById('mvuDetailOverlay');
+  const titleEl = document.getElementById('mvuDetailTitle');
+  const typeEl = document.getElementById('mvuDetailType');
+  const bodyEl = document.getElementById('mvuDetailBody');
+  if (!overlay || !titleEl || !typeEl || !bodyEl) return;
+
+  titleEl.textContent = detail.title || '详情';
+  typeEl.textContent = detail.type || '详情';
+  const rows = (detail.rows || []).filter(row => row[1] !== undefined && row[1] !== '');
+  bodyEl.innerHTML = `
+    <div class="mvu-detail-desc">${Utils.escapeHtml(detail.desc || '').replace(/\n/g, '<br>')}</div>
+    ${rows.length ? `<div class="mvu-detail-grid">${rows.map(([label, value]) => `
+      <div class="mvu-detail-row"><span>${Utils.escapeHtml(label)}</span><span>${Utils.escapeHtml(String(value)).replace(/\n/g, '<br>')}</span></div>
+    `).join('')}</div>` : ''}
+  `;
+  overlay.dataset.title = detail.title || '';
+  overlay.dataset.field = detail.field || '';
+  overlay.classList.add('visible');
+}
+
+function closeMvuDetail() {
+  document.getElementById('mvuDetailOverlay')?.classList.remove('visible');
+}
+
+function copyMvuDetailText(kind) {
+  const overlay = document.getElementById('mvuDetailOverlay');
+  const text = kind === 'field' ? overlay?.dataset.field : overlay?.dataset.title;
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(() => UI.showToast('已复制', 'success')).catch(() => UI.showToast(text, 'info'));
+}
+
+function jumpToMvuField(field) {
+  closeMvuDetail();
+  mvuViewMode = 'data';
+  mvuSearchQuery = field || '';
+  renderMvuSidebar();
+}
+
+function jumpToMvuFieldFromDetail() {
+  jumpToMvuField(document.getElementById('mvuDetailOverlay')?.dataset.field || '');
 }
 
 // ============================================================
@@ -5017,10 +7152,24 @@ function processMvuFromResponse(text, aiMsg) {
         log('[MVU Analysis]', patchData.analysis);
       }
       const container = document.getElementById('mvuContent');
+      const changedFields = [];
+      const patchList = Array.isArray(patchData) ? patchData : (patchData.patches || []);
+      for (const p of patchList) {
+        if (p.op === 'addFromTemplate') {
+          const tpl = conversation.mvu.templates?.[p.template];
+          if (tpl?.fields) changedFields.push(...Object.keys(tpl.fields).map(k => `${p.id}_${k}`));
+        } else if (p.op === 'removeFromTemplate') {
+          changedFields.push(p.id);
+        } else if (p.path) {
+          changedFields.push(String(p.path).replace(/^\//, '').split('/')[0]);
+        }
+      }
       // Handle template ops first (addFromTemplate / removeFromTemplate)
       MVU.applyTemplateOps(conversation.mvu, patchData, container);
       // Then apply regular patches
       conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
+      const normalized = normalizeMvuStructure(changedFields.length ? changedFields : ['characters', 'main_quests', 'side_quests']);
+      markMvuFieldsChanged(changedFields);
       // Snapshot state onto the AI message for revert
       if (aiMsg) {
         aiMsg.mvuSnapshot = JSON.parse(JSON.stringify(conversation.mvu.state));
@@ -5028,7 +7177,15 @@ function processMvuFromResponse(text, aiMsg) {
       }
       Storage.saveConversation(conversation);
       // Update DOM
-      MVU.updateDOM(container, conversation.mvu.state, conversation.mvu.schema);
+      if (mvuViewMode === 'data') {
+        MVU.renderDataView(container, conversation.mvu, { query: mvuSearchQuery });
+      } else if (normalized.changed) {
+        renderMvuSidebar();
+      } else {
+        MVU.updateDOM(container, conversation.mvu.state, conversation.mvu.schema, conversation.mvu._changedFields || []);
+        MVUInteraction.enhance(container, conversation.mvu);
+      }
+      renderMvuToolbar();
     }
   }
 }
@@ -5118,6 +7275,7 @@ function confirmMvuInit() {
       }
     }
   }
+  normalizeMvuStructure(['characters', 'main_quests', 'side_quests']);
 
   // Save story setting
   if (pendingMvuInit._storySetting) {
@@ -6123,9 +8281,21 @@ function buildEditMvuPrompt() {
 
 如果需要修改状态栏，请输出：
 \`\`\`json:mvu_update
-{ "schema": {...}, "html": "...", "css": "...", "templates": {...} }
+{ "schema": {...}, "state": {...}, "html": "...", "css": "...", "templates": {...}, "patches": [...] }
 \`\`\`
 其中只包含需要修改的字段，不需要修改的可以省略。
+如果只是修改已有变量的当前值，优先输出 state 或 patches；如果修改布局/样式才输出 html/css。
+
+状态栏结构同步规则（必须遵守）：
+- 新增、删除、重命名、重组字段时，必须同时更新 schema/state/html，必要时更新 css
+- 新字段必须在 html 中用 data-field、data-field-list 或 data-field-bar 绑定，不能只写入 state
+- 不要把 templates、templateInstances、schema、html、css 等内部字段展示到美化视图
+- main_quests 必须归入主线任务区；side_quests 必须归入支线任务区；characters 必须归入角色区
+- 角色必须统一写入 characters 数组；不要再创建 guangu_profile、tangyouyou_profile 这类独立角色字段
+- HTML 角色区必须使用 data-field-list="characters"，让系统自动渲染所有角色卡片，不要只写死某一个角色面板
+- 同一核心区只能存在一个：角色档案、主线任务、支线任务、物品/技能区都不要重复创建
+- 不要写死角色、任务、物品列表的正文内容；展示内容必须来自 state 绑定
+- 美化视图要保持精美布局和点击详情交互，不要输出“新增同步”“自动同步”等调试区块
 
 templates（模板）用于RP阶段动态添加新角色/NPC等。定义格式：
 "模板名": {
@@ -6192,14 +8362,18 @@ function processEditMvuResponse(text) {
   if (!text || !conversation.mvu) return;
 
   let changed = false;
+  let shouldWarnMvuBinding = false;
+  let bindingCheckFields = [];
 
   // Parse mvu_update
   const updateData = MVU.parseMvuUpdate(text);
   if (updateData) {
+    const changedFields = [];
     if (updateData.schema) {
       // Merge into existing schema (AI only sends modified fields)
       for (const [key, def] of Object.entries(updateData.schema)) {
         conversation.mvu.schema[key] = def;
+        changedFields.push(key);
         // Initialize state only for genuinely new fields
         if (conversation.mvu.state[key] === undefined) {
           if (def.value !== undefined) {
@@ -6214,14 +8388,49 @@ function processEditMvuResponse(text) {
         }
       }
     }
+    if (updateData.state) {
+      for (const [key, value] of Object.entries(updateData.state)) {
+        conversation.mvu.state[key] = value;
+        changedFields.push(key);
+      }
+    }
+    if (Array.isArray(updateData.patches)) {
+      conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, { patches: updateData.patches });
+      for (const p of updateData.patches) {
+        if (p.path) changedFields.push(String(p.path).replace(/^\//, '').split('/')[0]);
+      }
+    }
     if (updateData.html) conversation.mvu.html = updateData.html;
     if (updateData.css) conversation.mvu.css = updateData.css;
     if (updateData.templates) {
       if (!conversation.mvu.templates) conversation.mvu.templates = {};
       Object.assign(conversation.mvu.templates, updateData.templates);
     }
+    const normalized = normalizeMvuStructure(changedFields.length ? changedFields : ['characters', 'main_quests', 'side_quests']);
+    if (normalized.repaired.length) log('processEditMvuResponse: repaired visual bindings', normalized.repaired);
+    shouldWarnMvuBinding = changedFields.length > 0;
+    bindingCheckFields = changedFields;
+    if (changedFields.length) markMvuFieldsChanged(changedFields);
     changed = true;
-    log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, html: !!updateData.html, css: !!updateData.css, templates: !!updateData.templates });
+    log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, state: !!updateData.state, patches: Array.isArray(updateData.patches), html: !!updateData.html, css: !!updateData.css, templates: !!updateData.templates });
+  } else {
+    const patchData = MVU.parsePatch(text);
+    if (patchData) {
+      const container = document.getElementById('mvuContent');
+      MVU.applyTemplateOps(conversation.mvu, patchData, container);
+      conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
+      const changedFields = [];
+      for (const p of patchData.patches || []) {
+        if (p.path) changedFields.push(String(p.path).replace(/^\//, '').split('/')[0]);
+      }
+      const normalized = normalizeMvuStructure(changedFields.length ? changedFields : ['characters', 'main_quests', 'side_quests']);
+      if (normalized.repaired.length) log('processEditMvuResponse: repaired patch visual bindings', normalized.repaired);
+      shouldWarnMvuBinding = changedFields.length > 0;
+      bindingCheckFields = changedFields;
+      if (changedFields.length) markMvuFieldsChanged(changedFields);
+      changed = true;
+      log('processEditMvuResponse: json:mvu patches applied', changedFields);
+    }
   }
 
   // Parse story_setting (full replacement or incremental patch)
@@ -6241,8 +8450,8 @@ function processEditMvuResponse(text) {
 
   // Live preview in sidebar
   if (changed) {
-    const container = document.getElementById('mvuContent');
-    MVU.render(container, conversation.mvu);
+    renderMvuSidebar();
+    if (shouldWarnMvuBinding) warnUnboundMvuFields('编辑已应用，但美化视图仍缺少绑定', bindingCheckFields);
     if (!sidebarOpen) toggleSidebar();
   }
 }
@@ -6253,7 +8462,10 @@ function processEditMvuResponse(text) {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     const debugOpen = document.getElementById('debugOverlay');
-    if (debugOpen) {
+    const mvuDetailOpen = document.getElementById('mvuDetailOverlay')?.classList.contains('visible');
+    if (mvuDetailOpen) {
+      closeMvuDetail();
+    } else if (debugOpen) {
       closeDebug();
     } else if (editingMsgId) {
       closeEdit();
