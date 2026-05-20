@@ -9,23 +9,6 @@ function log(...a) { if (DEBUG) console.log('[入卷]', ...a); }
 // ============================================================
 // Config (public mode detection)
 // ============================================================
-if (location.host === 'appassets.androidplatform.net') {
-  try {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations()
-        .then(registrations => Promise.all(registrations.map(registration => registration.unregister())))
-        .catch(() => {});
-    }
-    if ('caches' in window) {
-      caches.keys()
-        .then(keys => Promise.all(keys.map(key => caches.delete(key))))
-        .catch(() => {});
-    }
-  } catch {
-    // Best effort only.
-  }
-}
-
 const Config = {
   mode: 'local',
   provider: 'openai',
@@ -267,7 +250,6 @@ const Storage = {
   _SETTINGS_DEFAULTS: {
     defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
     articleWordCount: 500, summaryWordCount: 50,
-    enableNotificationBar: true,
     showPromptInspector: false,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
     promptPresets: null, activePresetId: 'default',
@@ -404,123 +386,20 @@ const Storage = {
 // API Module
 // ============================================================
 const API = {
-  _getDefaultBaseUrl(provider) {
-    const defaults = {
-      openai: 'https://api.openai.com/v1',
-      claude: 'https://api.anthropic.com/v1',
-      'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta',
-    };
-    return defaults[provider] || '';
-  },
-
-  _ensureBaseUrlScheme(raw) {
-    const value = String(raw || '').trim();
-    if (!value) return '';
-    if (/^[a-z][a-z\d+.-]*:\/\//i.test(value)) return value;
-    if (value.startsWith('//')) return `https:${value}`;
-    const isLocal = /^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?(?:\/|$)/i.test(value);
-    return `${isLocal ? 'http' : 'https'}://${value}`;
-  },
-
-  _stripKnownEndpointSuffix(raw) {
-    return String(raw || '').replace(/\/(?:chat\/completions|responses|messages|models)$/i, '');
-  },
-
-  _appendPathSegment(path, segment) {
-    const clean = String(path || '').replace(/\/+$/, '');
-    return clean ? `${clean}/${segment}` : `/${segment}`;
-  },
-
-  _sanitizeBaseUrl(raw) {
-    let value = this._ensureBaseUrlScheme(raw);
-    if (!value) return '';
-    value = value.replace(/[?#].*$/, '');
-    value = value.replace(/\/+$/, '');
-    value = this._stripKnownEndpointSuffix(value);
-    return value.replace(/\/+$/, '');
-  },
-
-  _shouldAppendDefaultVersion(path) {
-    const clean = String(path || '').replace(/\/+$/, '');
-    if (!clean) return true;
-    if (/\/v\d+(?:beta)?$/i.test(clean)) return false;
-    return /\/(?:api|openai)$/i.test(clean);
-  },
-
   _getBaseUrl(p) {
-    const provider = p?.provider || 'openai';
-    const rawBase = this._sanitizeBaseUrl(p?.baseUrl || '');
-    if (!rawBase) return this._getDefaultBaseUrl(provider);
+    if (p.baseUrl) return p.baseUrl.replace(/\/$/, '');
+    const defaults = { openai: 'https://api.openai.com/v1', claude: 'https://api.anthropic.com/v1', 'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta' };
+    return defaults[p.provider] || '';
+  },
 
-    try {
-      const url = new URL(rawBase);
-      let path = url.pathname.replace(/\/+$/, '');
-
-      if (provider === 'google-ai-studio') {
-        if (/generativelanguage\.googleapis/i.test(url.hostname) && !/\/v\d+(?:beta)?$/i.test(path)) {
-          path = this._appendPathSegment(path, 'v1beta');
-        }
-      } else if (provider === 'claude') {
-        if (!path || /\/(?:api|anthropic)$/i.test(path)) {
-          path = this._appendPathSegment(path, 'v1');
-        }
-      } else if (this._shouldAppendDefaultVersion(path)) {
-        path = this._appendPathSegment(path, 'v1');
-      }
-
-      url.pathname = path || '/';
-      url.search = '';
-      url.hash = '';
-      return url.toString().replace(/\/$/, '');
-    } catch {
-      let value = rawBase;
-      if (provider === 'google-ai-studio') {
-        if (!/\/v\d+(?:beta)?$/i.test(value) && /generativelanguage\.googleapis/i.test(value)) value = `${value}/v1beta`;
-      } else if (provider === 'claude') {
-        if (/^https?:\/\/[^/]+$/i.test(value) || /\/(?:api|anthropic)$/i.test(value)) value = `${value}/v1`;
-      } else if (this._shouldAppendDefaultVersion(value.replace(/^https?:\/\/[^/]+/i, ''))) {
-        value = `${value}/v1`;
-      }
-      return value.replace(/\/+$/, '');
+  _getHeaders(p, model = '') {
+    const h = { 'Content-Type': 'application/json' };
+    if (p.provider === 'claude') { h['x-api-key'] = p.apiKey; h['anthropic-version'] = '2023-06-01'; }
+    else if (p.provider !== 'google-ai-studio') {
+      h['Authorization'] = `Bearer ${p.apiKey}`;
+      if (this._isMimoProfile(p, model)) h['api-key'] = p.apiKey;
     }
-  },
-
-  _getRawBaseUrl(p) {
-    const value = this._sanitizeBaseUrl(p?.baseUrl || '');
-    return value || this._getDefaultBaseUrl(p?.provider || 'openai');
-  },
-
-  _parseExtraHeaders(raw = '') {
-    const text = String(raw || '').trim();
-    if (!text) return {};
-
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return Object.fromEntries(
-          Object.entries(parsed)
-            .map(([key, value]) => [String(key).trim(), value == null ? '' : String(value).trim()])
-            .filter(([key, value]) => key && value)
-        );
-      }
-    } catch {}
-
-    const headers = {};
-    for (const line of text.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
-      const idx = trimmed.indexOf(':');
-      if (idx <= 0) throw new Error('附加请求头格式无效，请使用 JSON 或每行一个 Key: Value');
-      const key = trimmed.slice(0, idx).trim();
-      const value = trimmed.slice(idx + 1).trim();
-      if (key && value) headers[key] = value;
-    }
-    return headers;
-  },
-
-  _hasHeader(headers, name) {
-    const target = String(name || '').toLowerCase();
-    return Object.keys(headers || {}).some(key => key.toLowerCase() === target);
+    return h;
   },
 
   _isMimoProfile(p, model = '') {
@@ -528,38 +407,11 @@ const API = {
     return haystack.includes('mimo') || haystack.includes('xiaomi') || haystack.includes('mi.com');
   },
 
-  _getHeaders(p, options = {}) {
-    const accept = options.accept === undefined ? 'application/json' : options.accept;
-    const includeContentType = options.includeContentType !== false;
-    const model = options.model || '';
-    const extraHeaders = this._parseExtraHeaders(p?.extraHeaders || '');
-    const headers = {};
-
-    if (includeContentType) headers['Content-Type'] = 'application/json';
-    if (accept) headers['Accept'] = accept;
-
-    if (p.provider === 'claude') {
-      if (!this._hasHeader(extraHeaders, 'x-api-key') && p.apiKey) headers['x-api-key'] = p.apiKey;
-      if (!this._hasHeader(extraHeaders, 'anthropic-version')) headers['anthropic-version'] = '2023-06-01';
-    } else if (p.provider !== 'google-ai-studio') {
-      const hasCustomAuth = this._hasHeader(extraHeaders, 'authorization')
-        || this._hasHeader(extraHeaders, 'api-key')
-        || this._hasHeader(extraHeaders, 'x-api-key');
-      if (!hasCustomAuth && p.apiKey) headers['Authorization'] = `Bearer ${p.apiKey}`;
-      if (this._isMimoProfile(p, model) && p.apiKey && !this._hasHeader(extraHeaders, 'api-key')) {
-        headers['api-key'] = p.apiKey;
-      }
-    }
-
-    for (const [key, value] of Object.entries(extraHeaders)) headers[key] = value;
-    return headers;
-  },
-
   // Detect actual provider from profile + URL + model name
   _detect(p, model = '') {
     if (p.provider === 'claude') return 'claude';
     if (p.provider === 'google-ai-studio') return 'google';
-    const url = this._getBaseUrl(p).toLowerCase();
+    const url = (p.baseUrl || '').toLowerCase();
     if (url.includes('anthropic')) return 'claude';
     if (url.includes('generativelanguage.googleapis')) return 'google';
     // OpenAI-compatible (covers proxies for Claude/Gemini too)
@@ -633,7 +485,7 @@ const API = {
       return this._sendViaProxy({ model, systemPrompt, messages });
     }
     try {
-      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, { accept: 'application/json', model }), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
+      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, model), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return { success: false, error: e.error?.message || `HTTP ${res.status}` }; }
       const data = await res.json();
       return { success: true, ...this._parseResponse(p, data) };
@@ -735,7 +587,7 @@ const API = {
         onStatus?.('connecting');
         const res = await fetch(url, {
           method: 'POST',
-          headers: this._getHeaders(p, { accept: 'text/event-stream', model }),
+          headers: this._getHeaders(p, model),
           body: JSON.stringify(body),
           signal: controller.signal,
         });
@@ -1061,158 +913,20 @@ const API = {
     doStream();
   },
 
-  _buildModelListCandidates(p) {
-    const provider = p?.provider || 'openai';
-    const normalizedBase = this._getBaseUrl(p);
-    if (provider === 'google-ai-studio') {
-      return [`${normalizedBase}/models?key=${encodeURIComponent(p.apiKey || '')}`];
-    }
-
-    const rawBase = this._getRawBaseUrl(p);
-    const urls = [];
-    const push = url => {
-      if (url && !urls.includes(url)) urls.push(url);
-    };
-
-    push(`${normalizedBase}/models`);
-    if (/nano-?gpt/i.test(normalizedBase)) push(`${normalizedBase}/models?detailed=true`);
-
-    if (rawBase && rawBase !== normalizedBase) {
-      push(`${rawBase}/models`);
-      if (/nano-?gpt/i.test(rawBase)) push(`${rawBase}/models?detailed=true`);
-    }
-
-    return urls;
-  },
-
-  _extractModelIds(data, provider = '') {
-    if (!data) return [];
-
-    if (provider === 'google') {
-      return (data.models || [])
-        .filter(model => model.name?.includes('gemini'))
-        .map(model => model.name.replace(/^models\//, ''));
-    }
-
-    const seen = new Set();
-    const models = [];
-    const add = value => {
-      const id = String(value || '').trim();
-      if (!id || seen.has(id)) return;
-      seen.add(id);
-      models.push(id);
-    };
-    const collectFromArray = arr => {
-      if (!Array.isArray(arr)) return;
-      for (const item of arr) {
-        if (typeof item === 'string') add(item);
-        else if (item && typeof item === 'object') add(item.id || item.name || item.model || item.slug || item.value);
-      }
-    };
-
-    if (Array.isArray(data)) collectFromArray(data);
-    if (data && typeof data === 'object') {
-      collectFromArray(data.data);
-      collectFromArray(data.models);
-      collectFromArray(data.items);
-      collectFromArray(data.results);
-      collectFromArray(data.model_list);
-
-      if (data.data && typeof data.data === 'object') {
-        collectFromArray(data.data.models);
-        collectFromArray(data.data.items);
-      }
-      if (data.result && typeof data.result === 'object') {
-        collectFromArray(data.result.models);
-        collectFromArray(data.result.items);
-      }
-    }
-
-    return models;
-  },
-
-  _extractModelFetchError(bodyText, status = 0) {
-    const text = String(bodyText || '').trim();
-    if (!text) return status ? `HTTP ${status}` : '请求失败';
+  async fetchModels(apiProfileId) {
+    const p = Storage.getApiProfile(apiProfileId);
+    if (!p) return { success: false, models: [] };
+    const base = this._getBaseUrl(p);
+    const url = p.provider === 'google-ai-studio' ? `${base}/models?key=${p.apiKey}` : `${base}/models`;
     try {
-      const parsed = JSON.parse(text);
-      const message = parsed?.error?.message || parsed?.error || parsed?.message || parsed?.detail || parsed?.details;
-      if (message) return typeof message === 'string' ? message : JSON.stringify(message);
-    } catch {}
-    return text.length > 200 ? `${text.slice(0, 200)}...` : text;
-  },
-
-  async _fetchModelsViaBrowser(p) {
-    const provider = this._detect(p);
-    const diagnostics = [];
-    const headers = this._getHeaders(p, { accept: 'application/json', includeContentType: false });
-
-    for (const url of this._buildModelListCandidates(p)) {
-      try {
-        const res = await fetch(url, { headers });
-        const bodyText = await res.text();
-        if (!res.ok) {
-          diagnostics.push({ url, status: res.status, error: this._extractModelFetchError(bodyText, res.status) });
-          continue;
-        }
-
-        let data = {};
-        try {
-          data = bodyText ? JSON.parse(bodyText) : {};
-        } catch {
-          diagnostics.push({ url, status: res.status, error: '模型列表接口返回了无法解析的 JSON' });
-          continue;
-        }
-
-        const models = this._extractModelIds(data, provider);
-        if (models.length > 0) return { success: true, models, status: res.status, endpoint: url, source: 'browser' };
-        diagnostics.push({ url, status: res.status, error: '接口已返回成功，但未解析出可用模型列表' });
-      } catch (e) {
-        diagnostics.push({ url, status: 0, error: e.message || 'NetworkError' });
-      }
-    }
-
-    const best = diagnostics.find(item => item.status === 401 || item.status === 403)
-      || diagnostics.find(item => item.status >= 400)
-      || diagnostics[0]
-      || {};
-
-    return {
-      success: false,
-      models: [],
-      error: best.error || '未能获取模型列表',
-      status: best.status || 0,
-      endpoint: best.url || '',
-      diagnostics,
-      source: 'browser',
-    };
-  },
-
-  async fetchModels(apiProfileOrId) {
-    const p = typeof apiProfileOrId === 'string' ? Storage.getApiProfile(apiProfileOrId) : apiProfileOrId;
-    if (!p) return { success: false, models: [], error: 'API 配置不存在' };
-
-    if (Storage._isNative && window.AndroidBridge?.fetchModels) {
-      try {
-        const raw = window.AndroidBridge.fetchModels(JSON.stringify(p));
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') {
-            if (!Array.isArray(parsed.models)) parsed.models = [];
-            if (!parsed.source) parsed.source = 'native';
-            return parsed;
-          }
-        }
-      } catch (e) {
-        log('Native fetchModels failed, falling back to browser:', e.message);
-      }
-    }
-
-    try {
-      return await this._fetchModelsViaBrowser(p);
-    } catch (e) {
-      return { success: false, models: [], error: e.message || '未能获取模型列表', source: 'browser' };
-    }
+      const res = await fetch(url, { headers: this._getHeaders(p) });
+      if (!res.ok) return { success: false, models: [] };
+      const data = await res.json();
+      let models = [];
+      if (p.provider === 'google-ai-studio') models = (data.models || []).filter(m => m.name?.includes('gemini')).map(m => m.name.replace('models/', ''));
+      else models = (data.data || []).map(m => m.id);
+      return { success: true, models };
+    } catch { return { success: false, models: [] }; }
   },
 };
 
@@ -1378,12 +1092,17 @@ templates（模板）——【必须创建】用于RP阶段动态添加新遇到
 - 可更新元素用 data-field="字段名"，进度条用 data-field-bar="字段名"，列表用 data-field-list="字段名"
 - 交互增强（必须优先支持）：物品、角色、任务、技能、地点等可点击对象可添加 data-mvu-detail，并可附加 data-mvu-title、data-mvu-type、data-mvu-desc、data-mvu-field。系统会在美化视图中自动弹出精美详情卡。不要写 <script>、onclick 或自定义 JavaScript。
 - 可增长集合要求：任务必须优先使用 main_quests/side_quests 对象数组，角色必须优先使用 characters 对象数组。遇到新任务/新角色时后续 RP 更新应向数组追加对象，不要长期覆盖单个 main_quest 或单个 *_profile 字段。
+- 系统托管组件优先：角色、任务、物品、技能等可增长列表优先使用 data-field-list 绑定，让系统渲染列表项；AI 负责主题外壳、分区、标题、氛围装饰和 CSS 换皮，不要手写每个角色/任务/物品的固定正文。
 - 视觉设计要求：
-  · 为这个故事选择一个大胆且明确的美学方向，让状态栏一眼就能感受到题材氛围。不要默认使用安全的深色面板——修仙、校园、赛博、奇幻应该有截然不同的视觉语言
-  · 字体是个性的核心。通过 Google Fonts 选择有辨识度的字体，避免 Arial、Inter、Roboto 等通用字体
-  · 用背景氛围替代纯色块——透明度、渐变、纹理、模糊等手法都可以创造层次和沉浸感
-  · 配色宁可大胆不要平庸，一个主导色调搭配鲜明点缀色比均匀分配更有记忆点
-  · 每个故事的状态栏都应该是独特的，不要重复使用同一套模板
+  · 生成前必须先确定一个明确的「视觉载体」：状态栏看起来像什么物件或界面，而不只是换颜色。可选方向包括但不限于：玉简/命盘/符箓/宗门玉牒、学生手账/课程表/社团公告栏、赛博终端/HUD/权限卡、刑侦案卷/证物袋/红线板、末日求生手册/电台面板、宫廷奏折/绢帛/朱批、都市App/监控面板、奇幻羊皮书/魔法阵。
+  · 必须选择一种布局骨架，并让 HTML 结构体现出来：档案式、仪表盘式、卷轴式、手账式、地图路线式、终端式、案卷式。不要所有题材都做纵向深色卡片堆叠。
+  · CSS 中必须在 .mvu-root 或最外层容器定义主题变量：--mvu-bg、--mvu-panel、--mvu-card、--mvu-accent、--mvu-accent-2、--mvu-warn、--mvu-text、--mvu-muted、--mvu-border、--mvu-radius、--mvu-shadow、--mvu-texture。系统托管角色卡和详情弹窗会优先读取这些变量。
+  · 必须有至少 1 个题材符号或微装饰：如符箓角标、案卷编号、终端状态灯、手账贴纸、警示封条、朱批印章、地图路线点、魔法纹章。可用 CSS 伪元素、边框、背景纹理实现，不要依赖外部图片。
+  · 字体是个性的核心。可以通过 Google Fonts 或系统字体栈选择有辨识度的字体，避免所有主题都使用 Arial、Inter、Roboto 等通用字体。
+  · 用背景氛围替代纯色块——透明度、渐变、纹理、模糊、网格、纸张纹理、扫描线、暗纹等手法都可以创造层次和沉浸感。
+  · 配色必须包含主色、辅助色、警示/强调色三个层级；不要只堆同一色系的深浅变化。
+  · 反同质化硬性规则：不要默认黑底金边半透明卡片；不要所有模块都是圆角卡片；不要只靠渐变表达题材；不要重复使用同一套模板。每个故事的状态栏都应该像该世界里真实存在的随身界面。
+  · 移动端 360px 内必须可读：长文本放入详情弹窗或变量视图，主卡片只显示摘要；标题、按钮、标签不得互相遮挡。
 - CSS 类名用 .mvu- 前缀
 
 ══════════════════════════════
@@ -1740,75 +1459,32 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     const settings = Storage.getSettings();
     const phase = conversation.phase || 'init';
     const preset = this.getActivePreset(settings);
+    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
 
     if (phase === 'init') {
       const initPrompt = preset.initPrompt || this.DEFAULT_INIT_PROMPT;
       const systemPrompt = initPrompt;
-      const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
-      const history = (conversation.messages || [])
-        .filter(m => !m.hidden && m.content?.trim())
-        .map(m => ({ role: m.role, content: m.content }));
-
       const msgs = [];
-      if (worldBookBlocks.beforeStory) {
-        msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      if (worldBookBlocks.beforeStory) msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      if (worldBookBlocks.afterStory) msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
+      const initMessages = (conversation.messages || []).filter(m => !m.hidden && m.content?.trim());
+      for (let i = 0; i < initMessages.length; i++) {
+        const isLatestUser = i === initMessages.length - 1 && initMessages[i].role === 'user';
+        if (isLatestUser && worldBookBlocks.beforeInput) msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+        msgs.push({ role: initMessages[i].role, content: initMessages[i].content });
+        if (isLatestUser && worldBookBlocks.afterInput) msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
       }
-      if (conversation.storySetting) {
-        msgs.push({ role: 'user', content: '【当前故事设定】\n' + conversation.storySetting });
-      }
-      if (worldBookBlocks.afterStory) {
-        msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
-      }
-
-      let injectedInputWorldBook = false;
-      for (let i = 0; i < history.length; i++) {
-        const msg = history[i];
-        const isLatestUser = msg.role === 'user' && i === history.length - 1;
-        if (isLatestUser && worldBookBlocks.beforeInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
-          injectedInputWorldBook = true;
-        }
-        msgs.push(msg);
-        if (isLatestUser && worldBookBlocks.afterInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
-          injectedInputWorldBook = true;
-        }
-      }
-
-      if (!injectedInputWorldBook) {
-        if (worldBookBlocks.beforeInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
-        }
-        if (worldBookBlocks.afterInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
-        }
-      }
-
-      const promptMessages = WorldBook.insertAtDepthMessages(msgs, worldBookBlocks.atDepthEntries);
-      const merged = [];
-      for (const m of promptMessages) {
-        if (merged.length > 0 && merged[merged.length - 1].role === m.role) {
-          merged[merged.length - 1].content += '\n\n' + m.content;
-        } else {
-          merged.push({ ...m });
-        }
-      }
-
-      log('buildMessages [init]', {
-        systemLen: systemPrompt.length,
-        msgCount: merged.length,
-        worldBookActiveCount: worldBookBlocks.active?.length || 0,
-      });
+      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: msgs.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
       return {
         systemPrompt,
-        messages: merged,
+        messages: msgs,
         activeWorldBookEntries: worldBookBlocks.active || [],
+        blockedWorldBookEntries: worldBookBlocks.blocked || [],
       };
     }
 
     // RP phase
     const entries = preset.entries || this.MINIMAL_PRESET_ENTRIES;
-    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
     let schemaDesc = '';
     if (conversation.mvu?.schema) {
       schemaDesc = '【状态栏字段】\n';
@@ -1943,43 +1619,36 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
         msgs.push({ role: 'user', content: '【主人的写作建议】\n' + conversation.writingAdvice });
       }
       const recent = allMsgs.slice(splitAt);
-      let injectedRecentWorldBook = false;
       for (let i = 0; i < recent.length; i++) {
-        const isLatestUser = recent[i].role === 'user' && i === recent.length - 1;
-        if (isLatestUser && worldBookBlocks.beforeInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
-          injectedRecentWorldBook = true;
-        }
         if (i === recent.length - 1) {
           const mvuCtx = buildMvuContext();
           if (mvuCtx) msgs.push({ role: 'user', content: mvuCtx });
+        }
+        const isLatestUser = i === recent.length - 1 && recent[i].role === 'user';
+        if (isLatestUser && worldBookBlocks.beforeInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
         }
         const content = recent[i].role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(recent[i].content)) : recent[i].content;
         msgs.push({ role: recent[i].role, content });
         if (isLatestUser && worldBookBlocks.afterInput) {
           msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
-          injectedRecentWorldBook = true;
         }
       }
-      if (!injectedRecentWorldBook) {
-        if (worldBookBlocks.beforeInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
-        }
-        if (worldBookBlocks.afterInput) {
-          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
-        }
-      }
-      const promptMessages = WorldBook.insertAtDepthMessages(msgs, worldBookBlocks.atDepthEntries);
       const merged = [];
-      for (const m of promptMessages) {
+      for (const m of msgs) {
         if (merged.length > 0 && merged[merged.length - 1].role === m.role) {
           merged[merged.length - 1].content += '\n\n' + m.content;
         } else {
           merged.push({ ...m });
         }
       }
-      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, recentCount: recent.length });
-      return { systemPrompt, messages: merged };
+      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, recentCount: recent.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+      return {
+        systemPrompt,
+        messages: merged,
+        activeWorldBookEntries: worldBookBlocks.active || [],
+        blockedWorldBookEntries: worldBookBlocks.blocked || [],
+      };
     }
 
     // === Slot-driven assembly ===
@@ -2043,14 +1712,14 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
           }
 
           case 'user_input': {
-            if (worldBookBlocks.beforeInput) {
-              msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
-            }
             if (pendingUserInput) {
+              if (worldBookBlocks.beforeInput) {
+                msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+              }
               msgs.push({ role: 'user', content: '[ 本轮用户消息 ]\n<interactive_input>\n' + pendingUserInput.content + '\n</interactive_input>' });
-            }
-            if (worldBookBlocks.afterInput) {
-              msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+              if (worldBookBlocks.afterInput) {
+                msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+              }
             }
             break;
           }
@@ -2078,9 +1747,8 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     const systemPrompt = systemParts.join('\n\n');
 
     // Merge adjacent same-role (required for Claude API)
-    const promptMessages = WorldBook.insertAtDepthMessages(msgs, worldBookBlocks.atDepthEntries);
     const merged = [];
-    for (const m of promptMessages) {
+    for (const m of msgs) {
       if (merged.length > 0 && merged[merged.length - 1].role === m.role) {
         merged[merged.length - 1].content += '\n\n' + m.content;
       } else {
@@ -2088,11 +1756,12 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       }
     }
 
-    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, slotDriven: true });
+    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, slotDriven: true, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
     return {
       systemPrompt,
       messages: merged,
       activeWorldBookEntries: worldBookBlocks.active || [],
+      blockedWorldBookEntries: worldBookBlocks.blocked || [],
     };
   },
 
@@ -2111,20 +1780,12 @@ const WorldBook = {
     scanDepth: 6,
     maxEntries: 24,
     maxChars: 8000,
-    budgetMode: 'chars',
     recursiveScan: true,
     maxRecursionSteps: 2,
     caseSensitive: false,
     matchWholeWords: false,
-    includeNames: true,
-  },
-
-  TAVERN_IMPORT_SETTINGS: {
-    scanDepth: 2,
-    maxChars: 30000,
-    budgetMode: 'tokens',
-    recursiveScan: false,
-    maxRecursionSteps: 0,
+    includeStorySetting: false,
+    includeMvuState: true,
   },
 
   POSITION_MAP: {
@@ -2132,35 +1793,6 @@ const WorldBook = {
     after_char: 1,
     before_input: 2,
     after_input: 3,
-    at_depth: 4,
-  },
-
-  DEPTH_ROLE_MAP: {
-    system: 0,
-    user: 1,
-    assistant: 2,
-  },
-
-  POSITION_ALIASES: {
-    before_an: 'before_input',
-    after_an: 'after_input',
-    before_author_note: 'before_input',
-    after_author_note: 'after_input',
-    before_note: 'before_input',
-    after_note: 'after_input',
-  },
-
-  UNSUPPORTED_POSITIONS: {
-    em_top: true,
-    em_bottom: true,
-    example_top: true,
-    example_bottom: true,
-    before_example: true,
-    after_example: true,
-    before_example_messages: true,
-    after_example_messages: true,
-    outlet: true,
-    world_info_outlet: true,
   },
 
   LOGIC_MAP: {
@@ -2182,287 +1814,59 @@ const WorldBook = {
 
   createEntry(partial = {}) {
     const uid = Number(partial.uid ?? partial.id ?? (Date.now() + Math.floor(Math.random() * 1000)));
-    const extensions = partial.extensions && typeof partial.extensions === 'object' ? partial.extensions : {};
-    const rawPosition = partial.position ?? extensions.position ?? null;
-    const position = this._normalizePosition(rawPosition);
-    const primaryKeys = this._normalizeKeywordList(
-      partial.keys,
-      partial.key,
-      partial.triggers,
-      extensions.keys,
-      extensions.key,
-      extensions.triggers
-    );
-    const secondaryKeys = this._normalizeList(partial.secondaryKeys ?? partial.secondary_keys ?? partial.keysecondary ?? []);
-    const selectiveFlag = this._readBooleanFlags(partial, ['selective'], null);
-    const selective = selectiveFlag === null ? secondaryKeys.length > 0 : selectiveFlag;
-    const enabledFlag = this._parseBoolean(partial.enabled, true);
-    const disabledFlag = this._readBooleanFlags(partial, ['disable', 'disabled'], false);
-    const constantDirect = this._readBooleanFlags(partial, ['constant'], null);
-    const constantAlias = this._readBooleanFlags(partial, ['alwaysActive', 'always_active'], null);
-    const manualDirect = this._readBooleanFlags(partial, ['manualActive'], null);
-    const manualAlias = this._readBooleanFlags(partial, ['forceActive', 'force_active'], null);
-    const regexFlag = this._firstDefinedBoolean(
-      [partial.useRegex, partial.use_regex, extensions.useRegex, extensions.use_regex],
-      false
-    );
-    const wholeWordsFlag = this._firstDefinedBoolean(
-      [partial.matchWholeWords, partial.match_whole_words, extensions.matchWholeWords, extensions.match_whole_words],
-      null
-    );
-    const caseSensitiveFlag = this._firstDefinedBoolean(
-      [partial.caseSensitive, partial.case_sensitive, extensions.caseSensitive, extensions.case_sensitive],
-      null
-    );
-    const groupOverride = this._firstDefinedBoolean(
-      [partial.groupOverride, partial.group_override, extensions.groupOverride, extensions.group_override],
-      false
-    );
-    const useGroupScoring = this._firstDefinedBoolean(
-      [partial.useGroupScoring, partial.use_group_scoring, extensions.useGroupScoring, extensions.use_group_scoring],
-      false
-    );
-    const ignoreBudget = this._firstDefinedBoolean(
-      [partial.ignoreBudget, partial.ignore_budget, extensions.ignoreBudget, extensions.ignore_budget],
-      false
-    );
-    const matchScenario = this._firstDefinedBoolean(
-      [partial.matchScenario, partial.match_scenario, extensions.matchScenario, extensions.match_scenario],
-      false
-    );
-    const matchPersonaDescription = this._firstDefinedBoolean(
-      [partial.matchPersonaDescription, partial.match_persona_description, extensions.matchPersonaDescription, extensions.match_persona_description],
-      false
-    );
-    const matchCharacterDescription = this._firstDefinedBoolean(
-      [partial.matchCharacterDescription, partial.match_character_description, extensions.matchCharacterDescription, extensions.match_character_description],
-      false
-    );
-    const matchCharacterPersonality = this._firstDefinedBoolean(
-      [partial.matchCharacterPersonality, partial.match_character_personality, extensions.matchCharacterPersonality, extensions.match_character_personality],
-      false
-    );
-    const matchCharacterDepthPrompt = this._firstDefinedBoolean(
-      [
-        partial.matchCharacterDepthPrompt,
-        partial.match_character_depth_prompt,
-        partial.matchDepthPrompt,
-        partial.match_depth_prompt,
-        extensions.matchCharacterDepthPrompt,
-        extensions.match_character_depth_prompt,
-        extensions.matchDepthPrompt,
-        extensions.match_depth_prompt,
-      ],
-      false
-    );
-    const matchCreatorNotes = this._firstDefinedBoolean(
-      [
-        partial.matchCreatorNotes,
-        partial.match_creator_notes,
-        partial.matchAuthorNote,
-        partial.match_author_note,
-        partial.matchAuthorNotes,
-        partial.match_author_notes,
-        extensions.matchCreatorNotes,
-        extensions.match_creator_notes,
-        extensions.matchAuthorNote,
-        extensions.match_author_note,
-        extensions.matchAuthorNotes,
-        extensions.match_author_notes,
-      ],
-      false
-    );
-    const scanDepth = this._firstFiniteNumber(
-      [partial.scanDepth, partial.scan_depth, extensions.scan_depth, extensions.scanDepth],
-      null,
-      value => Math.max(0, Number(value))
-    );
-    const insertionDepth = this._firstFiniteNumber(
-      [partial.depth, partial.insertionDepth, partial.insertion_depth, extensions.depth, extensions.insertionDepth, extensions.insertion_depth],
-      position === 'at_depth' ? 4 : null,
-      value => Math.max(0, Math.floor(Number(value)))
-    );
-    const depthRole = this._normalizeDepthRole(
-      partial.role ?? partial.depthRole ?? partial.depth_role ?? extensions.role ?? extensions.depthRole ?? extensions.depth_role,
-      position === 'at_depth' ? 'user' : null
-    );
-    const probabilityEnabled = this._firstDefinedBoolean(
-      [partial.useProbability, partial.use_probability, extensions.useProbability, extensions.use_probability],
-      true
-    );
-    const probabilityValue = this._firstFiniteNumber(
-      [partial.probability, extensions.probability],
-      100,
-      value => Math.max(0, Math.min(100, Number(value)))
-    );
-    const groupWeight = this._firstFiniteNumber(
-      [partial.groupWeight, partial.group_weight, extensions.groupWeight, extensions.group_weight],
-      100,
-      value => Math.max(0, Number(value))
-    );
+    const secondaryKeys = this._normalizeList(partial.secondaryKeys ?? partial.keysecondary ?? []);
     return {
       uid,
       title: partial.title || partial.comment || partial.name || '新条目',
       comment: partial.comment || partial.title || partial.name || '新条目',
-      keys: primaryKeys,
+      keys: this._normalizeList(partial.keys ?? partial.key ?? []),
       secondaryKeys,
-      selective,
+      selective: partial.selective === undefined ? secondaryKeys.length > 0 : !!partial.selective,
       content: String(partial.content || partial.text || ''),
-      enabled: enabledFlag && !disabledFlag,
-      constant: constantDirect ?? constantAlias ?? false,
-      manualActive: manualDirect ?? manualAlias ?? false,
-      _constantSource: constantDirect !== null
-        ? 'constant'
-        : (constantAlias !== null ? 'always_active_alias' : null),
-      _manualSource: manualDirect !== null
-        ? 'manualActive'
-        : (manualAlias !== null ? 'force_active_alias' : null),
-      order: partial.order === null || partial.order === undefined
-        ? (partial.insertion_order === null || partial.insertion_order === undefined
-          ? 100
-          : (Number.isFinite(Number(partial.insertion_order)) ? Number(partial.insertion_order) : 100))
-        : (Number.isFinite(Number(partial.order)) ? Number(partial.order) : 100),
-      position,
-      rawPosition,
-      outletName: String(partial.outletName ?? partial.outlet_name ?? extensions.outletName ?? extensions.outlet_name ?? '').trim(),
-      insertionDepth,
-      depthRole,
-      selectiveLogic: this._normalizeSelectiveLogic(partial.selectiveLogic ?? partial.selective_logic ?? extensions.selectiveLogic ?? extensions.selective_logic),
-      useRegex: regexFlag,
-      matchWholeWords: wholeWordsFlag,
-      caseSensitive: caseSensitiveFlag,
-      excludeRecursion: this._readBooleanFlags(
-        partial,
-        ['excludeRecursion', 'exclude_recursion', 'nonRecursable', 'non_recursable'],
-        false
-      ) || this._readBooleanFlags(
-        extensions,
-        ['excludeRecursion', 'exclude_recursion', 'nonRecursable', 'non_recursable'],
-        false
-      ),
-      preventRecursion: this._readBooleanFlags(
-        partial,
-        ['preventRecursion', 'prevent_recursion', 'disableRecursion', 'disable_recursion'],
-        false
-      ) || this._readBooleanFlags(
-        extensions,
-        ['preventRecursion', 'prevent_recursion', 'disableRecursion', 'disable_recursion'],
-        false
-      ),
-      delayUntilRecursion: this._readBooleanFlags(partial, ['delayUntilRecursion', 'delay_until_recursion'], false)
-        || this._readBooleanFlags(extensions, ['delayUntilRecursion', 'delay_until_recursion'], false),
-      scanDepth,
-      probability: probabilityEnabled ? probabilityValue : 100,
-      groups: this._normalizeList(partial.group ?? partial.groups ?? extensions.group ?? extensions.groups ?? []),
-      groupOverride,
-      groupWeight,
-      useGroupScoring,
-      ignoreBudget,
-      matchScenario,
-      matchPersonaDescription,
-      matchCharacterDescription,
-      matchCharacterPersonality,
-      matchCharacterDepthPrompt,
-      matchCreatorNotes,
-      sticky: this._firstFiniteNumber(
-        [partial.sticky, extensions.sticky],
-        0,
-        value => Math.max(0, Number(value))
-      ),
-      cooldown: this._firstFiniteNumber(
-        [partial.cooldown, extensions.cooldown],
-        0,
-        value => Math.max(0, Number(value))
-      ),
-      delay: this._firstFiniteNumber(
-        [partial.delay, extensions.delay],
-        0,
-        value => Math.max(0, Number(value))
-      ),
-      triggers: this._normalizeList(partial.triggers ?? extensions.triggers ?? []),
+      enabled: partial.enabled !== false && partial.disable !== true && partial.disabled !== true,
+      constant: !!(partial.constant || partial.alwaysActive || partial.always_active),
+      manualActive: false,
+      order: Number.isFinite(Number(partial.order)) ? Number(partial.order) : 100,
+      position: this._normalizePosition(partial.position),
+      selectiveLogic: this._normalizeSelectiveLogic(partial.selectiveLogic ?? partial.selective_logic),
+      useRegex: !!(partial.useRegex || partial.use_regex),
+      matchWholeWords: partial.matchWholeWords === undefined
+        ? (partial.match_whole_words === undefined ? null : !!partial.match_whole_words)
+        : !!partial.matchWholeWords,
+      caseSensitive: partial.caseSensitive === undefined
+        ? (partial.case_sensitive === undefined ? null : !!partial.case_sensitive)
+        : !!partial.caseSensitive,
+      preventRecursion: !!(partial.preventRecursion || partial.disableRecursion || partial.excludeRecursion || partial.prevent_recursion),
+      probability: Number.isFinite(Number(partial.probability)) ? Math.max(0, Math.min(100, Number(partial.probability))) : 100,
     };
   },
 
   normalizeBook(book, fallbackName = '世界书') {
-    if (!book || typeof book !== 'object') {
-      return this.createEmptyBook(fallbackName);
-    }
+    if (!book || typeof book !== 'object') return this.createEmptyBook(fallbackName);
+    const settings = { ...this.DEFAULT_SETTINGS, ...(book.settings || {}) };
+    if (book.maxEntries !== undefined) settings.maxEntries = Number(book.maxEntries) || settings.maxEntries;
+    if (book.maxChars !== undefined) settings.maxChars = Number(book.maxChars) || settings.maxChars;
+    if (book.tokenBudget !== undefined) settings.maxChars = Number(book.tokenBudget) || settings.maxChars;
+    if (book.scanDepth !== undefined) settings.scanDepth = Number(book.scanDepth) || settings.scanDepth;
+    if (book.maxRecursionSteps !== undefined) settings.maxRecursionSteps = Number(book.maxRecursionSteps) || settings.maxRecursionSteps;
+    if (book.recursiveScan !== undefined) settings.recursiveScan = !!book.recursiveScan;
+    if (book.recursiveScanning !== undefined) settings.recursiveScan = !!book.recursiveScanning;
+    if (book.caseSensitive !== undefined) settings.caseSensitive = !!book.caseSensitive;
+    if (book.matchWholeWords !== undefined) settings.matchWholeWords = !!book.matchWholeWords;
+    if (book.includeStorySetting !== undefined) settings.includeStorySetting = !!book.includeStorySetting;
+    if (book.includeMvuState !== undefined) settings.includeMvuState = !!book.includeMvuState;
+
     let rawEntries = [];
     if (Array.isArray(book.entries)) rawEntries = book.entries;
     else if (book.entries && typeof book.entries === 'object') rawEntries = Object.values(book.entries);
     else if (Array.isArray(book.worldInfos)) rawEntries = book.worldInfos;
-
-    const rawSettings = book.settings && typeof book.settings === 'object' ? book.settings : {};
-    const settings = {
-      ...this.DEFAULT_SETTINGS,
-      ...(this._isTavernImportBook(book, rawEntries, rawSettings) ? this.TAVERN_IMPORT_SETTINGS : {}),
-    };
-
-    settings.scanDepth = this._parseNonNegativeNumber(
-      book.scanDepth ?? book.scan_depth ?? rawSettings.scanDepth ?? rawSettings.scan_depth,
-      settings.scanDepth
-    );
-    settings.maxEntries = this._parsePositiveNumber(
-      book.maxEntries ?? book.max_entries ?? rawSettings.maxEntries ?? rawSettings.max_entries,
-      settings.maxEntries
-    );
-    settings.maxRecursionSteps = this._parseNonNegativeNumber(
-      book.maxRecursionSteps ?? book.max_recursion_steps ?? rawSettings.maxRecursionSteps ?? rawSettings.max_recursion_steps,
-      settings.maxRecursionSteps
-    );
-
-    const explicitCharBudget = this._parsePositiveNumber(
-      book.maxChars ?? book.max_chars ?? rawSettings.maxChars ?? rawSettings.max_chars,
-      null
-    );
-    const explicitTokenBudget = this._parsePositiveNumber(
-      book.tokenBudget ?? book.token_budget ?? rawSettings.tokenBudget ?? rawSettings.token_budget,
-      null
-    );
-    const budgetModeValue = book.budgetMode ?? book.budget_mode ?? rawSettings.budgetMode ?? rawSettings.budget_mode;
-    const budgetMode = typeof budgetModeValue === 'string'
-      ? String(budgetModeValue).trim().toLowerCase()
-      : null;
-    if (budgetMode === 'tokens' || (explicitTokenBudget !== null && explicitCharBudget === null)) {
-      settings.maxChars = explicitTokenBudget ?? settings.maxChars;
-      settings.budgetMode = 'tokens';
-    } else if (budgetMode === 'chars' || explicitCharBudget !== null) {
-      settings.maxChars = explicitCharBudget ?? settings.maxChars;
-      settings.budgetMode = 'chars';
-    }
-
-    settings.recursiveScan = this._firstDefinedBoolean(
-      [book.recursiveScan, book.recursiveScanning, book.recursive_scanning, rawSettings.recursiveScan, rawSettings.recursiveScanning, rawSettings.recursive_scanning],
-      settings.recursiveScan
-    );
-    settings.caseSensitive = this._firstDefinedBoolean(
-      [book.caseSensitive, book.case_sensitive, rawSettings.caseSensitive, rawSettings.case_sensitive],
-      settings.caseSensitive
-    );
-    settings.matchWholeWords = this._firstDefinedBoolean(
-      [book.matchWholeWords, book.match_whole_words, rawSettings.matchWholeWords, rawSettings.match_whole_words],
-      settings.matchWholeWords
-    );
-    settings.includeNames = this._firstDefinedBoolean(
-      [book.includeNames, book.include_names, book.includeNamesInText, rawSettings.includeNames, rawSettings.include_names, rawSettings.includeNamesInText],
-      settings.includeNames
-    );
-
-    const expandedRawEntries = this._expandImportedEntries(rawEntries);
-    const entries = this._ensureUniqueEntryUids(
-      this._repairImportedStructuredEntries(
-        expandedRawEntries
-          .map((entry, index) => this.createEntry({ ...entry, id: entry?.id ?? index + 1 }))
-          .filter(Boolean)
-      )
-    );
 
     return {
       version: 1,
       name: String(book.name || book.title || fallbackName),
       description: String(book.description || ''),
       settings,
-      entries,
+      entries: rawEntries.map((entry, index) => this.createEntry({ ...entry, id: entry?.id ?? index + 1 })),
     };
   },
 
@@ -2483,24 +1887,14 @@ const WorldBook = {
       afterStory: [],
       beforeInput: [],
       afterInput: [],
-      atDepth: [],
     };
-    const atDepthEntries = [];
 
     for (const entry of active) {
-      if (!this._isInjectablePosition(entry.position)) continue;
       const prompt = this._formatEntryPrompt(entry);
       if (!prompt) continue;
       if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
       else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
       else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
-      else if (entry.position === 'at_depth') {
-        buckets.atDepth.push(prompt);
-        atDepthEntries.push({
-          ...entry,
-          _prompt: prompt,
-        });
-      }
       else buckets.afterStory.push(prompt);
     }
 
@@ -2509,9 +1903,8 @@ const WorldBook = {
       afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
       beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
       afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
-      atDepth: this._wrapPromptBucket('深度注入', buckets.atDepth),
-      atDepthEntries,
       active,
+      blocked: active.blocked || [],
     };
   },
 
@@ -2519,343 +1912,116 @@ const WorldBook = {
     const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
     const entries = normalized.entries.filter(entry => (
       entry.enabled
-      && entry.content.trim()
+      && String(entry.content || '').trim()
     ));
-    if (entries.length === 0) return [];
-
-    const activationState = this._syncConversationActivationState(conversation, normalized);
-    const compareBaseOrder = (a, b) => {
-      if (a.order !== b.order) return b.order - a.order;
-      return a.uid - b.uid;
-    };
-    const comparePromptOrder = (a, b) => {
-      const posA = this._positionRank(a.position);
-      const posB = this._positionRank(b.position);
-      if (posA !== posB) return posA - posB;
-      return compareBaseOrder(a, b);
-    };
-    const manualEntries = entries
-      .filter(entry => entry.manualActive)
-      .map(entry => this._hydrateEntry(entry, conversation, { _activationMode: 'manual' }))
-      .sort(comparePromptOrder);
-    const scanEntries = entries
-      .filter(entry => !entry.manualActive)
-      .sort(compareBaseOrder);
-
-    const limited = [];
-    const addedIds = new Set();
-    let totalChars = 0;
-    const addEntry = (entry, force = false) => {
-      if (!entry || addedIds.has(entry.uid)) return 'duplicate';
-      if (!this._isInjectablePosition(entry?.position)) return 'unsupported';
-      if (!force && limited.length >= normalized.settings.maxEntries) return 'maxEntries';
-      const nextLen = this._estimateEntryCost(this._entryContent(entry), normalized.settings.budgetMode);
-      if (!force && !entry.ignoreBudget && totalChars + nextLen > normalized.settings.maxChars) return 'budget';
-      limited.push(entry);
-      addedIds.add(entry.uid);
-      if (!entry.ignoreBudget) totalChars += nextLen;
-      return 'added';
-    };
-
-    for (const entry of manualEntries) {
-      addEntry(entry, true);
-    }
-    if (scanEntries.length) {
-      const scanSources = this._buildScanSources(conversation, normalized.settings.scanDepth, normalized.settings);
-      const configuredSteps = Number.isFinite(Number(normalized.settings.maxRecursionSteps))
-        ? Math.max(0, Math.floor(Number(normalized.settings.maxRecursionSteps)))
-        : 1;
-      const totalSteps = normalized.settings.recursiveScan
-        ? (configuredSteps === 0 ? scanEntries.length + 1 : Math.max(1, configuredSteps))
-        : 1;
-
-      for (let step = 0; step < totalSteps; step++) {
-        const matchedThisStep = [];
-        for (const sourceEntry of scanEntries) {
-          if (addedIds.has(sourceEntry.uid)) continue;
-          const hydratedEntry = this._hydrateEntry(sourceEntry, conversation);
-          const entryState = this._getActivationStateEntry(activationState, hydratedEntry);
-          if (step > 0 && hydratedEntry.excludeRecursion) continue;
-          if (step === 0 && hydratedEntry.delayUntilRecursion) continue;
-          if (!this._isEntryDelaySatisfied(hydratedEntry, conversation)) continue;
-          if (this._isCooldownActive(entryState)) continue;
-
-          if (this._isStickyActive(entryState)) {
-            matchedThisStep.push({
-              ...hydratedEntry,
-              _autoMatched: true,
-              _activationMode: 'auto',
-              _matchKind: 'sticky',
-              _matchStep: 0,
-              _stickyActive: true,
-              _delayRemaining: this._getEntryDelayRemaining(hydratedEntry, conversation),
-              _stickyTurnsLeft: this._getStickyTurnsLeft(entryState),
-              _cooldownTurnsLeft: this._getCooldownTurnsLeft(entryState),
-              _matchSources: [
-                {
-                  kind: 'timed_effect',
-                  scope: 'sticky',
-                  label: 'Sticky carry-over',
-                  preview: 'Previously matched and kept active by sticky effect.',
-                  excerpt: '',
-                  primaryMatches: [],
-                  secondaryMatches: [],
-                },
-              ],
-            });
-            continue;
-          }
-
-          if (hydratedEntry.constant) {
-            matchedThisStep.push({
-              ...hydratedEntry,
-              _activationMode: 'constant',
-              _delayRemaining: this._getEntryDelayRemaining(hydratedEntry, conversation),
-              _stickyTurnsLeft: this._getStickyTurnsLeft(entryState),
-              _cooldownTurnsLeft: this._getCooldownTurnsLeft(entryState),
-            });
-            continue;
-          }
-
-          const entrySources = this._getScanSourcesForEntry(scanSources, hydratedEntry, normalized.settings, conversation);
-          const entryText = entrySources.map(source => source.content).filter(Boolean).join('\n').trim();
-          if (!entryText) continue;
-          const match = this._getEntryMatchDetails(hydratedEntry, entryText, normalized.settings);
-          if (!match.matched) continue;
-          if (!this._passesProbability(hydratedEntry, conversation, step, entryState)) continue;
-
-          const matchSources = this._collectMatchSources(hydratedEntry, entrySources, normalized.settings);
-          const matchedPrimaryKeys = [...new Set(matchSources.flatMap(source => source.primaryMatches || []))];
-          const matchedSecondaryKeys = [...new Set(matchSources.flatMap(source => source.secondaryMatches || []))];
-          matchedThisStep.push({
-            ...hydratedEntry,
-            _autoMatched: true,
-            _activationMode: 'auto',
-            _matchKind: step === 0 ? 'direct' : 'recursion',
-            _matchedPrimaryKeys: matchedPrimaryKeys.length ? matchedPrimaryKeys : match.primaryMatches,
-            _matchedSecondaryKeys: matchedSecondaryKeys.length ? matchedSecondaryKeys : match.secondaryMatches,
-            _matchStep: step + 1,
-            _matchSources: matchSources,
-            _delayRemaining: this._getEntryDelayRemaining(hydratedEntry, conversation),
-            _stickyTurnsLeft: this._getStickyTurnsLeft(entryState),
-            _cooldownTurnsLeft: this._getCooldownTurnsLeft(entryState),
-          });
-        }
-
-        if (!matchedThisStep.length) break;
-        const filteredEntries = this._filterEntriesByGroups(matchedThisStep, conversation, compareBaseOrder);
-        const addedThisStep = [];
-        for (const entry of filteredEntries) {
-          const result = addEntry(entry, false);
-          if (result === 'added') addedThisStep.push(entry);
-          if (result === 'maxEntries') break;
-        }
-
-        if (!normalized.settings.recursiveScan || !addedThisStep.length || step >= totalSteps - 1) break;
-        scanSources.push(...this._buildRecursionSources(addedThisStep, step + 1, conversation));
-      }
-    }
-    limited.sort(comparePromptOrder);
-    this._recordActivatedEntries(limited, normalized, conversation, activationState);
-    return limited;
-  },
-
-  _filterEntriesByGroups(entries, conversation, compareEntries = null) {
-    const list = Array.isArray(entries) ? entries.map(entry => ({ ...entry })) : [];
-    const groupMap = new Map();
-    for (const entry of list) {
-      for (const groupName of this._entryGroups(entry)) {
-        if (!groupMap.has(groupName)) groupMap.set(groupName, []);
-        groupMap.get(groupName).push(entry);
-      }
-    }
-    if (!groupMap.size) return list;
-
-    const excludedIds = new Set();
-    const groupMarks = new Map();
-
-    for (const [groupName, groupEntries] of groupMap.entries()) {
-      const candidates = groupEntries.filter(entry => !excludedIds.has(entry.uid));
-      if (candidates.length <= 1) {
-        if (candidates[0]) groupMarks.set(candidates[0].uid, [...(groupMarks.get(candidates[0].uid) || []), groupName]);
-        continue;
-      }
-      const winner = this._pickGroupWinner(candidates, conversation, groupName, compareEntries);
-      if (!winner) continue;
-      groupMarks.set(winner.uid, [...(groupMarks.get(winner.uid) || []), groupName]);
-      for (const entry of candidates) {
-        if (entry.uid === winner.uid) continue;
-        excludedIds.add(entry.uid);
-      }
-    }
-
-    return list
-      .filter(entry => !excludedIds.has(entry.uid))
-      .map(entry => groupMarks.has(entry.uid)
-        ? {
-          ...entry,
-          _selectedGroups: [...new Set(groupMarks.get(entry.uid) || [])],
-          _groupWinner: true,
-        }
-        : entry);
-  },
-
-  _pickGroupWinner(entries, conversation, groupName, compareEntries = null) {
-    const candidates = Array.isArray(entries) ? [...entries] : [];
-    if (!candidates.length) return null;
-    const overrideEntries = candidates.filter(entry => entry.groupOverride);
-    const pool = overrideEntries.length ? overrideEntries : candidates;
-    const scoringEnabled = pool.some(entry => entry.useGroupScoring || entry._autoMatched);
-    if (scoringEnabled) {
-      const scored = pool.map(entry => ({ entry, score: this._entryActivationScore(entry) }));
-      const bestScore = Math.max(...scored.map(item => item.score));
-      const bestEntries = scored.filter(item => item.score === bestScore).map(item => item.entry);
-      if (bestEntries.length === 1) return bestEntries[0];
-      return this._pickStableWeightedEntry(bestEntries, conversation, groupName, compareEntries);
-    }
-    return this._pickStableWeightedEntry(pool, conversation, groupName, compareEntries);
-  },
-
-  _pickStableWeightedEntry(entries, conversation, groupName, compareEntries = null) {
-    const candidates = Array.isArray(entries) ? [...entries] : [];
-    if (!candidates.length) return null;
-    if (candidates.length === 1) return candidates[0];
-
-    const sorted = compareEntries ? candidates.sort(compareEntries) : candidates.sort((a, b) => b.uid - a.uid);
-    const totalWeight = sorted.reduce((sum, entry) => sum + Math.max(0, Number(entry.groupWeight) || 0), 0);
-    if (totalWeight <= 0) return sorted[0];
-
-    const seedSource = [
-      conversation?.id || '',
-      conversation?.phase || '',
-      groupName || '',
-      (conversation?.messages || []).length,
-      this._findLastMessage(conversation, 'user'),
-      this._findLastMessage(conversation, 'assistant'),
-    ].join('|');
-    let roll = this._stableHash(seedSource) % totalWeight;
-    for (const entry of sorted) {
-      roll -= Math.max(0, Number(entry.groupWeight) || 0);
-      if (roll < 0) return entry;
-    }
-    return sorted[0];
-  },
-
-  _entryGroups(entry) {
-    return this._normalizeList(entry?.groups || []);
-  },
-
-  _entryActivationScore(entry) {
-    let score = 0;
-    if (entry._matchKind === 'direct') score += 1000;
-    else if (entry._matchKind === 'sticky') score += 950;
-    else if (entry._matchKind === 'recursion') score += Math.max(100, 700 - (Number(entry._matchStep) || 1) * 50);
-    score += (Array.isArray(entry._matchedPrimaryKeys) ? entry._matchedPrimaryKeys.length : 0) * 80;
-    score += (Array.isArray(entry._matchedSecondaryKeys) ? entry._matchedSecondaryKeys.length : 0) * 35;
-    score += (Array.isArray(entry._matchSources) ? entry._matchSources.length : 0) * 20;
-    score += Math.max(0, Number(entry._stickyTurnsLeft) || 0) * 5;
-    score += Math.max(-1000, Math.min(1000, Number(entry.order) || 0));
-    return score;
-  },
-
-  _stableHash(text) {
-    const input = String(text || '');
-    let hash = 2166136261;
-    for (let i = 0; i < input.length; i++) {
-      hash ^= input.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0);
-  },
-
-  _resolveAutoEntries(entries, conversation, defaults, compareEntries = null, options = {}) {
     if (!entries.length) return [];
 
-    const remaining = [...entries];
-    const matched = [];
-    const activationState = options?.state || null;
-    const scanSources = this._buildScanSources(conversation, defaults.scanDepth, defaults);
-    if (!scanSources.length) return [];
+    const active = [];
+    const addedIds = new Set();
+    const blocked = [];
+    let totalChars = 0;
 
-    const configuredSteps = Number.isFinite(Number(defaults.maxRecursionSteps))
-      ? Math.max(0, Math.floor(Number(defaults.maxRecursionSteps)))
-      : 1;
-    const totalSteps = defaults.recursiveScan
-      ? (configuredSteps === 0 ? entries.length + 1 : Math.max(1, configuredSteps))
-      : 1;
+    const compareEntries = (a, b) => {
+      const posA = this.POSITION_MAP[a.position] ?? 99;
+      const posB = this.POSITION_MAP[b.position] ?? 99;
+      if (posA !== posB) return posA - posB;
+      if (a.constant !== b.constant) return a.constant ? -1 : 1;
+      if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
+      if (a.order !== b.order) return a.order - b.order;
+      return a.uid - b.uid;
+    };
 
-    for (let step = 0; step < totalSteps && remaining.length; step++) {
+    const tryAdd = (entry) => {
+      if (!entry || addedIds.has(entry.uid)) return false;
+      if (active.length >= normalized.settings.maxEntries) {
+        blocked.push({ ...entry, _blockedReason: 'maxEntries' });
+        return false;
+      }
+      const nextLen = String(entry.content || '').length;
+      if (active.length > 0 && totalChars + nextLen > normalized.settings.maxChars) {
+        blocked.push({ ...entry, _blockedReason: 'budget' });
+        return false;
+      }
+      active.push(entry);
+      addedIds.add(entry.uid);
+      totalChars += nextLen;
+      return true;
+    };
+
+    const constantEntries = entries
+      .filter(entry => entry.constant)
+      .map(entry => ({
+        ...entry,
+        _activationMode: 'constant',
+        _matchKind: 'constant',
+        _matchedPrimaryKeys: [],
+        _matchedSecondaryKeys: [],
+        _matchSources: [{ kind: 'constant', label: '常驻条目', preview: '' }],
+        _matchStep: 0,
+      }))
+      .sort(compareEntries);
+
+    for (const entry of constantEntries) tryAdd(entry);
+
+    const autoEntries = entries
+      .filter(entry => !entry.constant && (entry.keys || []).length > 0)
+      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.uid - b.uid));
+
+    const baseScanSources = this._buildScanSources(conversation, normalized.settings);
+    let recursiveSources = [];
+    const recursionSteps = normalized.settings.recursiveScan
+      ? Math.max(0, Number(normalized.settings.maxRecursionSteps) || 0)
+      : 0;
+    const maxSteps = 1 + recursionSteps;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const sourcePool = step === 0 ? baseScanSources : recursiveSources;
+      if (!sourcePool.length) break;
       const matchedThisStep = [];
-      for (let i = remaining.length - 1; i >= 0; i--) {
-        const entry = remaining[i];
-        const hydratedEntry = this._hydrateEntry(entry, conversation);
-        const entryState = this._getActivationStateEntry(activationState, hydratedEntry);
-        if (step > 0 && hydratedEntry.excludeRecursion) continue;
-        if (step === 0 && entry.delayUntilRecursion) continue;
-        if (!this._isEntryDelaySatisfied(hydratedEntry, conversation)) continue;
-        if (this._isCooldownActive(entryState)) continue;
-        const entrySources = this._getScanSourcesForEntry(scanSources, hydratedEntry, defaults, conversation);
-        const entryText = entrySources.map(source => source.content).filter(Boolean).join('\n').trim();
-        if (!entryText) continue;
-        const match = this._getEntryMatchDetails(hydratedEntry, entryText, defaults);
+      for (const entry of autoEntries) {
+        if (addedIds.has(entry.uid)) continue;
+        if (step > 0 && entry.preventRecursion) continue;
+        const match = this._findEntryMatch(entry, sourcePool, normalized.settings);
         if (!match.matched) continue;
-
-        remaining.splice(i, 1);
-        if (!this._passesProbability(hydratedEntry, conversation, step, entryState)) continue;
-
-        const matchSources = this._collectMatchSources(hydratedEntry, entrySources, defaults);
-        const matchedPrimaryKeys = [...new Set(matchSources.flatMap(source => source.primaryMatches || []))];
-        const matchedSecondaryKeys = [...new Set(matchSources.flatMap(source => source.secondaryMatches || []))];
+        if (!this._passesProbability(entry, conversation, step)) continue;
         matchedThisStep.push({
-          ...hydratedEntry,
-          constant: options.legacyConstantRepair === true ? false : hydratedEntry.constant,
-          _originalConstant: hydratedEntry.constant,
-          _autoMatched: true,
-          _activationMode: options.activationMode || 'auto',
-          _matchKind: step === 0 ? 'direct' : 'recursion',
-          _legacyConstantRepair: options.legacyConstantRepair === true,
-          _mixedConstantRepair: options.mixedConstantRepair === true,
-          _matchedPrimaryKeys: matchedPrimaryKeys.length ? matchedPrimaryKeys : match.primaryMatches,
-          _matchedSecondaryKeys: matchedSecondaryKeys.length ? matchedSecondaryKeys : match.secondaryMatches,
+          ...entry,
+          _activationMode: 'auto',
+          _matchKind: step === 0 ? 'direct' : 'recursive',
           _matchStep: step + 1,
-          _matchSources: matchSources,
-          _delayRemaining: this._getEntryDelayRemaining(hydratedEntry, conversation),
-          _stickyTurnsLeft: this._getStickyTurnsLeft(entryState),
-          _cooldownTurnsLeft: this._getCooldownTurnsLeft(entryState),
+          _matchedPrimaryKeys: match.primaryMatches,
+          _matchedSecondaryKeys: match.secondaryMatches,
+          _matchSources: match.sources,
         });
       }
 
       if (!matchedThisStep.length) break;
-      if (compareEntries) matchedThisStep.sort(compareEntries);
-      matched.push(...matchedThisStep);
-      if (!defaults.recursiveScan) break;
-      if (step >= totalSteps - 1) break;
-      scanSources.push(...this._buildRecursionSources(matchedThisStep, step + 1, conversation));
+      matchedThisStep.sort(compareEntries);
+      const addedThisStep = [];
+      for (const entry of matchedThisStep) {
+        if (tryAdd(entry)) addedThisStep.push(entry);
+      }
+      if (!normalized.settings.recursiveScan || !addedThisStep.length) break;
+      recursiveSources = addedThisStep.map(entry => ({
+        kind: 'recursion',
+        label: `递归：${entry.comment || entry.title || entry.uid}`,
+        content: String(entry.content || ''),
+      }));
     }
 
-    return matched;
+    active.sort(compareEntries);
+    active.blocked = blocked;
+    return active;
   },
 
   exportAirp(book) {
-    const normalized = this.normalizeBook(book);
-    return {
-      type: 'airp_worldbook_v1',
-      ...normalized,
-    };
+    return { type: 'airp_worldbook_v1', ...this.normalizeBook(book) };
   },
 
   exportSillyTavern(book) {
     const normalized = this.normalizeBook(book);
     const entries = {};
     for (const entry of normalized.entries) {
-      const extensions = {
-        match_scenario: !!entry.matchScenario,
-        match_persona_description: !!entry.matchPersonaDescription,
-        match_character_description: !!entry.matchCharacterDescription,
-        match_character_personality: !!entry.matchCharacterPersonality,
-        match_character_depth_prompt: !!entry.matchCharacterDepthPrompt,
-        match_creator_notes: !!entry.matchCreatorNotes,
-      };
       entries[String(entry.uid)] = {
         uid: entry.uid,
         comment: entry.comment || entry.title || '',
@@ -2865,37 +2031,18 @@ const WorldBook = {
         key: [...entry.keys],
         keysecondary: [...entry.secondaryKeys],
         order: entry.order,
-        position: this._positionValueForExport(entry),
+        position: this.POSITION_MAP[entry.position] ?? 1,
         disable: !entry.enabled,
-        addMemo: true,
-        excludeRecursion: !!entry.excludeRecursion,
-        preventRecursion: !!entry.preventRecursion,
-        delayUntilRecursion: !!entry.delayUntilRecursion,
-        scanDepth: Number.isFinite(Number(entry.scanDepth)) ? Number(entry.scanDepth) : null,
-        depth: entry.position === 'at_depth' ? this._entryInsertionDepth(entry) : undefined,
-        role: entry.position === 'at_depth' ? this.DEPTH_ROLE_MAP[this._entryDepthRole(entry)] : undefined,
-        caseSensitive: entry.caseSensitive,
-        matchWholeWords: entry.matchWholeWords,
-        useRegex: entry.useRegex,
         probability: entry.probability,
-        selectiveLogic: this.LOGIC_MAP[entry.selectiveLogic] ?? 0,
-        matchScenario: !!entry.matchScenario,
-        matchPersonaDescription: !!entry.matchPersonaDescription,
-        matchCharacterDescription: !!entry.matchCharacterDescription,
-        matchCharacterPersonality: !!entry.matchCharacterPersonality,
-        matchCharacterDepthPrompt: !!entry.matchCharacterDepthPrompt,
-        matchCreatorNotes: !!entry.matchCreatorNotes,
-        extensions,
+        selectiveLogic: this.LOGIC_MAP?.[entry.selectiveLogic] ?? 0,
       };
     }
     return {
       name: normalized.name,
       description: normalized.description,
       entries,
+      tokenBudget: normalized.settings.maxChars,
       scanDepth: normalized.settings.scanDepth,
-      tokenBudget: normalized.settings.budgetMode === 'tokens'
-        ? normalized.settings.maxChars
-        : Math.max(1, Math.round(normalized.settings.maxChars / 4)),
       recursiveScanning: normalized.settings.recursiveScan,
       maxRecursionSteps: normalized.settings.maxRecursionSteps,
       matchWholeWords: normalized.settings.matchWholeWords,
@@ -2907,1302 +2054,163 @@ const WorldBook = {
     return this.normalizeBook(raw);
   },
 
-  _expandImportedEntries(entries) {
-    return Array.isArray(entries)
-      ? entries.flatMap(entry => this._expandImportedStructuredEntry(entry))
-      : [];
-  },
-
-  _expandImportedStructuredEntry(entry) {
-    if (!entry || typeof entry !== 'object') return entry ? [entry] : [];
-    const blocks = this._parseInlineWrappedBlocks(entry.content);
-    if (!blocks.length) return [{ ...entry }];
-
-    return blocks.map((block, index) => {
-      const hasParsedType = !!block.type;
-      const title = block.title || entry.comment || entry.title || entry.name || `条目 ${index + 1}`;
-      return {
-        ...entry,
-        uid: Number.isFinite(Number(block.uid)) ? Number(block.uid) : (entry.uid ?? entry.id),
-        id: Number.isFinite(Number(block.uid)) ? Number(block.uid) : (entry.id ?? entry.uid),
-        comment: title,
-        title,
-        name: title,
-        content: block.body || String(entry.content || ''),
-        key: block.keys.length ? [...block.keys] : entry.key,
-        keys: block.keys.length ? [...block.keys] : entry.keys,
-        constant: hasParsedType
-          ? (block.type === 'constant')
-          : entry.constant,
-        position: block.position || block.rawPosition || entry.position,
-        rawPosition: block.rawPosition || entry.rawPosition,
-      };
-    });
-  },
-
-  _ensureUniqueEntryUids(entries) {
-    const list = Array.isArray(entries) ? entries.map(entry => ({ ...entry })) : [];
-    const used = new Set();
-    let nextUid = list.reduce((max, entry) => {
-      const uid = Number.isFinite(Number(entry?.uid)) ? Number(entry.uid) : 0;
-      return Math.max(max, uid);
-    }, 0) + 1;
-
-    return list.map(entry => {
-      let uid = Number.isFinite(Number(entry?.uid)) ? Number(entry.uid) : 0;
-      if (!uid || used.has(uid)) {
-        while (used.has(nextUid)) nextUid += 1;
-        uid = nextUid;
-        nextUid += 1;
-      }
-      used.add(uid);
-      return uid === entry.uid
-        ? entry
-        : {
-          ...entry,
-          uid,
-          _uidRepair: true,
-        };
-    });
-  },
-
-  _repairImportedStructuredEntries(entries) {
-    return Array.isArray(entries)
-      ? entries.map(entry => this._repairImportedStructuredEntry(entry))
-      : [];
-  },
-
-  _repairImportedStructuredEntry(entry) {
-    if (!entry || typeof entry !== 'object') return entry;
-    let next = { ...entry };
-    const wrapped = this._parseInlineWrappedEntry(next.content);
-    if (wrapped) {
-      if (wrapped.body) {
-        next.content = wrapped.body;
-        next._wrappedContentRepair = true;
-      }
-      if (wrapped.keys.length && (!Array.isArray(next.keys) || next.keys.length === 0)) {
-        next.keys = wrapped.keys;
-        next._wrappedKeyRepair = true;
-      }
-      if (wrapped.position && wrapped.position !== 'unsupported') {
-        next.position = wrapped.position;
-        next.rawPosition = wrapped.rawPosition ?? wrapped.position;
-        next._wrappedPositionRepair = true;
-      }
-      if (wrapped.type === 'constant') {
-        next.constant = true;
-      } else if (wrapped.type && wrapped.type !== 'constant' && next.constant) {
-        next.constant = false;
-        next._originalConstant = true;
-        next._inlineTriggerRepair = true;
-      }
-    }
-
-    const inlineKeys = this._extractStructuredTriggerKeywords(next.content);
-    const isOptionalPlot = /^\s*<plot>/i.test(String(next.content || '').trim())
-      || /剧情\[\s*可选/i.test(String(next.comment || next.title || ''));
-    if (inlineKeys.length && (!Array.isArray(next.keys) || next.keys.length === 0)) {
-      next.keys = inlineKeys;
-      next._inlineKeywordRepair = true;
-      if (isOptionalPlot && next.constant) {
-        next.constant = false;
-        next._originalConstant = true;
-        next._inlineTriggerRepair = true;
-      }
-    }
-
-    return next;
-  },
-
-  _repairSuspiciousConstantEntries(entries) {
-    const normalizedEntries = Array.isArray(entries) ? entries.map(entry => ({ ...entry })) : [];
-    const enabledEntries = normalizedEntries.filter(entry => (
-      entry?.enabled
-      && !entry?.manualActive
-      && String(entry?.content || '').trim()
-    ));
-    if (enabledEntries.length < 3) return normalizedEntries;
-
-    const constantEntries = enabledEntries.filter(entry => entry.constant);
-    if (constantEntries.length !== enabledEntries.length) return normalizedEntries;
-
-    const keyedConstantEntries = constantEntries.filter(entry => Array.isArray(entry.keys) && entry.keys.length > 0);
-    if (keyedConstantEntries.length !== constantEntries.length) return normalizedEntries;
-
-    return normalizedEntries.map(entry => {
-      if (!entry.constant || !Array.isArray(entry.keys) || entry.keys.length === 0) return entry;
-      return {
-        ...entry,
-        constant: false,
-        _originalConstant: true,
-        _suspiciousConstantRepair: true,
-        _constantSource: entry._constantSource === 'constant'
-          ? 'suspicious_constant_repair'
-          : (entry._constantSource || 'suspicious_constant_repair'),
-      };
-    });
-  },
-
-  _parseInlineWrappedEntry(content) {
-    return this._parseInlineWrappedBlocks(content)[0] || null;
-    const text = String(content || '');
-    if (!text.trim()) return null;
-    const match = text.match(/^\s*uid\s*:\s*[^\n]+\n\s*trigger\s*:\s*\n([\s\S]*?)\n\s*content\s*:\s*\|\s*\n([\s\S]*)$/i);
-    if (!match) return null;
-
-    const triggerBlock = match[1];
-    const body = this._dedentBlock(match[2]).trim();
-    const typeMatch = triggerBlock.match(/(?:^|\n)\s*type\s*:\s*([^\n]+)/i);
-    const positionMatch = triggerBlock.match(/(?:^|\n)\s*position\s*:\s*([^\n]+)/i);
-    const keysMatch = triggerBlock.match(/(?:^|\n)\s*(?:comma_separated_list|Comma_separated_list|keywords?|trigger_words?)\s*:\s*([^\n]+)/);
-    const rawPosition = positionMatch ? String(positionMatch[1] || '').trim() : '';
-    const keys = keysMatch ? this._normalizeKeywordList(String(keysMatch[1] || '').replace(/[，、；;]/g, ',')) : [];
-    return {
-      body,
-      type: typeMatch ? this._normalizeInlineTriggerType(typeMatch[1]) : '',
-      rawPosition,
-      position: this._normalizeInlineImportPosition(rawPosition),
-      keys,
-    };
-  },
-
-  _parseInlineWrappedBlocks(content) {
-    const text = String(content || '');
-    if (!text.trim()) return [];
-    const blocks = [];
-    const blockRegex = /(?:^|\n)\s*uid\s*:\s*([^\n]+)\n\s*trigger\s*:\s*\n([\s\S]*?)\n\s*content\s*:\s*\|\s*\n([\s\S]*?)(?=(?:\n\s*uid\s*:\s*[^\n]+\n\s*trigger\s*:)|\s*$)/gi;
-    let match;
-    while ((match = blockRegex.exec(text)) !== null) {
-      const uid = String(match[1] || '').trim();
-      const triggerBlock = String(match[2] || '');
-      const body = this._dedentBlock(match[3]).trim();
-      const typeMatch = triggerBlock.match(/(?:^|\n)\s*type\s*:\s*([^\n]+)/i);
-      const positionMatch = triggerBlock.match(/(?:^|\n)\s*position\s*:\s*([^\n]+)/i);
-      const titleMatch = triggerBlock.match(/(?:^|\n)\s*title\s*:\s*([^\n]+)/i);
-      const keysMatch = triggerBlock.match(/(?:^|\n)\s*(?:comma_separated_list|keywords?|trigger_words?)\s*:\s*([^\n]+)/i);
-      const rawPosition = positionMatch ? String(positionMatch[1] || '').trim() : '';
-      const keys = keysMatch ? this._normalizeKeywordList(String(keysMatch[1] || '').replace(/[锛屻€侊紱;]/g, ',')) : [];
-      blocks.push({
-        uid,
-        title: titleMatch ? String(titleMatch[1] || '').trim() : '',
-        body,
-        type: typeMatch ? this._normalizeInlineTriggerType(typeMatch[1]) : '',
-        rawPosition,
-        position: this._normalizeInlineImportPosition(rawPosition),
-        keys,
-      });
-      if (match.index === blockRegex.lastIndex) blockRegex.lastIndex += 1;
-    }
-    return blocks;
-  },
-
-  _extractStructuredTriggerKeywords(content) {
-    const text = String(content || '');
-    if (!text.trim()) return [];
-    const match = text.match(/(?:^|\n)\s*(?:触发字|触发词|关键字|关键词|觸發字|觸發詞)\s*:\s*([^\n]+)/);
-    if (!match) return [];
-    return this._normalizeKeywordList(String(match[1] || '').replace(/[，、；;]/g, ','));
-  },
-
-  _normalizeInlineTriggerType(value) {
-    const normalized = String(value || '').trim().toLowerCase();
-    if (!normalized) return '';
-    if (['constant', 'always', 'blue'].includes(normalized)) return 'constant';
-    if (['normal', 'keyword', 'green', 'auto'].includes(normalized)) return 'normal';
-    return normalized;
-  },
-
-  _normalizeInlineImportPosition(value) {
-    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-    if (!normalized) return null;
-    if (normalized.includes('before_character_definition') || normalized.includes('before_char_defs')) return 'before_char';
-    if (normalized.includes('after_character_definition') || normalized.includes('after_char_defs')) return 'after_char';
-    if (normalized.includes('before_author') || normalized.includes('before_an')) return 'before_input';
-    if (normalized.includes('after_author') || normalized.includes('after_an')) return 'after_input';
-    if (normalized.includes('@depth') || normalized.includes('at_depth') || normalized.includes('depth')) return 'at_depth';
-    return this._normalizePosition(normalized);
-  },
-
-  _dedentBlock(text) {
-    const lines = String(text || '').replace(/\r/g, '').split('\n');
-    let minIndent = null;
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const indent = (line.match(/^(\s*)/) || ['',''])[1].length;
-      minIndent = minIndent === null ? indent : Math.min(minIndent, indent);
-    }
-    if (!Number.isFinite(minIndent) || minIndent <= 0) return lines.join('\n');
-    return lines.map(line => line.trim() ? line.slice(minIndent) : '').join('\n');
-  },
-
-  _isTavernImportBook(book, rawEntries = [], rawSettings = {}) {
-    if (!book || typeof book !== 'object') return false;
-    if (Array.isArray(book.worldInfos)) return true;
-    if (book.entries && !Array.isArray(book.entries)) return true;
-    const settingKeys = Object.keys(rawSettings || {});
-    if (settingKeys.some(key => ['scandepth', 'scan_depth', 'tokenbudget', 'token_budget', 'recursivescanning', 'recursive_scanning'].includes(String(key).toLowerCase()))) {
-      return true;
-    }
-    return (rawEntries || []).some(entry => {
-      if (!entry || typeof entry !== 'object') return false;
-      return entry.keysecondary !== undefined
-        || entry.secondary_keys !== undefined
-        || entry.use_regex !== undefined
-        || entry.useRegex !== undefined
-        || entry.extensions !== undefined
-        || entry.addMemo !== undefined
-        || entry.insertion_order !== undefined;
-    });
-  },
-
-  _parseBoolean(value, fallback = null) {
-    if (value === null || value === undefined) return fallback;
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'number') {
-      if (!Number.isFinite(value)) return fallback;
-      return value !== 0;
-    }
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (!normalized) return false;
-      if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) return true;
-      if (['false', '0', 'no', 'n', 'off', 'null', 'undefined'].includes(normalized)) return false;
-    }
-    return !!value;
-  },
-
-  _readBooleanFlags(source, keys, fallback = false) {
-    let sawDefined = false;
-    let sawFalse = false;
-    for (const key of (keys || [])) {
-      if (!Object.prototype.hasOwnProperty.call(source || {}, key)) continue;
-      const parsed = this._parseBoolean(source[key], null);
-      if (parsed === null) continue;
-      sawDefined = true;
-      if (parsed === true) return true;
-      if (parsed === false) sawFalse = true;
-    }
-    if (sawDefined && sawFalse) return false;
-    return fallback;
-  },
-
-  _firstDefinedBoolean(values, fallback = false) {
-    for (const value of (values || [])) {
-      const parsed = this._parseBoolean(value, null);
-      if (parsed !== null) return parsed;
-    }
-    return fallback;
-  },
-
-  _firstFiniteNumber(values, fallback = null, transform = null) {
-    for (const value of (values || [])) {
-      if (value === null || value === undefined) continue;
-      if (typeof value === 'string' && !value.trim()) continue;
-      const num = Number(value);
-      if (!Number.isFinite(num)) continue;
-      return typeof transform === 'function' ? transform(num) : num;
-    }
-    return fallback;
-  },
-
-  _parsePositiveNumber(value, fallback) {
-    const num = Number(value);
-    return Number.isFinite(num) && num > 0 ? num : fallback;
-  },
-
-  _parseNonNegativeNumber(value, fallback) {
-    const num = Number(value);
-    return Number.isFinite(num) && num >= 0 ? num : fallback;
-  },
-
   _normalizeList(value) {
-    if (Array.isArray(value)) {
-      return value.map(v => String(v).trim()).filter(Boolean);
-    }
-    if (typeof value === 'string') {
-      return value.split(/\r?\n|[,\uFF0C\u3001;\uFF1B]/).map(v => v.trim()).filter(Boolean);
-    }
+    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+    if (typeof value === 'string') return value.split(/\r?\n|,/).map(v => v.trim()).filter(Boolean);
     return [];
   },
 
-  _normalizeKeywordList(...values) {
-    const keywords = [];
-    const pushKeyword = value => {
-      const text = String(value || '').trim();
-      if (!text || keywords.includes(text)) return;
-      keywords.push(text);
-    };
-    const pushAny = value => {
-      if (value === null || value === undefined) return;
-      if (Array.isArray(value)) {
-        for (const item of value) pushAny(item);
-        return;
-      }
-      if (typeof value === 'string' || typeof value === 'number') {
-        for (const item of this._normalizeList(String(value))) pushKeyword(item);
-        return;
-      }
-      if (typeof value === 'object') {
-        const candidates = [
-          value.keyword,
-          value.key,
-          value.keys,
-          value.keywords,
-          value.text,
-          value.value,
-          value.trigger,
-          value.pattern,
-        ];
-        for (const candidate of candidates) pushAny(candidate);
-      }
-    };
-    for (const value of values) pushAny(value);
-    return keywords;
-  },
-
   _normalizePosition(value) {
-    if (value === null || value === undefined || value === '') return 'after_char';
     if (typeof value === 'number') {
-      return Object.keys(this.POSITION_MAP).find(key => this.POSITION_MAP[key] === value) || 'unsupported';
+      return Object.keys(this.POSITION_MAP).find(key => this.POSITION_MAP[key] === value) || 'after_char';
     }
     if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-      if (!normalized) return 'after_char';
-      if (/^-?\d+$/.test(normalized)) return this._normalizePosition(Number(normalized));
-      if (normalized === 'before_char' || normalized === 'after_char' || normalized === 'before_input' || normalized === 'after_input' || normalized === 'at_depth') {
-        return normalized;
-      }
-      if (this.POSITION_ALIASES[normalized]) return this.POSITION_ALIASES[normalized];
-      if (this.UNSUPPORTED_POSITIONS[normalized]) return 'unsupported';
-      return 'unsupported';
+      const normalized = value.trim().toLowerCase();
+      if (normalized in this.POSITION_MAP) return normalized;
+      if (normalized === 'before_an') return 'before_input';
+      if (normalized === 'after_an' || normalized === 'at_depth') return 'after_input';
     }
     return 'after_char';
   },
 
-  _isInjectablePosition(position) {
-    return position === 'before_char'
-      || position === 'after_char'
-      || position === 'before_input'
-      || position === 'after_input'
-      || position === 'at_depth';
-  },
-
-  _positionValueForExport(entry) {
-    if (!entry) return 1;
-    if (entry.position && this.POSITION_MAP[entry.position] !== undefined) {
-      return this.POSITION_MAP[entry.position];
-    }
-    const rawPosition = entry.rawPosition;
-    if (typeof rawPosition === 'number' && Number.isFinite(rawPosition)) return rawPosition;
-    if (typeof rawPosition === 'string' && rawPosition.trim()) return rawPosition.trim();
-    return 1;
-  },
-
   _normalizeSelectiveLogic(value) {
     if (typeof value === 'number') {
-      return Object.keys(this.LOGIC_MAP).find(key => this.LOGIC_MAP[key] === value) || 'and_any';
+      return Object.keys(this.LOGIC_MAP || {}).find(key => this.LOGIC_MAP[key] === value) || 'and_any';
     }
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, '_');
-      if (normalized in this.LOGIC_MAP) return normalized;
-    }
-    return 'and_any';
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['and_any', 'and_all', 'not_any', 'not_all'].includes(normalized) ? normalized : 'and_any';
   },
 
-  _positionRank(position) {
-    return this.POSITION_MAP[position] ?? 99;
-  },
-
-  _getVisibleMessageCount(conversation) {
-    return (conversation?.messages || []).filter(message => !message?.hidden && String(message?.content || '').trim()).length;
-  },
-
-  _getConversationFingerprint(conversation) {
-    const visibleMessages = (conversation?.messages || []).filter(message => !message?.hidden && String(message?.content || '').trim());
-    const tail = visibleMessages.slice(-6).map(message => [
-      message.id || '',
-      message.role || '',
-      String(message.content || '').slice(0, 80),
-    ].join(':')).join('|');
-    return [
-      conversation?.phase || '',
-      visibleMessages.length,
-      tail,
-    ].join('::');
-  },
-
-  _entryStateSignature(entry) {
-    if (!entry) return '';
-    return JSON.stringify({
-      uid: Number(entry.uid) || 0,
-      enabled: !!entry.enabled,
-      constant: !!entry.constant,
-      manualActive: !!entry.manualActive,
-      keys: this._normalizeList(entry.keys || []),
-      secondaryKeys: this._normalizeList(entry.secondaryKeys || []),
-      content: String(entry.content || ''),
-      excludeRecursion: !!entry.excludeRecursion,
-      preventRecursion: !!entry.preventRecursion,
-      sticky: Number(entry.sticky) || 0,
-      cooldown: Number(entry.cooldown) || 0,
-      delay: Number(entry.delay) || 0,
-      probability: Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100,
-      position: entry.position || 'after_char',
-      depthRole: this._entryDepthRole(entry),
-    });
-  },
-
-  _clearActivationStateEntry(stateEntry) {
-    if (!stateEntry) return;
-    stateEntry.stickyRemaining = 0;
-    stateEntry.cooldownRemaining = 0;
-    stateEntry.pendingCooldown = 0;
-  },
-
-  _ensureConversationActivationState(conversation, book) {
-    if (!conversation || typeof conversation !== 'object') return null;
-    const existing = conversation.worldBookState && typeof conversation.worldBookState === 'object'
-      ? conversation.worldBookState
-      : {};
-    const state = {
-      version: 1,
-      lastEvaluatedMessageCount: Number.isFinite(Number(existing.lastEvaluatedMessageCount))
-        ? Number(existing.lastEvaluatedMessageCount)
-        : 0,
-      lastFingerprint: String(existing.lastFingerprint || ''),
-      entries: existing.entries && typeof existing.entries === 'object' ? existing.entries : {},
-    };
-    const activeIds = new Set((book?.entries || []).map(entry => Number(entry.uid)));
-    for (const uid of Object.keys(state.entries)) {
-      if (!activeIds.has(Number(uid))) delete state.entries[uid];
-    }
-    for (const entry of (book?.entries || [])) {
-      const key = String(entry.uid);
-      const signature = this._entryStateSignature(entry);
-      const current = state.entries[key] && typeof state.entries[key] === 'object'
-        ? state.entries[key]
-        : {};
-      const nextState = {
-        signature,
-        stickyRemaining: Math.max(0, Number(current.stickyRemaining) || 0),
-        cooldownRemaining: Math.max(0, Number(current.cooldownRemaining) || 0),
-        pendingCooldown: Math.max(0, Number(current.pendingCooldown) || 0),
-        lastActivatedMessageCount: Math.max(0, Number(current.lastActivatedMessageCount) || 0),
-      };
-      if (current.signature && current.signature !== signature) {
-        this._clearActivationStateEntry(nextState);
-      }
-      state.entries[key] = nextState;
-    }
-    conversation.worldBookState = state;
-    return state;
-  },
-
-  _advanceConversationActivationState(state, steps = 1) {
-    const totalSteps = Math.max(0, Number(steps) || 0);
-    if (!state?.entries || totalSteps <= 0) return;
-    for (let i = 0; i < totalSteps; i++) {
-      for (const stateEntry of Object.values(state.entries)) {
-        if (!stateEntry) continue;
-        if ((Number(stateEntry.stickyRemaining) || 0) > 0) {
-          stateEntry.stickyRemaining = Math.max(0, Number(stateEntry.stickyRemaining) - 1);
-          if (stateEntry.stickyRemaining === 0 && (Number(stateEntry.pendingCooldown) || 0) > 0) {
-            stateEntry.cooldownRemaining = Math.max(0, Number(stateEntry.pendingCooldown) || 0);
-            stateEntry.pendingCooldown = 0;
-          }
-          continue;
-        }
-        if ((Number(stateEntry.cooldownRemaining) || 0) > 0) {
-          stateEntry.cooldownRemaining = Math.max(0, Number(stateEntry.cooldownRemaining) - 1);
-        }
-      }
-    }
-  },
-
-  _syncConversationActivationState(conversation, book) {
-    const state = this._ensureConversationActivationState(conversation, book);
-    if (!state) return null;
-    const messageCount = this._getVisibleMessageCount(conversation);
-    const fingerprint = this._getConversationFingerprint(conversation);
-    const lastCount = Number.isFinite(Number(state.lastEvaluatedMessageCount))
-      ? Number(state.lastEvaluatedMessageCount)
-      : 0;
-    const lastFingerprint = String(state.lastFingerprint || '');
-    const chatRewound = messageCount < lastCount
-      || (messageCount === lastCount && lastFingerprint && lastFingerprint !== fingerprint);
-    if (chatRewound) {
-      for (const stateEntry of Object.values(state.entries || {})) {
-        this._clearActivationStateEntry(stateEntry);
-      }
-    } else if (messageCount > lastCount) {
-      this._advanceConversationActivationState(state, messageCount - lastCount);
-    }
-    state.lastEvaluatedMessageCount = messageCount;
-    state.lastFingerprint = fingerprint;
-    return state;
-  },
-
-  _getActivationStateEntry(state, entry) {
-    if (!state?.entries || !entry) return null;
-    return state.entries[String(entry.uid)] || null;
-  },
-
-  _isStickyActive(stateEntry) {
-    return (Number(stateEntry?.stickyRemaining) || 0) > 0;
-  },
-
-  _isCooldownActive(stateEntry) {
-    return (Number(stateEntry?.cooldownRemaining) || 0) > 0;
-  },
-
-  _getStickyTurnsLeft(stateEntry) {
-    return Math.max(0, (Number(stateEntry?.stickyRemaining) || 0) - 1);
-  },
-
-  _getCooldownTurnsLeft(stateEntry) {
-    return Math.max(0, (Number(stateEntry?.cooldownRemaining) || 0) - 1);
-  },
-
-  _getEntryDelayRemaining(entry, conversation) {
-    const delay = Math.max(0, Number(entry?.delay) || 0);
-    if (!delay) return 0;
-    return Math.max(0, delay - this._getVisibleMessageCount(conversation));
-  },
-
-  _isEntryDelaySatisfied(entry, conversation) {
-    return this._getEntryDelayRemaining(entry, conversation) === 0;
-  },
-
-  _collectStickyEntries(entries, conversation, state, options = {}) {
-    if (!entries.length || !state) return [];
-    return entries
-      .filter(entry => this._isStickyActive(this._getActivationStateEntry(state, entry)))
-      .map(entry => {
-        const stateEntry = this._getActivationStateEntry(state, entry);
-        const hydratedEntry = this._hydrateEntry(entry, conversation);
-        return {
-          ...hydratedEntry,
-          constant: options.legacyConstantRepair === true ? false : hydratedEntry.constant,
-          _originalConstant: hydratedEntry.constant,
-          _autoMatched: true,
-          _activationMode: options.activationMode || 'auto',
-          _matchKind: 'sticky',
-          _matchStep: 0,
-          _stickyActive: true,
-          _legacyConstantRepair: options.legacyConstantRepair === true,
-          _mixedConstantRepair: options.mixedConstantRepair === true,
-          _delayRemaining: this._getEntryDelayRemaining(hydratedEntry, conversation),
-          _stickyTurnsLeft: this._getStickyTurnsLeft(stateEntry),
-          _cooldownTurnsLeft: this._getCooldownTurnsLeft(stateEntry),
-          _matchSources: [            {
-              kind: 'timed_effect',
-              scope: 'sticky',
-              label: 'Sticky carry-over',
-              preview: 'Previously matched and kept active by sticky effect.',
-              excerpt: '',
-              primaryMatches: [],
-              secondaryMatches: [],
-            },
-          ],
-        };
-      });
-  },
-
-  _recordActivatedEntries(activeEntries, book, conversation, state) {
-    if (!conversation || !state?.entries || !Array.isArray(activeEntries) || !activeEntries.length) return;
-    const messageCount = this._getVisibleMessageCount(conversation);
-    const sourceEntries = new Map((book?.entries || []).map(entry => [String(entry.uid), entry]));
-    for (const activeEntry of activeEntries) {
-      if (!activeEntry || activeEntry._activationMode !== 'auto' || activeEntry._stickyActive) continue;
-      const sourceEntry = sourceEntries.get(String(activeEntry.uid));
-      if (!sourceEntry || sourceEntry.manualActive) continue;
-      if (sourceEntry.constant) continue;
-      const stateEntry = this._getActivationStateEntry(state, sourceEntry);
-      if (!stateEntry) continue;
-      const sticky = Math.max(0, Number(sourceEntry.sticky) || 0);
-      const cooldown = Math.max(0, Number(sourceEntry.cooldown) || 0);
-      if (sticky > 0) {
-        stateEntry.stickyRemaining = sticky + 1;
-        stateEntry.pendingCooldown = cooldown > 0 ? cooldown + 1 : 0;
-        stateEntry.cooldownRemaining = 0;
-      } else if (cooldown > 0) {
-        stateEntry.cooldownRemaining = cooldown + 1;
-        stateEntry.pendingCooldown = 0;
-      } else {
-        stateEntry.pendingCooldown = 0;
-      }
-      stateEntry.lastActivatedMessageCount = messageCount;
-    }
-    conversation.worldBookState = state;
-  },
-
-  _buildScanSources(conversation, scanDepth, defaults = null) {
+  _buildScanSources(conversation, settings) {
     const sources = [];
-    const includeNames = defaults?.includeNames !== false;
-    if (conversation?.phase === 'init') {
-      if (conversation?.name) {
-        const titleText = this._buildNamedScanContent('story title', conversation.name, includeNames);
-        sources.push({
-          kind: 'context',
-          label: '故事标题',
-          content: titleText,
-          rawContent: String(conversation.name || ''),
-          preview: this._previewText(titleText, 72),
-        });
-      }
-      if (conversation?.storySetting) {
-        const settingText = this._buildNamedScanContent('story setting', conversation.storySetting, includeNames);
-        sources.push({
-          kind: 'context',
-          label: '故事设定',
-          content: settingText,
-          rawContent: String(conversation.storySetting || ''),
-          preview: this._previewText(settingText, 96),
-        });
-      }
-    }
-
-    const messages = (conversation?.messages || []).filter(msg => !msg.hidden && msg.content?.trim());
-    const keep = Number.isFinite(Number(scanDepth))
-      ? Math.max(0, Number(scanDepth))
-      : 6;
-    const startIndex = keep > 0 ? Math.max(0, messages.length - keep) : messages.length;
-    const recent = keep > 0 ? messages.slice(startIndex) : [];
+    const messages = (conversation?.messages || []).filter(msg => !msg.hidden && String(msg.content || '').trim());
+    const depth = Math.max(1, Number(settings.scanDepth) || 6);
+    const recent = messages.slice(-depth);
+    const lastUserIndex = recent.map(msg => msg.role).lastIndexOf('user');
     for (let i = 0; i < recent.length; i++) {
       const msg = recent[i];
-      const content = msg.role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(msg.content)) : msg.content;
-      const text = String(content || '').trim();
-      if (!text) continue;
-      const index = startIndex + i + 1;
-      const roleLabel = msg.role === 'assistant' ? 'AI' : msg.role === 'system' ? 'SYS' : 'USER';
-      const speakerName = String(
-        msg.name
-        || msg.displayName
-        || msg.speaker
-        || (msg.role === 'assistant'
-          ? this._resolveWorldBookMacroName(conversation, 'assistant', '')
-          : '')
-      ).trim();
-      const scanContent = this._buildMessageScanContent(speakerName, text, includeNames);
+      let content = String(msg.content || '');
+      if (msg.role === 'assistant' && typeof Summary !== 'undefined' && typeof MVU !== 'undefined') {
+        content = Summary.cleanAbstract(MVU.cleanText(content));
+      }
       sources.push({
-        kind: 'context',
-        label: `${roleLabel} #${index}`,
-        role: msg.role,
-        speakerName,
-        content: scanContent,
-        rawContent: text,
-        preview: this._previewText(scanContent, 96),
+        kind: msg.role === 'user' && i === lastUserIndex ? 'latest_user' : 'chat',
+        label: msg.role === 'user' && i === lastUserIndex ? '最新用户输入' : (msg.role === 'assistant' ? '最近AI回复' : '最近用户输入'),
+        content,
       });
     }
-
-    return sources;
+    if (settings.includeStorySetting && conversation?.storySetting) {
+      sources.push({ kind: 'story', label: '故事设定', content: String(conversation.storySetting || '') });
+    }
+    if (settings.includeMvuState && conversation?.mvu?.state) {
+      sources.push({ kind: 'mvu', label: '状态栏', content: JSON.stringify(conversation.mvu.state, null, 2) });
+    }
+    return sources.filter(source => String(source.content || '').trim());
   },
 
-  _buildScanText(conversation, scanDepth, defaults = null) {
-    return this._buildScanSources(conversation, scanDepth, defaults).map(source => source.content).join('\n');
-  },
-
-  _buildReferenceSource(label, rawContent, scope, includeNames = true) {
-    const text = String(rawContent || '').trim();
-    if (!text) return null;
+  _findEntryMatch(entry, sources, defaults) {
+    const matchedSources = [];
+    const primarySet = new Set();
+    const secondarySet = new Set();
+    for (const source of sources) {
+      const details = this._entryMatches(entry, source.content, defaults);
+      if (!details.matched) continue;
+      details.primaryMatches.forEach(key => primarySet.add(key));
+      details.secondaryMatches.forEach(key => secondarySet.add(key));
+      matchedSources.push({
+        kind: source.kind,
+        label: source.label,
+        preview: String(source.content || '').slice(0, 120),
+        primaryMatches: details.primaryMatches,
+        secondaryMatches: details.secondaryMatches,
+      });
+    }
     return {
-      kind: 'reference',
-      scope,
-      label,
-      content: this._buildNamedScanContent(label, text, includeNames),
-      rawContent: text,
-      preview: this._previewText(text, 96),
+      matched: matchedSources.length > 0,
+      primaryMatches: [...primarySet],
+      secondaryMatches: [...secondarySet],
+      sources: matchedSources,
     };
-  },
-
-  _appendUniqueSource(target, seen, source) {
-    if (!source || !source.content) return;
-    const key = `${source.kind || 'context'}::${source.scope || ''}::${source.label || ''}::${source.rawContent || source.content}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    target.push(source);
-  },
-
-  _getPresetReferenceSources(conversation, defaults = null) {
-    const groups = {
-      persona: [],
-      characterDescription: [],
-      characterPersonality: [],
-      depthPrompt: [],
-    };
-    const seen = {
-      persona: new Set(),
-      characterDescription: new Set(),
-      characterPersonality: new Set(),
-      depthPrompt: new Set(),
-    };
-    let presetEntries = [];
-    try {
-      const settings = typeof Storage?.getSettings === 'function' ? Storage.getSettings() : null;
-      const preset = typeof PromptBuilder?.getActivePreset === 'function'
-        ? PromptBuilder.getActivePreset(settings)
-        : null;
-      presetEntries = Array.isArray(preset?.entries) && preset.entries.length
-        ? preset.entries
-        : (Array.isArray(PromptBuilder?.MINIMAL_PRESET_ENTRIES) ? PromptBuilder.MINIMAL_PRESET_ENTRIES : []);
-    } catch {
-      presetEntries = [];
-    }
-    let afterChatHistory = false;
-    for (const rawEntry of presetEntries) {
-      if (!rawEntry || rawEntry.enabled === false) continue;
-      if (rawEntry.slot) {
-        if (rawEntry.slot === 'chat_history') afterChatHistory = true;
-        continue;
-      }
-      const expanded = this._expandEntryText(rawEntry.content || '', conversation);
-      const sourceLabel = rawEntry.name || rawEntry.id || '预设条目';
-      const source = this._buildReferenceSource(sourceLabel, expanded, 'preset', defaults?.includeNames !== false);
-      if (!source) continue;
-
-      const id = String(rawEntry.id || '').trim().toLowerCase();
-      const name = String(rawEntry.name || '').trim().toLowerCase();
-      const isPersona = id === 'persona' || id.includes('persona') || name.includes('persona') || name.includes('人设');
-      const isCharacterDescription = id.includes('description') || name.includes('描述') || name.includes('设定') || name.includes('档案');
-      const isCharacterPersonality = id.includes('personality') || name.includes('性格');
-      const isDepthPrompt = afterChatHistory || id.includes('depth') || name.includes('深度') || name.includes('作者注释') || name.includes('author');
-
-      if (isPersona) this._appendUniqueSource(groups.persona, seen.persona, { ...source, scope: 'persona' });
-      if (isCharacterDescription || isPersona) {
-        this._appendUniqueSource(groups.characterDescription, seen.characterDescription, { ...source, scope: 'character_description' });
-      }
-      if (isCharacterPersonality || isPersona) {
-        this._appendUniqueSource(groups.characterPersonality, seen.characterPersonality, { ...source, scope: 'character_personality' });
-      }
-      if (isDepthPrompt) this._appendUniqueSource(groups.depthPrompt, seen.depthPrompt, { ...source, scope: 'depth_prompt' });
-    }
-    return groups;
-  },
-
-  _buildAuxiliaryScanSources(entry, conversation, defaults = null) {
-    const sources = [];
-    const seen = new Set();
-    if (!entry || !conversation) return sources;
-
-    if (entry.matchScenario) {
-      this._appendUniqueSource(
-        sources,
-        seen,
-        this._buildReferenceSource('故事标题', conversation.name, 'scenario_title', defaults?.includeNames !== false)
-      );
-      this._appendUniqueSource(
-        sources,
-        seen,
-        this._buildReferenceSource('故事设定', conversation.storySetting, 'scenario', defaults?.includeNames !== false)
-      );
-    }
-    if (entry.matchCreatorNotes) {
-      this._appendUniqueSource(
-        sources,
-        seen,
-        this._buildReferenceSource('写作建议', conversation.writingAdvice, 'creator_notes', defaults?.includeNames !== false)
-      );
-    }
-
-    const presetSources = this._getPresetReferenceSources(conversation, defaults);
-    if (entry.matchPersonaDescription) {
-      for (const source of presetSources.persona || []) this._appendUniqueSource(sources, seen, source);
-    }
-    if (entry.matchCharacterDescription) {
-      for (const source of presetSources.characterDescription || []) this._appendUniqueSource(sources, seen, source);
-    }
-    if (entry.matchCharacterPersonality) {
-      for (const source of presetSources.characterPersonality || []) this._appendUniqueSource(sources, seen, source);
-    }
-    if (entry.matchCharacterDepthPrompt) {
-      for (const source of presetSources.depthPrompt || []) this._appendUniqueSource(sources, seen, source);
-    }
-
-    return sources;
-  },
-
-  _getScanSourcesForEntry(scanSources, entry, defaults, conversation = null) {
-    const contextSources = (scanSources || []).filter(source => source.kind !== 'recursion');
-    const recursionSources = (scanSources || []).filter(source => source.kind === 'recursion');
-    const auxiliarySources = this._buildAuxiliaryScanSources(entry, conversation, defaults);
-    const depth = entry?.scanDepth === null || entry?.scanDepth === undefined
-      ? (Number.isFinite(Number(defaults?.scanDepth)) ? Math.max(0, Number(defaults.scanDepth)) : 6)
-      : (Number.isFinite(Number(entry?.scanDepth))
-        ? Math.max(0, Number(entry.scanDepth))
-        : (Number.isFinite(Number(defaults?.scanDepth)) ? Math.max(0, Number(defaults.scanDepth)) : 6));
-    const limitedContext = depth > 0 ? contextSources.slice(-depth) : [];
-    return [...limitedContext, ...auxiliarySources, ...recursionSources];
   },
 
   _entryMatches(entry, text, defaults) {
-    return this._getEntryMatchDetails(entry, text, defaults).matched;
-  },
-
-  _getEntryMatchDetails(entry, text, defaults) {
-    const source = String(text || '');
-    const primaryKeywords = this._entryPrimaryKeywords(entry);
-    const secondaryKeywords = this._entrySecondaryKeywords(entry);
-    if (!source.trim()) {
-      return { matched: false, primaryMatches: [], secondaryMatches: [] };
-    }
-    if (!primaryKeywords.length) {
-      return { matched: false, primaryMatches: [], secondaryMatches: [] };
-    }
-
-    const primaryMatches = this._collectKeywordMatches(primaryKeywords, source, entry, defaults);
-    if (!primaryMatches.length) {
-      return { matched: false, primaryMatches: [], secondaryMatches: [] };
-    }
-    if (!entry.selective || !secondaryKeywords.length) {
+    const primaryMatches = (entry.keys || []).filter(keyword => this._matchKeyword(keyword, text, entry, defaults));
+    if (!primaryMatches.length) return { matched: false, primaryMatches: [], secondaryMatches: [] };
+    const secondaryKeys = entry.secondaryKeys || [];
+    if (!entry.selective || !secondaryKeys.length) {
       return { matched: true, primaryMatches, secondaryMatches: [] };
     }
-
-    const secondaryResults = secondaryKeywords.map(keyword => {
-      const normalized = String(keyword || '').trim();
-      return {
-        keyword: normalized,
-        matched: !!normalized && this._matchKeyword(normalized, source, entry, defaults),
-      };
-    });
-    const secondaryMatches = secondaryResults.filter(item => item.matched).map(item => item.keyword);
-    const matches = secondaryResults.map(item => item.matched);
-    switch (entry.selectiveLogic) {
-      case 'and_all':
-        return { matched: matches.every(Boolean), primaryMatches, secondaryMatches };
-      case 'not_any':
-        return { matched: matches.every(result => !result), primaryMatches, secondaryMatches };
-      case 'not_all':
-        return { matched: !matches.every(Boolean), primaryMatches, secondaryMatches };
-      case 'and_any':
-      default:
-        return { matched: matches.some(Boolean), primaryMatches, secondaryMatches };
-    }
-  },
-
-  _passesProbability(entry, conversation, recursionStep = 0, stateEntry = null) {
-    if (this._isStickyActive(stateEntry)) return true;
-    const probability = Number.isFinite(Number(entry?.probability))
-      ? Math.max(0, Math.min(100, Number(entry.probability)))
-      : 100;
-    if (probability >= 100) return true;
-    if (probability <= 0) return false;
-    return Math.random() * 100 < probability;
-  },
-
-  _collectKeywordMatches(keywords, text, entry, defaults) {
-    return (keywords || [])
-      .map(keyword => String(keyword || '').trim())
-      .filter(keyword => keyword && this._matchKeyword(keyword, text, entry, defaults));
-  },
-
-  _collectMatchSources(entry, sources, defaults, maxSources = 4) {
-    const matches = [];
-    const primaryKeywords = this._entryPrimaryKeywords(entry);
-    const secondaryKeywords = this._entrySecondaryKeywords(entry);
-    for (const source of (sources || [])) {
-      const content = String(source?.content || '').trim();
-      if (!content) continue;
-      const primaryMatches = this._collectKeywordMatches(primaryKeywords, content, entry, defaults);
-      const secondaryMatches = this._collectKeywordMatches(secondaryKeywords, content, entry, defaults);
-      if (!primaryMatches.length && !secondaryMatches.length) continue;
-      matches.push({
-        kind: source.kind || 'context',
-        scope: source.scope || '',
-        label: source.label || '上下文',
-        preview: source.preview || this._previewText(content, 96),
-        excerpt: this._extractMatchExcerpt(entry, source.rawContent || content, defaults, [...primaryMatches, ...secondaryMatches]),
-        primaryMatches,
-        secondaryMatches,
-        recursionStep: source.recursionStep || null,
-        sourceEntryTitle: source.sourceEntryTitle || '',
-      });
-      if (matches.length >= maxSources) break;
-    }
-    return matches;
-  },
-
-  _buildRecursionSources(entries, recursionStep, conversation) {
-    return (entries || [])
-      .filter(entry => !entry.preventRecursion)
-      .map(entry => {
-        const content = this._entryContent(this._hydrateEntry(entry, conversation));
-        if (!content) return null;
-        const title = entry.comment || entry.title || (`条目 ${entry.uid}`);
-        return {
-          kind: 'recursion',
-          label: `递归来源: ${title}`,
-          content,
-          preview: this._previewText(content, 96),
-          rawContent: content,
-          recursionStep,
-          sourceEntryTitle: title,
-        };
-      })
-      .filter(Boolean);
-  },
-
-  _normalizeDepthRole(value, fallback = 'user') {
-    if (value === null || value === undefined || value === '') return fallback;
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return Object.keys(this.DEPTH_ROLE_MAP).find(key => this.DEPTH_ROLE_MAP[key] === value) || fallback;
-    }
-    if (typeof value === 'string') {
-      const normalized = value.trim().toLowerCase();
-      if (!normalized) return fallback;
-      if (/^-?\d+$/.test(normalized)) return this._normalizeDepthRole(Number(normalized), fallback);
-      if (normalized === 'system' || normalized === 'user' || normalized === 'assistant') return normalized;
-    }
-    return fallback;
-  },
-
-  _entryDepthRole(entry) {
-    return this._normalizeDepthRole(entry?.depthRole ?? entry?.role, 'user');
-  },
-
-  insertAtDepthMessages(messages, atDepthEntries) {
-    const baseMessages = Array.isArray(messages) ? messages.map(message => ({ ...message })) : [];
-    const entries = Array.isArray(atDepthEntries)
-      ? atDepthEntries.filter(entry => entry && String(entry._prompt || '').trim())
-      : [];
-    if (!entries.length) return baseMessages;
-
-    const totalMessages = baseMessages.length;
-    const slots = new Map();
-    for (const entry of entries) {
-      const depth = Math.max(0, this._entryInsertionDepth(entry));
-      const slotIndex = Math.max(0, Math.min(totalMessages, totalMessages - depth));
-      if (!slots.has(slotIndex)) slots.set(slotIndex, []);
-      slots.get(slotIndex).push(entry);
-    }
-
-    for (const slotEntries of slots.values()) {
-      slotEntries.sort((a, b) => {
-        if (a.order !== b.order) return a.order - b.order;
-        return a.uid - b.uid;
-      });
-    }
-
-    const merged = [];
-    for (let i = 0; i <= totalMessages; i++) {
-      const slotEntries = slots.get(i) || [];
-      for (const entry of slotEntries) {
-        merged.push({
-          role: this._entryDepthRole(entry),
-          content: String(entry._prompt || '').trim(),
-        });
-      }
-      if (i < totalMessages) merged.push(baseMessages[i]);
-    }
-    return merged;
-  },
-
-  _previewText(text, max = 96) {
-    const firstLine = String(text || '').split('\n')[0].trim();
-    if (!firstLine) return '';
-    return firstLine.substring(0, max) + (firstLine.length > max ? '...' : '');
-  },
-
-  _keywordCaseSensitive(entry, defaults) {
-    return entry.caseSensitive === null || entry.caseSensitive === undefined
-      ? !!defaults?.caseSensitive
-      : !!entry.caseSensitive;
-  },
-
-  _keywordWholeWords(entry, defaults) {
-    return entry.matchWholeWords === null || entry.matchWholeWords === undefined
-      ? !!defaults?.matchWholeWords
-      : !!entry.matchWholeWords;
-  },
-
-  _parseRegexLiteral(raw) {
-    if (!/^\/[\s\S]*\/[dgimsuvy]*$/i.test(raw)) return null;
-    const lastSlash = raw.lastIndexOf('/');
-    if (lastSlash <= 0) return null;
-    return {
-      pattern: raw.slice(1, lastSlash),
-      flags: raw.slice(lastSlash + 1) || '',
-    };
-  },
-
-  _normalizeRegexFlags(flags, caseSensitive) {
-    const uniqueFlags = [...new Set(String(flags || '').replace(/[^dgimsuvy]/gi, '').split(''))].join('');
-    if (caseSensitive || uniqueFlags.includes('i')) return uniqueFlags;
-    return uniqueFlags + 'i';
-  },
-
-  _parseKeywordRegex(keyword, entry, defaults) {
-    const raw = String(keyword || '').trim();
-    if (!raw) return null;
-    const caseSensitive = this._keywordCaseSensitive(entry, defaults);
-    const literal = this._parseRegexLiteral(raw);
-    if (literal) {
-      try {
-        return new RegExp(literal.pattern, this._normalizeRegexFlags(literal.flags, caseSensitive));
-      } catch {
-        return null;
-      }
-    }
-    return null;
+    const secondaryMatches = secondaryKeys.filter(keyword => this._matchKeyword(keyword, text, entry, defaults));
+    const logic = entry.selectiveLogic || 'and_any';
+    let passed = false;
+    if (logic === 'and_all') passed = secondaryMatches.length === secondaryKeys.length;
+    else if (logic === 'not_any') passed = secondaryMatches.length === 0;
+    else if (logic === 'not_all') passed = secondaryMatches.length < secondaryKeys.length;
+    else passed = secondaryMatches.length > 0;
+    return { matched: passed, primaryMatches, secondaryMatches };
   },
 
   _matchKeyword(keyword, text, entry, defaults) {
     const raw = String(keyword || '').trim();
-    if (!raw) return false;
-
-    const caseSensitive = this._keywordCaseSensitive(entry, defaults);
-    const wholeWords = this._keywordWholeWords(entry, defaults);
-    const haystack = caseSensitive ? text : text.toLowerCase();
-    const needle = caseSensitive ? raw : raw.toLowerCase();
-
-    const regex = this._parseKeywordRegex(raw, entry, defaults);
-    if (regex) {
+    const source = String(text || '');
+    if (!raw || !source) return false;
+    const caseSensitive = entry.caseSensitive === null || entry.caseSensitive === undefined
+      ? defaults.caseSensitive
+      : entry.caseSensitive;
+    const wholeWords = entry.matchWholeWords === null || entry.matchWholeWords === undefined
+      ? defaults.matchWholeWords
+      : entry.matchWholeWords;
+    if (entry.useRegex || /^\/.*\/[gimsuy]*$/.test(raw)) {
       try {
-        return regex.test(text);
+        if (/^\/.*\/[gimsuy]*$/.test(raw)) {
+          const lastSlash = raw.lastIndexOf('/');
+          const pattern = raw.slice(1, lastSlash);
+          const flags = raw.slice(lastSlash + 1);
+          const finalFlags = caseSensitive || flags.includes('i') ? flags : flags + 'i';
+          return new RegExp(pattern, finalFlags).test(source);
+        }
+        return new RegExp(raw, caseSensitive ? '' : 'i').test(source);
       } catch {
-        return haystack.includes(needle);
+        return this._plainKeywordMatch(raw, source, caseSensitive, wholeWords);
       }
     }
+    return this._plainKeywordMatch(raw, source, caseSensitive, wholeWords);
+  },
 
+  _plainKeywordMatch(raw, source, caseSensitive, wholeWords) {
+    const haystack = caseSensitive ? source : source.toLowerCase();
+    const needle = caseSensitive ? raw : raw.toLowerCase();
     if (!wholeWords) return haystack.includes(needle);
-
     const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const wordRe = new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, caseSensitive ? 'u' : 'iu');
     try {
-      return wordRe.test(text);
+      return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, caseSensitive ? 'u' : 'iu').test(source);
     } catch {
       return haystack.includes(needle);
     }
   },
 
+  _passesProbability(entry, conversation, step) {
+    const probability = Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100;
+    if (probability >= 100) return true;
+    if (probability <= 0) return false;
+    const lastUser = [...(conversation?.messages || [])].reverse().find(msg => msg.role === 'user')?.content || '';
+    const seed = `${conversation?.id || ''}|${(conversation?.messages || []).length}|${entry.uid}|${step}|${lastUser}`;
+    return (this._stableHash(seed) % 100) < probability;
+  },
+
+  _stableHash(text) {
+    let hash = 2166136261;
+    const input = String(text || '');
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  },
+
   _formatEntryPrompt(entry) {
     const title = entry.comment || entry.title || `条目 ${entry.uid}`;
-    return `### ${title}\n${this._entryContent(entry)}`;
-  },
-
-  _entryContent(entry) {
-    return String(entry?._resolvedContent ?? entry?.content ?? '').trim();
-  },
-
-  _entryInsertionDepth(entry) {
-    const depth = Number(entry?.insertionDepth);
-    return Number.isFinite(depth) && depth >= 0 ? Math.floor(depth) : 4;
-  },
-
-  _entryPrimaryKeywords(entry) {
-    return Array.isArray(entry?._resolvedKeys) ? entry._resolvedKeys : (Array.isArray(entry?.keys) ? entry.keys : []);
-  },
-
-  _entrySecondaryKeywords(entry) {
-    return Array.isArray(entry?._resolvedSecondaryKeys)
-      ? entry._resolvedSecondaryKeys
-      : (Array.isArray(entry?.secondaryKeys) ? entry.secondaryKeys : []);
-  },
-
-  _hydrateEntry(entry, conversation, overrides = {}) {
-    const resolvedContent = this._expandEntryText(entry?.content || '', conversation);
-    const resolvedKeys = (Array.isArray(entry?.keys) ? entry.keys : [])
-      .map(keyword => this._expandEntryText(keyword, conversation))
-      .map(keyword => String(keyword || '').trim())
-      .filter(Boolean);
-    const resolvedSecondaryKeys = (Array.isArray(entry?.secondaryKeys) ? entry.secondaryKeys : [])
-      .map(keyword => this._expandEntryText(keyword, conversation))
-      .map(keyword => String(keyword || '').trim())
-      .filter(Boolean);
-    return {
-      ...entry,
-      ...overrides,
-      _resolvedContent: resolvedContent,
-      _resolvedKeys: resolvedKeys,
-      _resolvedSecondaryKeys: resolvedSecondaryKeys,
-    };
-  },
-
-  _expandEntryText(text, conversation) {
-    if (!text) return '';
-    let expanded = String(text);
-    const lastMessage = this._findLastMessage(conversation);
-    const lastUserMessage = this._findLastMessage(conversation, 'user');
-    const userName = this._resolveWorldBookMacroName(conversation, 'user', '');
-    const characterName = this._resolveWorldBookMacroName(conversation, 'assistant', '');
-    const macroMap = {
-      user: userName,
-      char: characterName,
-      character: characterName,
-      lastMessage: lastMessage || '',
-      lastUserMessage: lastUserMessage || '',
-      input: lastUserMessage || '',
-      trim: '',
-      original: '',
-      personality: '',
-      scenario: conversation?.storySetting || '',
-      description: '',
-      mesExamples: '',
-      mesExample: '',
-      charIfNotGroup: characterName,
-      groupMembers: '',
-    };
-
-    expanded = expanded.replace(/\{\{\/\/[^}]*\}\}/g, '');
-    expanded = expanded.replace(/\{\{random::([\s\S]*?)\}\}/gi, (_, inner) => {
-      const firstOpt = String(inner || '').split('::')[0];
-      return firstOpt || '';
-    });
-    expanded = expanded.replace(/\{\{roll[^}]*\}\}/gi, '');
-    expanded = expanded.replace(/<\|no-trans\|>/g, '');
-    expanded = expanded.replace(/\{\{([^}:]+)\}\}/gi, (match, rawKey) => {
-      const key = String(rawKey || '').trim();
-      if (!key) return '';
-      if (!Object.prototype.hasOwnProperty.call(macroMap, key)) return match;
-      const value = String(macroMap[key] || '');
-      if (!value && ['user', 'char', 'character', 'charIfNotGroup'].includes(key)) return match;
-      return value;
-    });
-    expanded = expanded.replace(/\n{3,}/g, '\n\n');
-    return expanded.trim();
-  },
-
-  _resolveWorldBookMacroName(conversation, role, fallback = '') {
-    const normalizedRole = role === 'assistant' ? 'assistant' : 'user';
-    const preferred = normalizedRole === 'user'
-      ? [
-        conversation?.userName,
-        conversation?.playerName,
-        conversation?.personaName,
-      ]
-      : [
-        conversation?.characterName,
-        conversation?.charName,
-        conversation?.botName,
-      ];
-    for (const value of preferred) {
-      const text = String(value || '').trim();
-      if (text) return text;
-    }
-
-    const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (!msg || msg.hidden || msg.role !== normalizedRole) continue;
-      const speaker = String(msg.name || msg.displayName || msg.speaker || '').trim();
-      if (speaker) return speaker;
-    }
-
-    return String(fallback || '').trim();
-  },
-
-  _findLastMessage(conversation, role = null) {
-    const messages = Array.isArray(conversation?.messages) ? conversation.messages : [];
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i];
-      if (!msg || msg.hidden) continue;
-      if (role && msg.role !== role) continue;
-      const text = String(msg.content || '').trim();
-      if (text) return text;
-    }
-    return '';
-  },
-
-  _buildNamedScanContent(name, text, includeNames = true) {
-    const body = String(text || '').trim();
-    if (!body) return '';
-    const speaker = String(name || '').trim();
-    if (!includeNames || !speaker) return body;
-    return `${speaker}: ${body}`;
-  },
-
-  _buildMessageScanContent(name, text, includeNames = true) {
-    const body = String(text || '').trim();
-    if (!body) return '';
-    const speaker = String(name || '').trim();
-    if (!includeNames || !speaker) return body;
-    return `\x01${speaker}: ${body}`;
-  },
-
-  _estimateEntryCost(text, budgetMode = 'chars') {
-    const content = String(text || '').trim();
-    if (!content) return 0;
-    if (budgetMode === 'tokens') return this._estimateTokenCount(content);
-    return content.length;
-  },
-
-  _estimateTokenCount(text) {
-    const content = String(text || '').trim();
-    if (!content) return 0;
-    const cjkCount = (content.match(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g) || []).length;
-    const latinWordCount = (content.replace(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g, ' ').match(/[A-Za-z0-9_]+/g) || []).length;
-    const otherSymbolCount = content.replace(/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaffA-Za-z0-9_\s]/g, '').length;
-    return cjkCount + latinWordCount + Math.ceil(otherSymbolCount / 2);
-  },
-
-  _extractMatchExcerpt(entry, text, defaults, keywords = []) {
-    const content = String(text || '').trim();
-    if (!content) return '';
-    const candidates = [...new Set((keywords || []).map(keyword => String(keyword || '').trim()).filter(Boolean))];
-    for (const keyword of candidates) {
-      const range = this._findKeywordRange(keyword, content, entry, defaults);
-      if (!range) continue;
-      return this._extractSentence(content, range.index, range.length);
-    }
-    return this._previewText(content, 140);
-  },
-
-  _findKeywordRange(keyword, text, entry, defaults) {
-    const raw = String(keyword || '').trim();
-    if (!raw) return null;
-    const caseSensitive = this._keywordCaseSensitive(entry, defaults);
-    const wholeWords = this._keywordWholeWords(entry, defaults);
-    const haystack = caseSensitive ? text : text.toLowerCase();
-    const needle = caseSensitive ? raw : raw.toLowerCase();
-
-    const regex = this._parseKeywordRegex(raw, entry, defaults);
-    if (regex) {
-      try {
-        const match = regex.exec(text);
-        if (match && match[0] !== undefined) {
-          return { index: match.index ?? 0, length: match[0].length || raw.length };
-        }
-      } catch {
-        const fallbackIndex = haystack.indexOf(needle);
-        if (fallbackIndex >= 0) return { index: fallbackIndex, length: raw.length };
-      }
-      return null;
-    }
-
-    if (!wholeWords) {
-      const index = haystack.indexOf(needle);
-      return index >= 0 ? { index, length: raw.length } : null;
-    }
-
-    try {
-      const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escaped})($|[^\\p{L}\\p{N}_])`, caseSensitive ? 'u' : 'iu');
-      const match = regex.exec(text);
-      if (match && match[2] !== undefined) {
-        return { index: match.index + match[1].length, length: match[2].length };
-      }
-    } catch {
-      const fallbackIndex = haystack.indexOf(needle);
-      if (fallbackIndex >= 0) return { index: fallbackIndex, length: raw.length };
-    }
-    return null;
-  },
-
-  _extractSentence(text, index, length) {
-    const content = String(text || '').trim();
-    if (!content) return '';
-    const start = Math.max(0, Number(index) || 0);
-    const end = Math.min(content.length, start + Math.max(1, Number(length) || 1));
-    const separators = /[\n.!?。！？]/;
-    let sentenceStart = start;
-    while (sentenceStart > 0 && !separators.test(content[sentenceStart - 1])) {
-      sentenceStart--;
-    }
-    let sentenceEnd = end;
-    while (sentenceEnd < content.length && !separators.test(content[sentenceEnd])) {
-      sentenceEnd++;
-    }
-    return content.slice(sentenceStart, sentenceEnd).trim() || this._previewText(content, 140);
+    return `### ${title}\n${String(entry.content || '').trim()}`;
   },
 
   _wrapPromptBucket(label, items) {
@@ -4216,31 +2224,47 @@ const WorldBook = {
 // ============================================================
 const MVU = {
   BASE_STYLE: `
+    .mvu-root {
+      --mvu-bg: transparent;
+      --mvu-panel: rgba(255,255,255,0.025);
+      --mvu-card: rgba(255,255,255,0.04);
+      --mvu-accent: var(--accent);
+      --mvu-accent-2: #67c7b4;
+      --mvu-warn: #e8bf5a;
+      --mvu-text: var(--text-primary);
+      --mvu-muted: var(--text-muted);
+      --mvu-border: rgba(201,164,76,0.18);
+      --mvu-radius: 8px;
+      --mvu-shadow: none;
+      --mvu-texture: none;
+    }
     .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: 14px; }
-    .mvu-panel, .mvu-section { border: 1px solid rgba(201,164,76,0.16); background: rgba(255,255,255,0.025); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
-    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--accent); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
+    .mvu-panel, .mvu-section { border: 1px solid var(--mvu-border, rgba(201,164,76,0.16)); background: var(--mvu-panel, rgba(255,255,255,0.025)); border-radius: var(--mvu-radius, 8px); box-shadow: var(--mvu-shadow, none); padding: 12px; margin-bottom: 10px; }
+    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--mvu-accent, var(--accent)); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
     details.mvu-section > summary::-webkit-details-marker { display: none; }
-    details.mvu-section > summary small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
+    details.mvu-section > summary small { color: var(--mvu-muted, var(--text-muted)); font-size: 10px; font-weight: 500; }
     .mvu-managed-body { display: grid; gap: 2px; }
-    .mvu-managed-field { border-radius: 7px; padding-left: 6px; padding-right: 6px; background: rgba(255,255,255,0.025); }
-    .mvu-section-title, .mvu-title { color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
+    .mvu-managed-field { border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); padding-left: 6px; padding-right: 6px; background: color-mix(in srgb, var(--mvu-card, rgba(255,255,255,0.04)), transparent 28%); }
+    .mvu-section-title, .mvu-title { color: var(--mvu-accent, var(--accent)); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
     .mvu-field { display: grid; grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .mvu-field:last-child { border-bottom: 0; }
-    .mvu-label { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-    .mvu-value, [data-field] { color: var(--text-primary); font-size: 13px; line-height: 1.55; word-break: break-word; }
+    .mvu-label { color: var(--mvu-muted, var(--text-muted)); font-size: 12px; line-height: 1.5; }
+    .mvu-value, [data-field] { color: var(--mvu-text, var(--text-primary)); font-size: 13px; line-height: 1.55; word-break: break-word; }
     .mvu-bar-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,0.08); margin-top: 4px; }
-    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #e1bd64); transition: width 0.35s ease; }
-    .mvu-list-item { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); margin-bottom: 5px; font-size: 12px; line-height: 1.45; }
+    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--mvu-accent, var(--accent)), var(--mvu-accent-2, #e1bd64)); transition: width 0.35s ease; }
+    .mvu-list-item { padding: 6px 8px; border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); background: var(--mvu-card, rgba(255,255,255,0.04)); border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(201,164,76,0.18)), transparent 35%); margin-bottom: 5px; font-size: 12px; line-height: 1.45; color: var(--mvu-text, var(--text-primary)); }
     .mvu-character-grid { display: grid; gap: 8px; }
-    .mvu-character-card { display: grid; gap: 6px; padding: 10px; border: 1px solid rgba(201,164,76,0.18); border-radius: 8px; background: linear-gradient(135deg, rgba(201,164,76,0.10), rgba(255,255,255,0.035)); cursor: pointer; }
-    .mvu-character-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .mvu-character-name { color: var(--accent); font-size: 14px; font-weight: 700; }
-    .mvu-character-role { color: var(--text-muted); font-size: 11px; }
+    .mvu-character-card { display: grid; gap: 7px; min-height: 104px; max-height: 150px; overflow: hidden; padding: 10px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.18)); border-radius: var(--mvu-radius, 8px); background: var(--mvu-card, rgba(255,255,255,0.04)); background-image: var(--mvu-texture, none); box-shadow: var(--mvu-shadow, none); cursor: pointer; position: relative; }
+    .mvu-character-card::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 22px; pointer-events: none; background: linear-gradient(180deg, rgba(20,18,13,0), rgba(20,18,13,0.92)); opacity: 0.86; }
+    .mvu-character-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+    .mvu-character-name { color: var(--mvu-accent, var(--accent)); font-size: 14px; font-weight: 800; line-height: 1.3; min-width: 0; word-break: break-word; }
+    .mvu-character-role { max-width: 92px; color: var(--mvu-muted, var(--text-muted)); font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mvu-character-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-    .mvu-character-chip { color: var(--text-secondary); font-size: 11px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 2px 7px; background: rgba(0,0,0,0.12); }
-    .mvu-character-desc { color: var(--text-primary); font-size: 12px; line-height: 1.55; opacity: 0.92; }
-    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(201,164,76,0.22); color: var(--text-secondary); background: rgba(255,255,255,0.03); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
-    .mvu-tab.active { color: #1a1510; background: var(--accent); border-color: var(--accent); }
+    .mvu-character-chip { max-width: 100%; color: var(--mvu-text, var(--text-secondary)); font-size: 11px; line-height: 1.25; border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(255,255,255,0.08)), transparent 25%); border-radius: 999px; padding: 2px 7px; background: color-mix(in srgb, var(--mvu-panel, rgba(0,0,0,0.12)), transparent 18%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mvu-character-desc { color: var(--mvu-text, var(--text-primary)); font-size: 12px; line-height: 1.5; opacity: 0.92; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .mvu-character-more { color: var(--mvu-accent, var(--accent)); font-size: 11px; font-weight: 700; opacity: 0.82; }
+    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.22)); color: var(--mvu-text, var(--text-secondary)); background: var(--mvu-card, rgba(255,255,255,0.03)); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
+    .mvu-tab.active { color: var(--mvu-bg, #1a1510); background: var(--mvu-accent, var(--accent)); border-color: var(--mvu-accent, var(--accent)); }
     .mvu-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
     .mvu-field-changed { animation: mvuPulseChanged 1.4s ease; }
     @keyframes mvuPulseChanged { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: rgba(201,164,76,0.0); } 18% { box-shadow: 0 0 0 2px rgba(201,164,76,0.28); background-color: rgba(201,164,76,0.12); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: transparent; } }
@@ -4586,6 +2610,17 @@ const MVU = {
     return String(value);
   },
 
+  _shortText(value, max = 64) {
+    const text = this._formatDisplayValue(value).replace(/\s+/g, ' ').trim();
+    return text.length > max ? text.slice(0, Math.max(0, max - 3)) + '...' : text;
+  },
+
+  _pickCharacterSummary(character) {
+    const source = character.summary || character.brief || character.profile || character.desc || character.description
+      || character.thoughts || character.note || this._formatDisplayValue(character);
+    return this._shortText(source, 72);
+  },
+
   _renderListItem(value) {
     const text = this._formatDisplayValue(value);
     if (value && typeof value === 'object') {
@@ -4598,29 +2633,30 @@ const MVU = {
   },
 
   _renderCharacterCards(value) {
-    if (!Array.isArray(value) || !value.length) return '<div class="mvu-list-item">暂无角色记录</div>';
+    if (!Array.isArray(value) || !value.length) return '<div class="mvu-list-item">\u6682\u65e0\u89d2\u8272\u8bb0\u5f55</div>';
     const cards = value.map((character, index) => {
       if (!character || typeof character !== 'object') return this._renderListItem(character);
-      const name = character.name || character.title || character.label || `角色 ${index + 1}`;
-      const role = character.role || character.identity || character.relation || character.status || '角色';
-      const desc = character.profile || character.desc || character.description || character.thoughts || character.note || this._formatDisplayValue(character);
+      const name = character.name || character.title || character.label || `\u89d2\u8272 ${index + 1}`;
+      const role = character.role || character.identity || character.relation || character.status || '\u89d2\u8272';
+      const desc = this._pickCharacterSummary(character);
       const chips = [
-        character.status && `状态：${character.status}`,
-        character.location && `位置：${character.location}`,
-        character.affection !== undefined && character.affection !== '' && `好感：${character.affection}`,
-        character.relation && `关系：${character.relation}`,
+        character.relation && `\u5173\u7cfb\uff1a${this._shortText(character.relation, 16)}`,
+        character.affection !== undefined && character.affection !== '' && `\u597d\u611f\uff1a${this._shortText(character.affection, 10)}`,
+        character.location && `\u4f4d\u7f6e\uff1a${this._shortText(character.location, 18)}`,
+        character.status && `\u72b6\u6001\uff1a${this._shortText(character.status, 16)}`,
       ].filter(Boolean).slice(0, 4);
       const fallback = Object.entries(character)
         .filter(([key, val]) => !['id', 'name', 'title', 'label', 'role', 'identity', 'profile', 'desc', 'description', 'note'].includes(key) && val !== '' && val !== undefined && val !== null)
         .map(([key, val]) => `${key}: ${this._formatDisplayValue(val)}`)
         .join('\n');
-      return `<div class="mvu-character-card" data-mvu-detail data-mvu-title="${Utils.escapeHtml(String(name))}" data-mvu-type="${Utils.escapeHtml(String(role))}" data-mvu-desc="${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}">
+      return `<div class="mvu-character-card" data-mvu-detail data-mvu-index="${index}" data-mvu-title="${Utils.escapeHtml(String(name))}" data-mvu-type="${Utils.escapeHtml(String(role))}">
         <div class="mvu-character-head">
           <span class="mvu-character-name">${Utils.escapeHtml(String(name))}</span>
           <span class="mvu-character-role">${Utils.escapeHtml(String(role))}</span>
         </div>
         ${chips.length ? `<div class="mvu-character-meta">${chips.map(chip => `<span class="mvu-character-chip">${Utils.escapeHtml(String(chip))}</span>`).join('')}</div>` : ''}
-        <div class="mvu-character-desc">${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}</div>
+        <div class="mvu-character-desc">${Utils.escapeHtml(String(desc || fallback || '\u6682\u65e0\u8be6\u7ec6\u8bb0\u5f55'))}</div>
+        <div class="mvu-character-more">\u70b9\u51fb\u67e5\u770b\u5b8c\u6574\u6863\u6848</div>
       </div>`;
     }).join('');
     return `<div class="mvu-character-grid">${cards}</div>`;
@@ -4960,22 +2996,6 @@ const Summary = {
 const Exporter = {
   toMarkdown(conv) {
     let md = `# ${conv.name || '未命名故事'}\n\n`;
-    const worldBook = WorldBook.normalizeBook(conv.worldBook, (conv.name || '未命名故事') + ' 世界书');
-    if (conv.storySetting) {
-      md += `## 故事设定\n\n${conv.storySetting}\n\n`;
-    }
-    if (worldBook.entries.length > 0) {
-      md += `## 世界书\n\n`;
-      for (const entry of worldBook.entries) {
-        md += `### ${entry.comment || entry.title || ('条目 ' + entry.uid)}\n`;
-        md += `- 主关键词: ${(entry.keys || []).join(', ') || '无'}\n`;
-        md += `- 次关键词: ${(entry.secondaryKeys || []).join(', ') || '无'}\n`;
-        md += `- 位置: ${entry.position}\n`;
-        md += `- 状态: ${entry.enabled ? '启用' : '停用'}${entry.constant ? ' / 常驻' : ''}${entry.manualActive ? ' / 手动命中' : ''}\n\n`;
-        md += `${entry.content}\n\n`;
-      }
-      md += `---\n\n`;
-    }
     const mergedSm = conv.summary?.mergedSummaries || [];
     if (mergedSm.length > 0) {
       md += `## 故事总结\n`;

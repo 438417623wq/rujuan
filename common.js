@@ -1092,12 +1092,17 @@ templates（模板）——【必须创建】用于RP阶段动态添加新遇到
 - 可更新元素用 data-field="字段名"，进度条用 data-field-bar="字段名"，列表用 data-field-list="字段名"
 - 交互增强（必须优先支持）：物品、角色、任务、技能、地点等可点击对象可添加 data-mvu-detail，并可附加 data-mvu-title、data-mvu-type、data-mvu-desc、data-mvu-field。系统会在美化视图中自动弹出精美详情卡。不要写 <script>、onclick 或自定义 JavaScript。
 - 可增长集合要求：任务必须优先使用 main_quests/side_quests 对象数组，角色必须优先使用 characters 对象数组。遇到新任务/新角色时后续 RP 更新应向数组追加对象，不要长期覆盖单个 main_quest 或单个 *_profile 字段。
+- 系统托管组件优先：角色、任务、物品、技能等可增长列表优先使用 data-field-list 绑定，让系统渲染列表项；AI 负责主题外壳、分区、标题、氛围装饰和 CSS 换皮，不要手写每个角色/任务/物品的固定正文。
 - 视觉设计要求：
-  · 为这个故事选择一个大胆且明确的美学方向，让状态栏一眼就能感受到题材氛围。不要默认使用安全的深色面板——修仙、校园、赛博、奇幻应该有截然不同的视觉语言
-  · 字体是个性的核心。通过 Google Fonts 选择有辨识度的字体，避免 Arial、Inter、Roboto 等通用字体
-  · 用背景氛围替代纯色块——透明度、渐变、纹理、模糊等手法都可以创造层次和沉浸感
-  · 配色宁可大胆不要平庸，一个主导色调搭配鲜明点缀色比均匀分配更有记忆点
-  · 每个故事的状态栏都应该是独特的，不要重复使用同一套模板
+  · 生成前必须先确定一个明确的「视觉载体」：状态栏看起来像什么物件或界面，而不只是换颜色。可选方向包括但不限于：玉简/命盘/符箓/宗门玉牒、学生手账/课程表/社团公告栏、赛博终端/HUD/权限卡、刑侦案卷/证物袋/红线板、末日求生手册/电台面板、宫廷奏折/绢帛/朱批、都市App/监控面板、奇幻羊皮书/魔法阵。
+  · 必须选择一种布局骨架，并让 HTML 结构体现出来：档案式、仪表盘式、卷轴式、手账式、地图路线式、终端式、案卷式。不要所有题材都做纵向深色卡片堆叠。
+  · CSS 中必须在 .mvu-root 或最外层容器定义主题变量：--mvu-bg、--mvu-panel、--mvu-card、--mvu-accent、--mvu-accent-2、--mvu-warn、--mvu-text、--mvu-muted、--mvu-border、--mvu-radius、--mvu-shadow、--mvu-texture。系统托管角色卡和详情弹窗会优先读取这些变量。
+  · 必须有至少 1 个题材符号或微装饰：如符箓角标、案卷编号、终端状态灯、手账贴纸、警示封条、朱批印章、地图路线点、魔法纹章。可用 CSS 伪元素、边框、背景纹理实现，不要依赖外部图片。
+  · 字体是个性的核心。可以通过 Google Fonts 或系统字体栈选择有辨识度的字体，避免所有主题都使用 Arial、Inter、Roboto 等通用字体。
+  · 用背景氛围替代纯色块——透明度、渐变、纹理、模糊、网格、纸张纹理、扫描线、暗纹等手法都可以创造层次和沉浸感。
+  · 配色必须包含主色、辅助色、警示/强调色三个层级；不要只堆同一色系的深浅变化。
+  · 反同质化硬性规则：不要默认黑底金边半透明卡片；不要所有模块都是圆角卡片；不要只靠渐变表达题材；不要重复使用同一套模板。每个故事的状态栏都应该像该世界里真实存在的随身界面。
+  · 移动端 360px 内必须可读：长文本放入详情弹窗或变量视图，主卡片只显示摘要；标题、按钮、标签不得互相遮挡。
 - CSS 类名用 .mvu- 前缀
 
 ══════════════════════════════
@@ -1454,13 +1459,28 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     const settings = Storage.getSettings();
     const phase = conversation.phase || 'init';
     const preset = this.getActivePreset(settings);
+    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
 
     if (phase === 'init') {
       const initPrompt = preset.initPrompt || this.DEFAULT_INIT_PROMPT;
       const systemPrompt = initPrompt;
-      const msgs = (conversation.messages || []).filter(m => !m.hidden && m.content?.trim()).map(m => ({ role: m.role, content: m.content }));
-      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: msgs.length });
-      return { systemPrompt, messages: msgs };
+      const msgs = [];
+      if (worldBookBlocks.beforeStory) msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      if (worldBookBlocks.afterStory) msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
+      const initMessages = (conversation.messages || []).filter(m => !m.hidden && m.content?.trim());
+      for (let i = 0; i < initMessages.length; i++) {
+        const isLatestUser = i === initMessages.length - 1 && initMessages[i].role === 'user';
+        if (isLatestUser && worldBookBlocks.beforeInput) msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+        msgs.push({ role: initMessages[i].role, content: initMessages[i].content });
+        if (isLatestUser && worldBookBlocks.afterInput) msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+      }
+      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: msgs.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+      return {
+        systemPrompt,
+        messages: msgs,
+        activeWorldBookEntries: worldBookBlocks.active || [],
+        blockedWorldBookEntries: worldBookBlocks.blocked || [],
+      };
     }
 
     // RP phase
@@ -1585,8 +1605,14 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       }
       const systemPrompt = systemParts.join('\n\n');
       const msgs = [...prefixMsgs];
+      if (worldBookBlocks.beforeStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+      }
       if (conversation.storySetting) {
         msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting });
+      }
+      if (worldBookBlocks.afterStory) {
+        msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
       }
       msgs.push(...buildSummaries(allMsgs, splitAt));
       if (conversation.writingAdvice) {
@@ -1598,8 +1624,15 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
           const mvuCtx = buildMvuContext();
           if (mvuCtx) msgs.push({ role: 'user', content: mvuCtx });
         }
+        const isLatestUser = i === recent.length - 1 && recent[i].role === 'user';
+        if (isLatestUser && worldBookBlocks.beforeInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+        }
         const content = recent[i].role === 'assistant' ? Summary.cleanAbstract(MVU.cleanText(recent[i].content)) : recent[i].content;
         msgs.push({ role: recent[i].role, content });
+        if (isLatestUser && worldBookBlocks.afterInput) {
+          msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+        }
       }
       const merged = [];
       for (const m of msgs) {
@@ -1609,8 +1642,13 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
           merged.push({ ...m });
         }
       }
-      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, recentCount: recent.length });
-      return { systemPrompt, messages: merged };
+      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, recentCount: recent.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+      return {
+        systemPrompt,
+        messages: merged,
+        activeWorldBookEntries: worldBookBlocks.active || [],
+        blockedWorldBookEntries: worldBookBlocks.blocked || [],
+      };
     }
 
     // === Slot-driven assembly ===
@@ -1628,8 +1666,14 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       if (e.slot) {
         switch (e.slot) {
           case 'story_setting':
+            if (worldBookBlocks.beforeStory) {
+              msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
+            }
             if (conversation.storySetting) {
               msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting });
+            }
+            if (worldBookBlocks.afterStory) {
+              msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
             }
             break;
 
@@ -1669,7 +1713,13 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
 
           case 'user_input': {
             if (pendingUserInput) {
+              if (worldBookBlocks.beforeInput) {
+                msgs.push({ role: 'user', content: worldBookBlocks.beforeInput });
+              }
               msgs.push({ role: 'user', content: '[ 本轮用户消息 ]\n<interactive_input>\n' + pendingUserInput.content + '\n</interactive_input>' });
+              if (worldBookBlocks.afterInput) {
+                msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
+              }
             }
             break;
           }
@@ -1706,8 +1756,13 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       }
     }
 
-    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, slotDriven: true });
-    return { systemPrompt, messages: merged };
+    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: merged.length, splitAt, slotDriven: true, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+    return {
+      systemPrompt,
+      messages: merged,
+      activeWorldBookEntries: worldBookBlocks.active || [],
+      blockedWorldBookEntries: worldBookBlocks.blocked || [],
+    };
   },
 
   buildSummaryGenPrompt() {
@@ -1718,35 +1773,498 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
 };
 
 // ============================================================
+// WorldBook Module
+// ============================================================
+const WorldBook = {
+  DEFAULT_SETTINGS: {
+    scanDepth: 6,
+    maxEntries: 24,
+    maxChars: 8000,
+    recursiveScan: true,
+    maxRecursionSteps: 2,
+    caseSensitive: false,
+    matchWholeWords: false,
+    includeStorySetting: false,
+    includeMvuState: true,
+  },
+
+  POSITION_MAP: {
+    before_char: 0,
+    after_char: 1,
+    before_input: 2,
+    after_input: 3,
+  },
+
+  LOGIC_MAP: {
+    and_any: 0,
+    and_all: 1,
+    not_any: 2,
+    not_all: 3,
+  },
+
+  createEmptyBook(name = '世界书') {
+    return {
+      version: 1,
+      name,
+      description: '',
+      settings: { ...this.DEFAULT_SETTINGS },
+      entries: [],
+    };
+  },
+
+  createEntry(partial = {}) {
+    const uid = Number(partial.uid ?? partial.id ?? (Date.now() + Math.floor(Math.random() * 1000)));
+    const secondaryKeys = this._normalizeList(partial.secondaryKeys ?? partial.keysecondary ?? []);
+    return {
+      uid,
+      title: partial.title || partial.comment || partial.name || '新条目',
+      comment: partial.comment || partial.title || partial.name || '新条目',
+      keys: this._normalizeList(partial.keys ?? partial.key ?? []),
+      secondaryKeys,
+      selective: partial.selective === undefined ? secondaryKeys.length > 0 : !!partial.selective,
+      content: String(partial.content || partial.text || ''),
+      enabled: partial.enabled !== false && partial.disable !== true && partial.disabled !== true,
+      constant: !!(partial.constant || partial.alwaysActive || partial.always_active),
+      manualActive: false,
+      order: Number.isFinite(Number(partial.order)) ? Number(partial.order) : 100,
+      position: this._normalizePosition(partial.position),
+      selectiveLogic: this._normalizeSelectiveLogic(partial.selectiveLogic ?? partial.selective_logic),
+      useRegex: !!(partial.useRegex || partial.use_regex),
+      matchWholeWords: partial.matchWholeWords === undefined
+        ? (partial.match_whole_words === undefined ? null : !!partial.match_whole_words)
+        : !!partial.matchWholeWords,
+      caseSensitive: partial.caseSensitive === undefined
+        ? (partial.case_sensitive === undefined ? null : !!partial.case_sensitive)
+        : !!partial.caseSensitive,
+      preventRecursion: !!(partial.preventRecursion || partial.disableRecursion || partial.excludeRecursion || partial.prevent_recursion),
+      probability: Number.isFinite(Number(partial.probability)) ? Math.max(0, Math.min(100, Number(partial.probability))) : 100,
+    };
+  },
+
+  normalizeBook(book, fallbackName = '世界书') {
+    if (!book || typeof book !== 'object') return this.createEmptyBook(fallbackName);
+    const settings = { ...this.DEFAULT_SETTINGS, ...(book.settings || {}) };
+    if (book.maxEntries !== undefined) settings.maxEntries = Number(book.maxEntries) || settings.maxEntries;
+    if (book.maxChars !== undefined) settings.maxChars = Number(book.maxChars) || settings.maxChars;
+    if (book.tokenBudget !== undefined) settings.maxChars = Number(book.tokenBudget) || settings.maxChars;
+    if (book.scanDepth !== undefined) settings.scanDepth = Number(book.scanDepth) || settings.scanDepth;
+    if (book.maxRecursionSteps !== undefined) settings.maxRecursionSteps = Number(book.maxRecursionSteps) || settings.maxRecursionSteps;
+    if (book.recursiveScan !== undefined) settings.recursiveScan = !!book.recursiveScan;
+    if (book.recursiveScanning !== undefined) settings.recursiveScan = !!book.recursiveScanning;
+    if (book.caseSensitive !== undefined) settings.caseSensitive = !!book.caseSensitive;
+    if (book.matchWholeWords !== undefined) settings.matchWholeWords = !!book.matchWholeWords;
+    if (book.includeStorySetting !== undefined) settings.includeStorySetting = !!book.includeStorySetting;
+    if (book.includeMvuState !== undefined) settings.includeMvuState = !!book.includeMvuState;
+
+    let rawEntries = [];
+    if (Array.isArray(book.entries)) rawEntries = book.entries;
+    else if (book.entries && typeof book.entries === 'object') rawEntries = Object.values(book.entries);
+    else if (Array.isArray(book.worldInfos)) rawEntries = book.worldInfos;
+
+    return {
+      version: 1,
+      name: String(book.name || book.title || fallbackName),
+      description: String(book.description || ''),
+      settings,
+      entries: rawEntries.map((entry, index) => this.createEntry({ ...entry, id: entry?.id ?? index + 1 })),
+    };
+  },
+
+  ensureConversation(conversation) {
+    if (!conversation) return this.createEmptyBook();
+    conversation.worldBook = this.normalizeBook(
+      conversation.worldBook,
+      (conversation.name || '未命名故事') + ' 世界书'
+    );
+    return conversation.worldBook;
+  },
+
+  buildPromptBlocks(conversation) {
+    const book = this.ensureConversation(conversation);
+    const active = this.getActiveEntries(book, conversation);
+    const buckets = {
+      beforeStory: [],
+      afterStory: [],
+      beforeInput: [],
+      afterInput: [],
+    };
+
+    for (const entry of active) {
+      const prompt = this._formatEntryPrompt(entry);
+      if (!prompt) continue;
+      if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
+      else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
+      else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
+      else buckets.afterStory.push(prompt);
+    }
+
+    return {
+      beforeStory: this._wrapPromptBucket('背景前置', buckets.beforeStory),
+      afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
+      beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
+      afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
+      active,
+      blocked: active.blocked || [],
+    };
+  },
+
+  getActiveEntries(book, conversation) {
+    const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
+    const entries = normalized.entries.filter(entry => (
+      entry.enabled
+      && String(entry.content || '').trim()
+    ));
+    if (!entries.length) return [];
+
+    const active = [];
+    const addedIds = new Set();
+    const blocked = [];
+    let totalChars = 0;
+
+    const compareEntries = (a, b) => {
+      const posA = this.POSITION_MAP[a.position] ?? 99;
+      const posB = this.POSITION_MAP[b.position] ?? 99;
+      if (posA !== posB) return posA - posB;
+      if (a.constant !== b.constant) return a.constant ? -1 : 1;
+      if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
+      if (a.order !== b.order) return a.order - b.order;
+      return a.uid - b.uid;
+    };
+
+    const tryAdd = (entry) => {
+      if (!entry || addedIds.has(entry.uid)) return false;
+      if (active.length >= normalized.settings.maxEntries) {
+        blocked.push({ ...entry, _blockedReason: 'maxEntries' });
+        return false;
+      }
+      const nextLen = String(entry.content || '').length;
+      if (active.length > 0 && totalChars + nextLen > normalized.settings.maxChars) {
+        blocked.push({ ...entry, _blockedReason: 'budget' });
+        return false;
+      }
+      active.push(entry);
+      addedIds.add(entry.uid);
+      totalChars += nextLen;
+      return true;
+    };
+
+    const constantEntries = entries
+      .filter(entry => entry.constant)
+      .map(entry => ({
+        ...entry,
+        _activationMode: 'constant',
+        _matchKind: 'constant',
+        _matchedPrimaryKeys: [],
+        _matchedSecondaryKeys: [],
+        _matchSources: [{ kind: 'constant', label: '常驻条目', preview: '' }],
+        _matchStep: 0,
+      }))
+      .sort(compareEntries);
+
+    for (const entry of constantEntries) tryAdd(entry);
+
+    const autoEntries = entries
+      .filter(entry => !entry.constant && (entry.keys || []).length > 0)
+      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.uid - b.uid));
+
+    const baseScanSources = this._buildScanSources(conversation, normalized.settings);
+    let recursiveSources = [];
+    const recursionSteps = normalized.settings.recursiveScan
+      ? Math.max(0, Number(normalized.settings.maxRecursionSteps) || 0)
+      : 0;
+    const maxSteps = 1 + recursionSteps;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const sourcePool = step === 0 ? baseScanSources : recursiveSources;
+      if (!sourcePool.length) break;
+      const matchedThisStep = [];
+      for (const entry of autoEntries) {
+        if (addedIds.has(entry.uid)) continue;
+        if (step > 0 && entry.preventRecursion) continue;
+        const match = this._findEntryMatch(entry, sourcePool, normalized.settings);
+        if (!match.matched) continue;
+        if (!this._passesProbability(entry, conversation, step)) continue;
+        matchedThisStep.push({
+          ...entry,
+          _activationMode: 'auto',
+          _matchKind: step === 0 ? 'direct' : 'recursive',
+          _matchStep: step + 1,
+          _matchedPrimaryKeys: match.primaryMatches,
+          _matchedSecondaryKeys: match.secondaryMatches,
+          _matchSources: match.sources,
+        });
+      }
+
+      if (!matchedThisStep.length) break;
+      matchedThisStep.sort(compareEntries);
+      const addedThisStep = [];
+      for (const entry of matchedThisStep) {
+        if (tryAdd(entry)) addedThisStep.push(entry);
+      }
+      if (!normalized.settings.recursiveScan || !addedThisStep.length) break;
+      recursiveSources = addedThisStep.map(entry => ({
+        kind: 'recursion',
+        label: `递归：${entry.comment || entry.title || entry.uid}`,
+        content: String(entry.content || ''),
+      }));
+    }
+
+    active.sort(compareEntries);
+    active.blocked = blocked;
+    return active;
+  },
+
+  exportAirp(book) {
+    return { type: 'airp_worldbook_v1', ...this.normalizeBook(book) };
+  },
+
+  exportSillyTavern(book) {
+    const normalized = this.normalizeBook(book);
+    const entries = {};
+    for (const entry of normalized.entries) {
+      entries[String(entry.uid)] = {
+        uid: entry.uid,
+        comment: entry.comment || entry.title || '',
+        content: entry.content,
+        constant: entry.constant,
+        selective: !!entry.selective && entry.secondaryKeys.length > 0,
+        key: [...entry.keys],
+        keysecondary: [...entry.secondaryKeys],
+        order: entry.order,
+        position: this.POSITION_MAP[entry.position] ?? 1,
+        disable: !entry.enabled,
+        probability: entry.probability,
+        selectiveLogic: this.LOGIC_MAP?.[entry.selectiveLogic] ?? 0,
+      };
+    }
+    return {
+      name: normalized.name,
+      description: normalized.description,
+      entries,
+      tokenBudget: normalized.settings.maxChars,
+      scanDepth: normalized.settings.scanDepth,
+      recursiveScanning: normalized.settings.recursiveScan,
+      maxRecursionSteps: normalized.settings.maxRecursionSteps,
+      matchWholeWords: normalized.settings.matchWholeWords,
+      caseSensitive: normalized.settings.caseSensitive,
+    };
+  },
+
+  importAny(raw) {
+    return this.normalizeBook(raw);
+  },
+
+  _normalizeList(value) {
+    if (Array.isArray(value)) return value.map(v => String(v).trim()).filter(Boolean);
+    if (typeof value === 'string') return value.split(/\r?\n|,/).map(v => v.trim()).filter(Boolean);
+    return [];
+  },
+
+  _normalizePosition(value) {
+    if (typeof value === 'number') {
+      return Object.keys(this.POSITION_MAP).find(key => this.POSITION_MAP[key] === value) || 'after_char';
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (normalized in this.POSITION_MAP) return normalized;
+      if (normalized === 'before_an') return 'before_input';
+      if (normalized === 'after_an' || normalized === 'at_depth') return 'after_input';
+    }
+    return 'after_char';
+  },
+
+  _normalizeSelectiveLogic(value) {
+    if (typeof value === 'number') {
+      return Object.keys(this.LOGIC_MAP || {}).find(key => this.LOGIC_MAP[key] === value) || 'and_any';
+    }
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['and_any', 'and_all', 'not_any', 'not_all'].includes(normalized) ? normalized : 'and_any';
+  },
+
+  _buildScanSources(conversation, settings) {
+    const sources = [];
+    const messages = (conversation?.messages || []).filter(msg => !msg.hidden && String(msg.content || '').trim());
+    const depth = Math.max(1, Number(settings.scanDepth) || 6);
+    const recent = messages.slice(-depth);
+    const lastUserIndex = recent.map(msg => msg.role).lastIndexOf('user');
+    for (let i = 0; i < recent.length; i++) {
+      const msg = recent[i];
+      let content = String(msg.content || '');
+      if (msg.role === 'assistant' && typeof Summary !== 'undefined' && typeof MVU !== 'undefined') {
+        content = Summary.cleanAbstract(MVU.cleanText(content));
+      }
+      sources.push({
+        kind: msg.role === 'user' && i === lastUserIndex ? 'latest_user' : 'chat',
+        label: msg.role === 'user' && i === lastUserIndex ? '最新用户输入' : (msg.role === 'assistant' ? '最近AI回复' : '最近用户输入'),
+        content,
+      });
+    }
+    if (settings.includeStorySetting && conversation?.storySetting) {
+      sources.push({ kind: 'story', label: '故事设定', content: String(conversation.storySetting || '') });
+    }
+    if (settings.includeMvuState && conversation?.mvu?.state) {
+      sources.push({ kind: 'mvu', label: '状态栏', content: JSON.stringify(conversation.mvu.state, null, 2) });
+    }
+    return sources.filter(source => String(source.content || '').trim());
+  },
+
+  _findEntryMatch(entry, sources, defaults) {
+    const matchedSources = [];
+    const primarySet = new Set();
+    const secondarySet = new Set();
+    for (const source of sources) {
+      const details = this._entryMatches(entry, source.content, defaults);
+      if (!details.matched) continue;
+      details.primaryMatches.forEach(key => primarySet.add(key));
+      details.secondaryMatches.forEach(key => secondarySet.add(key));
+      matchedSources.push({
+        kind: source.kind,
+        label: source.label,
+        preview: String(source.content || '').slice(0, 120),
+        primaryMatches: details.primaryMatches,
+        secondaryMatches: details.secondaryMatches,
+      });
+    }
+    return {
+      matched: matchedSources.length > 0,
+      primaryMatches: [...primarySet],
+      secondaryMatches: [...secondarySet],
+      sources: matchedSources,
+    };
+  },
+
+  _entryMatches(entry, text, defaults) {
+    const primaryMatches = (entry.keys || []).filter(keyword => this._matchKeyword(keyword, text, entry, defaults));
+    if (!primaryMatches.length) return { matched: false, primaryMatches: [], secondaryMatches: [] };
+    const secondaryKeys = entry.secondaryKeys || [];
+    if (!entry.selective || !secondaryKeys.length) {
+      return { matched: true, primaryMatches, secondaryMatches: [] };
+    }
+    const secondaryMatches = secondaryKeys.filter(keyword => this._matchKeyword(keyword, text, entry, defaults));
+    const logic = entry.selectiveLogic || 'and_any';
+    let passed = false;
+    if (logic === 'and_all') passed = secondaryMatches.length === secondaryKeys.length;
+    else if (logic === 'not_any') passed = secondaryMatches.length === 0;
+    else if (logic === 'not_all') passed = secondaryMatches.length < secondaryKeys.length;
+    else passed = secondaryMatches.length > 0;
+    return { matched: passed, primaryMatches, secondaryMatches };
+  },
+
+  _matchKeyword(keyword, text, entry, defaults) {
+    const raw = String(keyword || '').trim();
+    const source = String(text || '');
+    if (!raw || !source) return false;
+    const caseSensitive = entry.caseSensitive === null || entry.caseSensitive === undefined
+      ? defaults.caseSensitive
+      : entry.caseSensitive;
+    const wholeWords = entry.matchWholeWords === null || entry.matchWholeWords === undefined
+      ? defaults.matchWholeWords
+      : entry.matchWholeWords;
+    if (entry.useRegex || /^\/.*\/[gimsuy]*$/.test(raw)) {
+      try {
+        if (/^\/.*\/[gimsuy]*$/.test(raw)) {
+          const lastSlash = raw.lastIndexOf('/');
+          const pattern = raw.slice(1, lastSlash);
+          const flags = raw.slice(lastSlash + 1);
+          const finalFlags = caseSensitive || flags.includes('i') ? flags : flags + 'i';
+          return new RegExp(pattern, finalFlags).test(source);
+        }
+        return new RegExp(raw, caseSensitive ? '' : 'i').test(source);
+      } catch {
+        return this._plainKeywordMatch(raw, source, caseSensitive, wholeWords);
+      }
+    }
+    return this._plainKeywordMatch(raw, source, caseSensitive, wholeWords);
+  },
+
+  _plainKeywordMatch(raw, source, caseSensitive, wholeWords) {
+    const haystack = caseSensitive ? source : source.toLowerCase();
+    const needle = caseSensitive ? raw : raw.toLowerCase();
+    if (!wholeWords) return haystack.includes(needle);
+    const escaped = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      return new RegExp(`(^|[^\\p{L}\\p{N}_])${escaped}($|[^\\p{L}\\p{N}_])`, caseSensitive ? 'u' : 'iu').test(source);
+    } catch {
+      return haystack.includes(needle);
+    }
+  },
+
+  _passesProbability(entry, conversation, step) {
+    const probability = Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100;
+    if (probability >= 100) return true;
+    if (probability <= 0) return false;
+    const lastUser = [...(conversation?.messages || [])].reverse().find(msg => msg.role === 'user')?.content || '';
+    const seed = `${conversation?.id || ''}|${(conversation?.messages || []).length}|${entry.uid}|${step}|${lastUser}`;
+    return (this._stableHash(seed) % 100) < probability;
+  },
+
+  _stableHash(text) {
+    let hash = 2166136261;
+    const input = String(text || '');
+    for (let i = 0; i < input.length; i++) {
+      hash ^= input.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  },
+
+  _formatEntryPrompt(entry) {
+    const title = entry.comment || entry.title || `条目 ${entry.uid}`;
+    return `### ${title}\n${String(entry.content || '').trim()}`;
+  },
+
+  _wrapPromptBucket(label, items) {
+    if (!items || items.length === 0) return '';
+    return `【世界书：${label}】\n` + items.join('\n\n');
+  },
+};
+
+// ============================================================
 // MVU Module
 // ============================================================
 const MVU = {
   BASE_STYLE: `
+    .mvu-root {
+      --mvu-bg: transparent;
+      --mvu-panel: rgba(255,255,255,0.025);
+      --mvu-card: rgba(255,255,255,0.04);
+      --mvu-accent: var(--accent);
+      --mvu-accent-2: #67c7b4;
+      --mvu-warn: #e8bf5a;
+      --mvu-text: var(--text-primary);
+      --mvu-muted: var(--text-muted);
+      --mvu-border: rgba(201,164,76,0.18);
+      --mvu-radius: 8px;
+      --mvu-shadow: none;
+      --mvu-texture: none;
+    }
     .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: 14px; }
-    .mvu-panel, .mvu-section { border: 1px solid rgba(201,164,76,0.16); background: rgba(255,255,255,0.025); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
-    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--accent); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
+    .mvu-panel, .mvu-section { border: 1px solid var(--mvu-border, rgba(201,164,76,0.16)); background: var(--mvu-panel, rgba(255,255,255,0.025)); border-radius: var(--mvu-radius, 8px); box-shadow: var(--mvu-shadow, none); padding: 12px; margin-bottom: 10px; }
+    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--mvu-accent, var(--accent)); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
     details.mvu-section > summary::-webkit-details-marker { display: none; }
-    details.mvu-section > summary small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
+    details.mvu-section > summary small { color: var(--mvu-muted, var(--text-muted)); font-size: 10px; font-weight: 500; }
     .mvu-managed-body { display: grid; gap: 2px; }
-    .mvu-managed-field { border-radius: 7px; padding-left: 6px; padding-right: 6px; background: rgba(255,255,255,0.025); }
-    .mvu-section-title, .mvu-title { color: var(--accent); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
+    .mvu-managed-field { border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); padding-left: 6px; padding-right: 6px; background: color-mix(in srgb, var(--mvu-card, rgba(255,255,255,0.04)), transparent 28%); }
+    .mvu-section-title, .mvu-title { color: var(--mvu-accent, var(--accent)); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
     .mvu-field { display: grid; grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .mvu-field:last-child { border-bottom: 0; }
-    .mvu-label { color: var(--text-muted); font-size: 12px; line-height: 1.5; }
-    .mvu-value, [data-field] { color: var(--text-primary); font-size: 13px; line-height: 1.55; word-break: break-word; }
+    .mvu-label { color: var(--mvu-muted, var(--text-muted)); font-size: 12px; line-height: 1.5; }
+    .mvu-value, [data-field] { color: var(--mvu-text, var(--text-primary)); font-size: 13px; line-height: 1.55; word-break: break-word; }
     .mvu-bar-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,0.08); margin-top: 4px; }
-    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #e1bd64); transition: width 0.35s ease; }
-    .mvu-list-item { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.04); margin-bottom: 5px; font-size: 12px; line-height: 1.45; }
+    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--mvu-accent, var(--accent)), var(--mvu-accent-2, #e1bd64)); transition: width 0.35s ease; }
+    .mvu-list-item { padding: 6px 8px; border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); background: var(--mvu-card, rgba(255,255,255,0.04)); border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(201,164,76,0.18)), transparent 35%); margin-bottom: 5px; font-size: 12px; line-height: 1.45; color: var(--mvu-text, var(--text-primary)); }
     .mvu-character-grid { display: grid; gap: 8px; }
-    .mvu-character-card { display: grid; gap: 6px; padding: 10px; border: 1px solid rgba(201,164,76,0.18); border-radius: 8px; background: linear-gradient(135deg, rgba(201,164,76,0.10), rgba(255,255,255,0.035)); cursor: pointer; }
-    .mvu-character-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-    .mvu-character-name { color: var(--accent); font-size: 14px; font-weight: 700; }
-    .mvu-character-role { color: var(--text-muted); font-size: 11px; }
+    .mvu-character-card { display: grid; gap: 7px; min-height: 104px; max-height: 150px; overflow: hidden; padding: 10px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.18)); border-radius: var(--mvu-radius, 8px); background: var(--mvu-card, rgba(255,255,255,0.04)); background-image: var(--mvu-texture, none); box-shadow: var(--mvu-shadow, none); cursor: pointer; position: relative; }
+    .mvu-character-card::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 22px; pointer-events: none; background: linear-gradient(180deg, rgba(20,18,13,0), rgba(20,18,13,0.92)); opacity: 0.86; }
+    .mvu-character-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
+    .mvu-character-name { color: var(--mvu-accent, var(--accent)); font-size: 14px; font-weight: 800; line-height: 1.3; min-width: 0; word-break: break-word; }
+    .mvu-character-role { max-width: 92px; color: var(--mvu-muted, var(--text-muted)); font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mvu-character-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-    .mvu-character-chip { color: var(--text-secondary); font-size: 11px; border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 2px 7px; background: rgba(0,0,0,0.12); }
-    .mvu-character-desc { color: var(--text-primary); font-size: 12px; line-height: 1.55; opacity: 0.92; }
-    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(201,164,76,0.22); color: var(--text-secondary); background: rgba(255,255,255,0.03); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
-    .mvu-tab.active { color: #1a1510; background: var(--accent); border-color: var(--accent); }
+    .mvu-character-chip { max-width: 100%; color: var(--mvu-text, var(--text-secondary)); font-size: 11px; line-height: 1.25; border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(255,255,255,0.08)), transparent 25%); border-radius: 999px; padding: 2px 7px; background: color-mix(in srgb, var(--mvu-panel, rgba(0,0,0,0.12)), transparent 18%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mvu-character-desc { color: var(--mvu-text, var(--text-primary)); font-size: 12px; line-height: 1.5; opacity: 0.92; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .mvu-character-more { color: var(--mvu-accent, var(--accent)); font-size: 11px; font-weight: 700; opacity: 0.82; }
+    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.22)); color: var(--mvu-text, var(--text-secondary)); background: var(--mvu-card, rgba(255,255,255,0.03)); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
+    .mvu-tab.active { color: var(--mvu-bg, #1a1510); background: var(--mvu-accent, var(--accent)); border-color: var(--mvu-accent, var(--accent)); }
     .mvu-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
     .mvu-field-changed { animation: mvuPulseChanged 1.4s ease; }
     @keyframes mvuPulseChanged { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: rgba(201,164,76,0.0); } 18% { box-shadow: 0 0 0 2px rgba(201,164,76,0.28); background-color: rgba(201,164,76,0.12); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: transparent; } }
@@ -2092,6 +2610,17 @@ const MVU = {
     return String(value);
   },
 
+  _shortText(value, max = 64) {
+    const text = this._formatDisplayValue(value).replace(/\s+/g, ' ').trim();
+    return text.length > max ? text.slice(0, Math.max(0, max - 3)) + '...' : text;
+  },
+
+  _pickCharacterSummary(character) {
+    const source = character.summary || character.brief || character.profile || character.desc || character.description
+      || character.thoughts || character.note || this._formatDisplayValue(character);
+    return this._shortText(source, 72);
+  },
+
   _renderListItem(value) {
     const text = this._formatDisplayValue(value);
     if (value && typeof value === 'object') {
@@ -2104,29 +2633,30 @@ const MVU = {
   },
 
   _renderCharacterCards(value) {
-    if (!Array.isArray(value) || !value.length) return '<div class="mvu-list-item">暂无角色记录</div>';
+    if (!Array.isArray(value) || !value.length) return '<div class="mvu-list-item">\u6682\u65e0\u89d2\u8272\u8bb0\u5f55</div>';
     const cards = value.map((character, index) => {
       if (!character || typeof character !== 'object') return this._renderListItem(character);
-      const name = character.name || character.title || character.label || `角色 ${index + 1}`;
-      const role = character.role || character.identity || character.relation || character.status || '角色';
-      const desc = character.profile || character.desc || character.description || character.thoughts || character.note || this._formatDisplayValue(character);
+      const name = character.name || character.title || character.label || `\u89d2\u8272 ${index + 1}`;
+      const role = character.role || character.identity || character.relation || character.status || '\u89d2\u8272';
+      const desc = this._pickCharacterSummary(character);
       const chips = [
-        character.status && `状态：${character.status}`,
-        character.location && `位置：${character.location}`,
-        character.affection !== undefined && character.affection !== '' && `好感：${character.affection}`,
-        character.relation && `关系：${character.relation}`,
+        character.relation && `\u5173\u7cfb\uff1a${this._shortText(character.relation, 16)}`,
+        character.affection !== undefined && character.affection !== '' && `\u597d\u611f\uff1a${this._shortText(character.affection, 10)}`,
+        character.location && `\u4f4d\u7f6e\uff1a${this._shortText(character.location, 18)}`,
+        character.status && `\u72b6\u6001\uff1a${this._shortText(character.status, 16)}`,
       ].filter(Boolean).slice(0, 4);
       const fallback = Object.entries(character)
         .filter(([key, val]) => !['id', 'name', 'title', 'label', 'role', 'identity', 'profile', 'desc', 'description', 'note'].includes(key) && val !== '' && val !== undefined && val !== null)
         .map(([key, val]) => `${key}: ${this._formatDisplayValue(val)}`)
         .join('\n');
-      return `<div class="mvu-character-card" data-mvu-detail data-mvu-title="${Utils.escapeHtml(String(name))}" data-mvu-type="${Utils.escapeHtml(String(role))}" data-mvu-desc="${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}">
+      return `<div class="mvu-character-card" data-mvu-detail data-mvu-index="${index}" data-mvu-title="${Utils.escapeHtml(String(name))}" data-mvu-type="${Utils.escapeHtml(String(role))}">
         <div class="mvu-character-head">
           <span class="mvu-character-name">${Utils.escapeHtml(String(name))}</span>
           <span class="mvu-character-role">${Utils.escapeHtml(String(role))}</span>
         </div>
         ${chips.length ? `<div class="mvu-character-meta">${chips.map(chip => `<span class="mvu-character-chip">${Utils.escapeHtml(String(chip))}</span>`).join('')}</div>` : ''}
-        <div class="mvu-character-desc">${Utils.escapeHtml(String(desc || fallback || '暂无详细记录'))}</div>
+        <div class="mvu-character-desc">${Utils.escapeHtml(String(desc || fallback || '\u6682\u65e0\u8be6\u7ec6\u8bb0\u5f55'))}</div>
+        <div class="mvu-character-more">\u70b9\u51fb\u67e5\u770b\u5b8c\u6574\u6863\u6848</div>
       </div>`;
     }).join('');
     return `<div class="mvu-character-grid">${cards}</div>`;

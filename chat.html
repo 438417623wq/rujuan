@@ -139,7 +139,7 @@
       border: 1px solid var(--border-strong);
       border-radius: var(--radius-lg);
       width: 92%;
-      max-width: 680px;
+      max-width: 1040px;
       max-height: 85vh;
       display: flex;
       flex-direction: column;
@@ -159,16 +159,266 @@
       font-weight: 600;
       color: var(--accent);
     }
+    .world-setting-tabs {
+      display: flex;
+      gap: 8px;
+      padding: 12px 20px 0;
+      flex-shrink: 0;
+    }
+    .world-setting-tab {
+      padding: 8px 14px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all .15s ease;
+    }
+    .world-setting-tab:hover {
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+    }
+    .world-setting-tab.active {
+      background: var(--accent-dim);
+      border-color: rgba(201, 164, 76, 0.35);
+      color: var(--accent);
+    }
     .world-setting-body {
       flex: 1;
       overflow-y: auto;
       padding: 16px 20px;
+    }
+    .world-setting-panel {
+      display: none;
+      min-height: 0;
+    }
+    .world-setting-panel.active {
+      display: block;
+    }
+    .world-setting-note {
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
     }
     .world-setting-body textarea {
       min-height: 300px;
       resize: vertical;
       line-height: 1.6;
       font-size: 13px;
+    }
+    .worldbook-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .worldbook-toolbar-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .worldbook-toolbar input,
+    .worldbook-toolbar select {
+      min-width: 160px;
+    }
+    .worldbook-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .worldbook-stat {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(255,255,255,0.02);
+      min-width: 120px;
+    }
+    .worldbook-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .worldbook-stat-value {
+      margin-top: 4px;
+      font-size: 18px;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .worldbook-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px;
+      background: rgba(255,255,255,0.02);
+      margin-bottom: 14px;
+    }
+    .worldbook-card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+    .worldbook-card-subtitle {
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 1.6;
+      margin-bottom: 12px;
+    }
+    .worldbook-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .worldbook-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 4px;
+    }
+    .worldbook-checkbox {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+    .worldbook-checkbox input {
+      width: auto;
+      margin: 0;
+    }
+    .worldbook-actions-inline {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .worldbook-editor-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .worldbook-editor-entry {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      background: rgba(255,255,255,0.02);
+      overflow: hidden;
+    }
+    .worldbook-editor-entry.selected {
+      border-color: rgba(201,164,76,.35);
+      box-shadow: inset 2px 0 0 var(--accent);
+    }
+    .worldbook-editor-entry.expanded {
+      background: rgba(255,255,255,0.03);
+    }
+    .worldbook-editor-head {
+      padding: 12px 14px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .worldbook-editor-head:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    .worldbook-editor-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .worldbook-editor-toggle input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      cursor: pointer;
+      accent-color: #8fd3a3;
+    }
+    .worldbook-editor-title-group {
+      flex: 1;
+      min-width: 0;
+    }
+    .worldbook-editor-title {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .worldbook-editor-meta {
+      margin-top: 6px;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .worldbook-editor-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: flex-end;
+    }
+    .worldbook-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--text-secondary);
+      background: rgba(255,255,255,0.02);
+    }
+    .worldbook-tag.manual {
+      color: #8fd3a3;
+      border-color: rgba(143,211,163,.35);
+      background: rgba(143,211,163,.14);
+    }
+    .worldbook-tag.constant {
+      color: var(--accent);
+      border-color: rgba(201,164,76,.35);
+      background: rgba(201,164,76,.12);
+    }
+    .worldbook-editor-preview {
+      margin-top: 10px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .worldbook-editor-chevron {
+      width: 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      flex-shrink: 0;
+      transition: transform .15s ease, color .15s ease;
+    }
+    .worldbook-editor-entry.expanded .worldbook-editor-chevron {
+      transform: rotate(90deg);
+      color: var(--accent);
+    }
+    .worldbook-editor-body {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 14px;
+    }
+    .worldbook-editor-body.collapsed {
+      display: none;
+    }
+    .worldbook-entry-empty {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    @media (max-width: 960px) {
+      .worldbook-grid {
+        grid-template-columns: 1fr;
+      }
     }
     .world-setting-footer {
       padding: 12px 20px;
@@ -776,6 +1026,7 @@
       margin-bottom: 12px;
       padding-bottom: 12px;
       border-bottom: 1px solid var(--border);
+      position: relative;
     }
     .mvu-toolbar-top {
       display: flex;
@@ -824,11 +1075,29 @@
       font-size: 12px;
       min-height: 30px;
       cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 4px;
     }
     .mvu-view-btn.active {
       background: var(--accent);
       color: #1a1510;
       font-weight: 700;
+    }
+    .mvu-view-btn.change-active {
+      color: var(--mvu-accent);
+      border: 1px solid rgba(201,164,76,0.22);
+    }
+    .mvu-change-dock {
+      display: none;
+    }
+    .mvu-change-dock.visible {
+      display: block;
+      margin-top: -4px;
+    }
+    .mvu-change-dock .mvu-change-panel {
+      box-shadow: 0 12px 28px rgba(0,0,0,0.28);
     }
     .mvu-search {
       display: none;
@@ -1507,16 +1776,26 @@
       pointer-events: auto;
     }
     .mvu-detail-card {
+      --mvu-bg: #1a1510;
+      --mvu-panel: rgba(34,31,22,0.9);
+      --mvu-card: rgba(0,0,0,0.22);
+      --mvu-accent: var(--accent);
+      --mvu-accent-2: #8de8d4;
+      --mvu-text: var(--text-primary);
+      --mvu-muted: var(--text-muted);
+      --mvu-border: rgba(214,184,91,0.66);
+      --mvu-radius: 18px;
+      --mvu-shadow: 0 28px 90px rgba(0,0,0,0.58), inset 0 0 42px rgba(201,164,76,0.08);
       width: min(430px, 92vw);
       max-height: min(680px, 88vh);
       overflow: auto;
       position: relative;
-      border: 1px solid rgba(214,184,91,0.66);
-      border-radius: 18px;
+      border: 1px solid var(--mvu-border);
+      border-radius: var(--mvu-radius);
       background:
-        linear-gradient(180deg, rgba(34,31,22,0.9), rgba(9,10,8,0.97)),
-        radial-gradient(circle at 20% 10%, rgba(103,199,180,0.14), transparent 30%);
-      box-shadow: 0 28px 90px rgba(0,0,0,0.58), inset 0 0 42px rgba(201,164,76,0.08);
+        var(--mvu-texture, radial-gradient(circle at 20% 10%, rgba(103,199,180,0.14), transparent 30%)),
+        linear-gradient(180deg, var(--mvu-panel), var(--mvu-bg));
+      box-shadow: var(--mvu-shadow);
       transform: translateY(8px) scale(0.98);
       transition: transform 0.18s ease;
     }
@@ -1524,7 +1803,7 @@
       content: '';
       position: absolute;
       inset: 10px;
-      border: 1px solid rgba(201,164,76,0.23);
+      border: 1px solid color-mix(in srgb, var(--mvu-border), transparent 55%);
       border-radius: 14px;
       pointer-events: none;
     }
@@ -1539,7 +1818,7 @@
       padding: 22px 22px 8px;
     }
     .mvu-detail-title {
-      color: var(--accent);
+      color: var(--mvu-accent);
       font-family: var(--font-display);
       font-size: 26px;
       line-height: 1.22;
@@ -1552,8 +1831,8 @@
       width: fit-content;
       padding: 5px 10px;
       border-radius: 999px;
-      color: #1a1510;
-      background: linear-gradient(135deg, var(--accent), #8de8d4);
+      color: var(--mvu-bg);
+      background: linear-gradient(135deg, var(--mvu-accent), var(--mvu-accent-2));
       font-size: 12px;
       font-weight: 900;
     }
@@ -1561,16 +1840,16 @@
       width: 38px;
       height: 38px;
       flex: 0 0 auto;
-      border: 1px solid rgba(201,164,76,0.38);
+      border: 1px solid color-mix(in srgb, var(--mvu-border), transparent 30%);
       border-radius: 999px;
       background: rgba(0,0,0,0.22);
-      color: var(--accent);
+      color: var(--mvu-accent);
       font-size: 22px;
       cursor: pointer;
     }
     .mvu-detail-close:hover {
-      color: var(--accent);
-      border-color: var(--accent);
+      color: var(--mvu-accent);
+      border-color: var(--mvu-accent);
     }
     .mvu-detail-body {
       display: grid;
@@ -1578,7 +1857,7 @@
       padding: 10px 22px 22px;
     }
     .mvu-detail-desc {
-      color: var(--text-primary);
+      color: var(--mvu-text);
       font-size: 15px;
       line-height: 1.72;
       white-space: pre-wrap;
@@ -1588,8 +1867,48 @@
       gap: 8px;
       padding: 10px;
       border-radius: 12px;
-      background: rgba(0,0,0,0.22);
-      border: 1px solid rgba(201,164,76,0.16);
+      background: var(--mvu-card);
+      border: 1px solid color-mix(in srgb, var(--mvu-border), transparent 55%);
+    }
+    .mvu-character-detail {
+      display: grid;
+      gap: 12px;
+    }
+    .mvu-character-detail-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+    }
+    .mvu-character-detail-chip {
+      max-width: 100%;
+      padding: 5px 9px;
+      border-radius: 999px;
+      color: var(--mvu-text);
+      background: color-mix(in srgb, var(--mvu-card), transparent 12%);
+      border: 1px solid color-mix(in srgb, var(--mvu-border), transparent 45%);
+      font-size: 12px;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .mvu-character-detail-section {
+      display: grid;
+      gap: 7px;
+      padding: 11px;
+      border-radius: 12px;
+      background: var(--mvu-card);
+      border: 1px solid color-mix(in srgb, var(--mvu-border), transparent 52%);
+    }
+    .mvu-character-detail-heading {
+      color: var(--mvu-accent);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .mvu-character-detail-text {
+      color: var(--mvu-text);
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     .mvu-detail-row {
       display: grid;
@@ -1602,21 +1921,74 @@
       line-height: 1.55;
     }
     .mvu-detail-row span:first-child {
-      color: var(--accent);
+      color: var(--mvu-accent);
       font-weight: 900;
     }
     .mvu-detail-row span:last-child {
-      color: var(--text-secondary);
+      color: var(--mvu-text);
       word-break: break-word;
       white-space: pre-wrap;
     }
     .mvu-detail-actions {
-      display: none;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
     .mvu-detail-actions .btn {
       min-height: 34px;
       padding: 7px 12px;
       font-size: 12px;
+    }
+    .mvu-character-edit-form {
+      display: grid;
+      gap: 11px;
+      padding: 12px;
+      border: 1px solid rgba(201,164,76,0.18);
+      border-radius: 12px;
+      background: rgba(0,0,0,0.18);
+    }
+    .mvu-character-edit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .mvu-character-edit-field {
+      display: grid;
+      gap: 5px;
+    }
+    .mvu-character-edit-field.full {
+      grid-column: 1 / -1;
+    }
+    .mvu-character-edit-field label {
+      color: var(--mvu-accent);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .mvu-character-edit-input,
+    .mvu-character-edit-textarea {
+      width: 100%;
+      border: 1px solid rgba(201,164,76,0.24);
+      border-radius: 8px;
+      background: rgba(0,0,0,0.24);
+      color: var(--mvu-text);
+      padding: 9px 10px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .mvu-character-edit-textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+    .mvu-character-edit-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    @media (max-width: 560px) {
+      .mvu-character-edit-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* ---- Summary Sidebar ---- */
@@ -1655,7 +2027,7 @@
       font-family: var(--font-display);
       font-size: 15px;
       font-weight: 600;
-      color: var(--accent);
+      color: var(--mvu-accent);
       letter-spacing: 0.3px;
     }
     .summary-big-block {
@@ -1678,7 +2050,7 @@
       font-family: var(--font-ui);
       font-size: 13px;
       line-height: 1.7;
-      color: var(--text-secondary);
+      color: var(--mvu-text);
     }
     .summary-abstracts-title {
       font-family: var(--font-ui);
@@ -2443,17 +2815,101 @@
   </div>
 </div>
 
+<!-- MVU character editor overlay -->
+<div class="mvu-detail-overlay" id="mvuCharacterEditOverlay" onclick="if(event.target===this)closeMvuCharacterEditor()">
+  <div class="mvu-detail-card" role="dialog" aria-modal="true" aria-labelledby="mvuCharacterEditTitle">
+    <div class="mvu-detail-header">
+      <div>
+        <div class="mvu-detail-title" id="mvuCharacterEditTitle">编辑角色</div>
+        <div class="mvu-detail-type" id="mvuCharacterEditType">角色档案</div>
+      </div>
+      <button class="mvu-detail-close" onclick="closeMvuCharacterEditor()" aria-label="关闭">×</button>
+    </div>
+    <div class="mvu-detail-body" id="mvuCharacterEditBody"></div>
+  </div>
+</div>
+
 <!-- World Setting Modal -->
 <div class="world-setting-overlay" id="worldSettingOverlay" onclick="if(event.target===this)closeWorldSetting()">
   <div class="world-setting-modal">
     <div class="world-setting-header">
-      <span class="world-setting-title">World Setting</span>
+      <span class="world-setting-title">世界设定 / 世界书</span>
       <button class="btn-icon" onclick="closeWorldSetting()" style="width:28px;height:28px;">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
+    <div class="world-setting-tabs">
+      <button class="world-setting-tab active" id="worldSettingTabStory" onclick="switchWorldSettingTab('story')">故事设定</button>
+      <button class="world-setting-tab" id="worldSettingTabBook" onclick="switchWorldSettingTab('worldbook')">世界书</button>
+    </div>
     <div class="world-setting-body">
-      <textarea id="worldSettingText" placeholder="暂无世界设定。在初始化阶段确认后会自动生成。"></textarea>
+      <div class="world-setting-panel active" id="worldSettingStoryPanel">
+        <div class="world-setting-note">这里保留完整故事设定正文，会作为固定背景随会话保存。</div>
+        <textarea id="worldSettingText" placeholder="暂无世界设定。在初始化阶段确认后会自动生成。" oninput="onWorldSettingStoryInput(this.value)"></textarea>
+      </div>
+      <div class="world-setting-panel" id="worldSettingBookPanel">
+        <div class="world-setting-note">世界书已切换为自动触发模式：常驻条目固定注入，普通条目会按每轮上下文关键词动态命中，旧的手动命中不再参与注入。</div>
+        <div class="worldbook-toolbar">
+          <div class="worldbook-toolbar-group">
+            <input type="text" id="worldBookSearch" placeholder="搜索标题、关键词或正文" oninput="onWorldBookSearch(this.value)">
+            <select id="worldBookFilter" onchange="onWorldBookFilter(this.value)">
+              <option value="all">全部条目</option>
+              <option value="enabled">仅启用</option>
+              <option value="constant">仅常驻</option>
+              <option value="auto">可自动触发</option>
+              <option value="nokey">缺少关键词</option>
+            </select>
+          </div>
+          <div class="worldbook-toolbar-group">
+            <button class="btn btn-secondary" onclick="addWorldBookEntry()">新增条目</button>
+            <button class="btn btn-secondary" onclick="duplicateWorldBookEntry()">复制条目</button>
+            <button class="btn btn-secondary" onclick="deleteWorldBookEntry()">删除条目</button>
+            <button class="btn btn-secondary" onclick="triggerWorldBookImport()">导入</button>
+            <button class="btn btn-secondary" onclick="exportWorldBook('airp')">导出 AIRP</button>
+            <button class="btn btn-secondary" onclick="exportWorldBook('tavern')">导出酒馆</button>
+            <button class="btn btn-secondary" onclick="deleteCurrentWorldBook()" style="border-color:rgba(201,106,90,0.45);color:var(--danger);">清空世界书</button>
+          </div>
+        </div>
+        <div class="worldbook-stats" id="worldBookStats"></div>
+        <div class="worldbook-card" id="worldBookActivePreview"></div>
+        <div class="worldbook-card">
+          <div class="worldbook-card-title">世界书设置</div>
+          <div class="worldbook-grid">
+            <div class="form-group">
+              <label>名称</label>
+              <input type="text" id="worldBookName" onchange="updateWorldBookMeta('name', this.value)">
+            </div>
+            <div class="form-group">
+              <label>描述</label>
+              <input type="text" id="worldBookDescription" onchange="updateWorldBookMeta('description', this.value)">
+            </div>
+            <div class="form-group">
+              <label>最大注入条目</label>
+              <input type="number" min="1" max="100" id="worldBookMaxEntries" onchange="updateWorldBookSetting('maxEntries', this.value, 'number')">
+            </div>
+            <div class="form-group">
+              <label>字符预算</label>
+              <input type="number" min="200" max="50000" id="worldBookMaxChars" onchange="updateWorldBookSetting('maxChars', this.value, 'number')">
+            </div>
+            <div class="form-group">
+              <label>扫描深度</label>
+              <input type="number" min="1" max="50" id="worldBookScanDepth" onchange="updateWorldBookSetting('scanDepth', this.value, 'number')">
+            </div>
+            <div class="form-group">
+              <label>递归层数</label>
+              <input type="number" min="0" max="10" id="worldBookMaxRecursionSteps" onchange="updateWorldBookSetting('maxRecursionSteps', this.value, 'number')">
+            </div>
+          </div>
+          <div class="worldbook-checkboxes" style="margin-top:12px;">
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookRecursiveScan" onchange="updateWorldBookSetting('recursiveScan', this.checked, 'boolean')">递归扫描</label>
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookIncludeMvuState" onchange="updateWorldBookSetting('includeMvuState', this.checked, 'boolean')">扫描状态栏</label>
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookIncludeStorySetting" onchange="updateWorldBookSetting('includeStorySetting', this.checked, 'boolean')">扫描故事设定</label>
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookCaseSensitive" onchange="updateWorldBookSetting('caseSensitive', this.checked, 'boolean')">全局区分大小写</label>
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookMatchWholeWords" onchange="updateWorldBookSetting('matchWholeWords', this.checked, 'boolean')">全局整词匹配</label>
+          </div>
+        </div>
+        <div class="worldbook-card" id="worldBookEditor"></div>
+      </div>
     </div>
     <div class="world-setting-footer">
       <button class="btn btn-secondary" onclick="closeWorldSetting()">取消</button>
@@ -2461,6 +2917,7 @@
     </div>
   </div>
 </div>
+<input type="file" id="worldBookImportInput" accept=".json" style="display:none" onchange="handleWorldBookImport(event)">
 
 <!-- Sidebar overlay for mobile -->
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeAnySidebar()"></div>
@@ -2503,9 +2960,17 @@ let mvuGameSelection = {
 };
 let mvuGameDetailOpen = false;
 let mvuSearchQuery = '';
+let editingMvuCharacterIndex = -1;
+let mvuChangesOpen = false;
 let userScrolledUp = false;
 let _lastBuiltPrompt = null; // cached prompt for debug inspector
 let pendingMvuInit = null;
+let worldSettingDraft = null;
+let worldSettingTab = 'story';
+let worldBookSearch = '';
+let worldBookFilter = 'all';
+let worldBookSelectedUid = null;
+let worldBookExpandedUid = null;
 let currentAbortController = null;
 let streamStartTime = 0;
 let streamStatusTimer = null;
@@ -2822,23 +3287,465 @@ document.addEventListener('click', () => { if (_moreMenuOpen) closeMoreMenu(); }
 // ============================================================
 
 function openWorldSetting() {
-  const textarea = document.getElementById('worldSettingText');
-  textarea.value = conversation?.storySetting || '';
+  if (!conversation) return;
+  WorldBook.ensureConversation(conversation);
+  worldSettingDraft = {
+    storySetting: conversation.storySetting || '',
+    worldBook: WorldBook.normalizeBook(
+      JSON.parse(JSON.stringify(conversation.worldBook || null)),
+      (conversation.name || '未命名故事') + ' 世界书'
+    ),
+  };
+  if (!hasWorldBookUid(worldBookSelectedUid) || !worldSettingDraft.worldBook.entries.some(entry => entry.uid === worldBookSelectedUid)) {
+    worldBookSelectedUid = worldSettingDraft.worldBook.entries[0]?.uid || null;
+  }
+  if (!hasWorldBookUid(worldBookExpandedUid) || !worldSettingDraft.worldBook.entries.some(entry => entry.uid === worldBookExpandedUid)) {
+    worldBookExpandedUid = worldBookSelectedUid;
+  }
+  renderWorldSettingModal();
   document.getElementById('worldSettingOverlay').classList.add('visible');
-  textarea.focus();
+  if (worldSettingTab === 'story') document.getElementById('worldSettingText').focus();
 }
 
 function closeWorldSetting() {
   document.getElementById('worldSettingOverlay').classList.remove('visible');
+  worldSettingDraft = null;
 }
 
 function saveWorldSetting() {
-  const text = document.getElementById('worldSettingText').value.trim();
-  if (!conversation) return;
-  conversation.storySetting = text;
+  if (!conversation || !worldSettingDraft) return;
+  conversation.storySetting = (worldSettingDraft.storySetting || '').trim();
+  conversation.worldBook = WorldBook.normalizeBook(
+    worldSettingDraft.worldBook,
+    (conversation.name || '未命名故事') + ' 世界书'
+  );
   Storage.saveConversation(conversation);
+  _lastBuiltPrompt = null;
   closeWorldSetting();
-  UI.showToast('世界设定已保存', 'success');
+  UI.showToast('世界设定与世界书已保存', 'success');
+}
+
+function switchWorldSettingTab(tab) {
+  worldSettingTab = tab === 'worldbook' ? 'worldbook' : 'story';
+  const storyTab = document.getElementById('worldSettingTabStory');
+  const bookTab = document.getElementById('worldSettingTabBook');
+  const storyPanel = document.getElementById('worldSettingStoryPanel');
+  const bookPanel = document.getElementById('worldSettingBookPanel');
+  if (!storyTab || !bookTab || !storyPanel || !bookPanel) return;
+  storyTab.classList.toggle('active', worldSettingTab === 'story');
+  bookTab.classList.toggle('active', worldSettingTab === 'worldbook');
+  storyPanel.classList.toggle('active', worldSettingTab === 'story');
+  bookPanel.classList.toggle('active', worldSettingTab === 'worldbook');
+}
+
+function onWorldSettingStoryInput(value) {
+  if (!worldSettingDraft) return;
+  worldSettingDraft.storySetting = value;
+}
+
+function renderWorldSettingModal() {
+  if (!worldSettingDraft) return;
+  document.getElementById('worldSettingText').value = worldSettingDraft.storySetting || '';
+  switchWorldSettingTab(worldSettingTab);
+  renderWorldBookUI();
+}
+
+function getWorldBookDraft() {
+  if (!worldSettingDraft) return null;
+  worldSettingDraft.worldBook = WorldBook.normalizeBook(
+    worldSettingDraft.worldBook,
+    (conversation?.name || '未命名故事') + ' 世界书'
+  );
+  return worldSettingDraft.worldBook;
+}
+
+function hasWorldBookUid(uid) {
+  return uid !== null && uid !== undefined;
+}
+
+function onWorldBookSearch(value) {
+  worldBookSearch = value || '';
+  renderWorldBookUI();
+}
+
+function onWorldBookFilter(value) {
+  worldBookFilter = value || 'all';
+  renderWorldBookUI();
+}
+
+function renderWorldBookUI() {
+  const book = getWorldBookDraft();
+  if (!book) return;
+
+  document.getElementById('worldBookName').value = book.name || '';
+  document.getElementById('worldBookDescription').value = book.description || '';
+  document.getElementById('worldBookMaxEntries').value = book.settings.maxEntries;
+  document.getElementById('worldBookMaxChars').value = book.settings.maxChars;
+  document.getElementById('worldBookScanDepth').value = book.settings.scanDepth;
+  document.getElementById('worldBookMaxRecursionSteps').value = book.settings.maxRecursionSteps;
+  document.getElementById('worldBookRecursiveScan').checked = !!book.settings.recursiveScan;
+  document.getElementById('worldBookIncludeMvuState').checked = !!book.settings.includeMvuState;
+  document.getElementById('worldBookIncludeStorySetting').checked = !!book.settings.includeStorySetting;
+  document.getElementById('worldBookCaseSensitive').checked = !!book.settings.caseSensitive;
+  document.getElementById('worldBookMatchWholeWords').checked = !!book.settings.matchWholeWords;
+  document.getElementById('worldBookSearch').value = worldBookSearch;
+  document.getElementById('worldBookFilter').value = worldBookFilter;
+
+  const filtered = getFilteredWorldBookEntries(book.entries);
+  const filteredIds = new Set(filtered.map(entry => entry.uid));
+  if (!hasWorldBookUid(worldBookSelectedUid) || !filteredIds.has(worldBookSelectedUid)) {
+    worldBookSelectedUid = filtered[0]?.uid || book.entries[0]?.uid || null;
+  }
+  if (hasWorldBookUid(worldBookExpandedUid) && !filteredIds.has(worldBookExpandedUid)) {
+    worldBookExpandedUid = filtered[0]?.uid || null;
+  }
+
+  renderWorldBookStats(book);
+  renderWorldBookActivePreview(book);
+  renderWorldBookEditor(book, filtered);
+}
+
+function getFilteredWorldBookEntries(entries) {
+  const keyword = worldBookSearch.trim().toLowerCase();
+  return entries.filter(entry => {
+    if (worldBookFilter === 'enabled' && !entry.enabled) return false;
+    if (worldBookFilter === 'constant' && !entry.constant) return false;
+    if (worldBookFilter === 'auto' && (entry.constant || !(entry.keys || []).length)) return false;
+    if (worldBookFilter === 'nokey' && (entry.constant || (entry.keys || []).length)) return false;
+    if (!keyword) return true;
+    const haystack = [
+      entry.title,
+      entry.comment,
+      entry.content,
+      ...(entry.keys || []),
+      ...(entry.secondaryKeys || []),
+    ].join('\n').toLowerCase();
+    return haystack.includes(keyword);
+  });
+}
+
+function renderWorldBookStats(book) {
+  const activeCount = WorldBook.buildPromptBlocks({ ...conversation, worldBook: book, storySetting: worldSettingDraft?.storySetting || '' }).active.length;
+  const stats = [
+    { label: '总条目', value: book.entries.length },
+    { label: '已启用', value: book.entries.filter(entry => entry.enabled).length },
+    { label: '常驻项', value: book.entries.filter(entry => entry.constant).length },
+    { label: '自动条目', value: book.entries.filter(entry => entry.enabled && !entry.constant && (entry.keys || []).length).length },
+    { label: '将注入', value: activeCount },
+  ];
+  document.getElementById('worldBookStats').innerHTML = stats.map(item => `
+    <div class="worldbook-stat">
+      <div class="worldbook-stat-label">${item.label}</div>
+      <div class="worldbook-stat-value">${item.value}</div>
+    </div>
+  `).join('');
+}
+
+function renderWorldBookActivePreview(book) {
+  const container = document.getElementById('worldBookActivePreview');
+  if (!container) return;
+  const blocks = WorldBook.buildPromptBlocks({ ...conversation, worldBook: book, storySetting: worldSettingDraft?.storySetting || '' });
+  const active = blocks.active || [];
+  const blocked = blocks.blocked || [];
+  if (!active.length) {
+    container.innerHTML = `
+      <div class="worldbook-card-title">本轮自动命中预览</div>
+      <div class="worldbook-entry-empty">当前上下文没有命中普通条目。只有常驻条目会固定注入；缺少关键词的普通条目不会自动触发。${blocked.length ? `另有 ${blocked.length} 条被预算或条目上限拦截。` : ''}</div>
+    `;
+    return;
+  }
+  container.innerHTML = `
+    <div class="worldbook-card-title">本轮自动命中预览</div>
+    <div class="worldbook-card-subtitle">根据当前最近聊天、状态栏和递归规则实时计算，保存后每轮都会重新判断。${blocked.length ? `有 ${blocked.length} 条命中但被预算/条目上限拦截。` : ''}</div>
+    <div class="worldbook-editor-list">
+      ${active.slice(0, 12).map(entry => {
+        const keys = [...(entry._matchedPrimaryKeys || []), ...(entry._matchedSecondaryKeys || [])].slice(0, 6);
+        const sources = (entry._matchSources || []).map(source => source.label || source.kind).filter(Boolean).slice(0, 3);
+        return `
+          <div class="worldbook-editor-entry">
+            <div class="worldbook-editor-head" style="cursor:default;">
+              <div class="worldbook-editor-title-row">
+                <div class="worldbook-editor-title-group">
+                  <div class="worldbook-editor-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
+                  <div class="worldbook-editor-meta">${entry._activationMode === 'constant' ? '常驻' : (entry._matchKind === 'recursive' ? '递归命中' : '自动命中')} · ${Utils.escapeHtml(entry.position)} · ${(entry.content || '').length} 字</div>
+                </div>
+                <div class="worldbook-editor-tags">
+                  ${keys.map(key => `<span class="worldbook-tag">${Utils.escapeHtml(key)}</span>`).join('')}
+                  ${sources.map(source => `<span class="worldbook-tag manual">${Utils.escapeHtml(source)}</span>`).join('')}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function buildWorldBookEntryEditorFields(entry) {
+  return `
+    <div class="worldbook-grid">
+      <div class="form-group">
+        <label>标题 / 备注</label>
+        <input type="text" value="${Utils.escapeHtml(entry.comment || entry.title || '')}" onchange="updateWorldBookEntryField('comment', this.value)">
+      </div>
+      <div class="form-group">
+        <label>排序</label>
+        <input type="number" value="${entry.order}" onchange="updateWorldBookEntryField('order', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>插入位置</label>
+        <select onchange="updateWorldBookEntryField('position', this.value)">
+          ${['before_char', 'after_char', 'before_input', 'after_input'].map(position => `<option value="${position}" ${entry.position === position ? 'selected' : ''}>${position}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>主关键词</label>
+        <textarea style="min-height:74px;" onchange="updateWorldBookEntryListField('keys', this.value)" placeholder="每行一个，或用逗号分隔">${Utils.escapeHtml((entry.keys || []).join('\n'))}</textarea>
+      </div>
+      <div class="form-group">
+        <label>副关键词</label>
+        <textarea style="min-height:74px;" onchange="updateWorldBookEntryListField('secondaryKeys', this.value)" placeholder="可选：配合副关键词逻辑使用">${Utils.escapeHtml((entry.secondaryKeys || []).join('\n'))}</textarea>
+      </div>
+      <div class="form-group">
+        <label>副关键词逻辑</label>
+        <select onchange="updateWorldBookEntryField('selectiveLogic', this.value)">
+          ${[
+            ['and_any', '主关键词 + 任一副关键词'],
+            ['and_all', '主关键词 + 全部副关键词'],
+            ['not_any', '主关键词 + 不含任一副关键词'],
+            ['not_all', '主关键词 + 不满足全部副关键词'],
+          ].map(([value, label]) => `<option value="${value}" ${entry.selectiveLogic === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>触发概率</label>
+        <input type="number" min="0" max="100" value="${Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100}" onchange="updateWorldBookEntryField('probability', this.value, 'number')">
+      </div>
+    </div>
+    <div class="worldbook-checkboxes">
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.enabled ? 'checked' : ''} onchange="updateWorldBookEntryField('enabled', this.checked, 'boolean')">启用</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.constant ? 'checked' : ''} onchange="updateWorldBookEntryField('constant', this.checked, 'boolean')">常驻条目</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.selective ? 'checked' : ''} onchange="updateWorldBookEntryField('selective', this.checked, 'boolean')">启用副关键词</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.useRegex ? 'checked' : ''} onchange="updateWorldBookEntryField('useRegex', this.checked, 'boolean')">正则匹配</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.matchWholeWords ? 'checked' : ''} onchange="updateWorldBookEntryField('matchWholeWords', this.checked, 'boolean')">整词匹配</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.caseSensitive ? 'checked' : ''} onchange="updateWorldBookEntryField('caseSensitive', this.checked, 'boolean')">区分大小写</label>
+      <label class="worldbook-checkbox"><input type="checkbox" ${entry.preventRecursion ? 'checked' : ''} onchange="updateWorldBookEntryField('preventRecursion', this.checked, 'boolean')">禁止递归触发</label>
+    </div>
+    <div class="form-group" style="margin-top:12px;">
+      <label>条目正文</label>
+      <textarea style="min-height:220px;" onchange="updateWorldBookEntryField('content', this.value)">${Utils.escapeHtml(entry.content || '')}</textarea>
+    </div>
+    <div class="worldbook-actions-inline">
+      <button class="btn btn-secondary" onclick="moveWorldBookEntry(-1)">上移</button>
+      <button class="btn btn-secondary" onclick="moveWorldBookEntry(1)">下移</button>
+    </div>
+  `;
+}
+
+function renderWorldBookEditor(book, entries) {
+  const container = document.getElementById('worldBookEditor');
+  if (!entries.length) {
+    container.innerHTML = `
+      <div class="worldbook-card-title">条目查看 / 编辑</div>
+      <div class="worldbook-entry-empty">当前筛选下没有可显示的世界书条目。</div>
+    `;
+    return;
+  }
+  const expandedUid = hasWorldBookUid(worldBookExpandedUid) && entries.some(entry => entry.uid === worldBookExpandedUid)
+    ? worldBookExpandedUid
+    : null;
+  container.innerHTML = `
+    <div class="worldbook-card-title">条目查看 / 编辑</div>
+    <div class="worldbook-card-subtitle">点击条目展开编辑。普通条目靠关键词自动触发；只有常驻条目会每轮固定注入。</div>
+    <div class="worldbook-editor-list">
+      ${entries.map((entry, index) => {
+        const isExpanded = entry.uid === expandedUid;
+        const isSelected = entry.uid === worldBookSelectedUid;
+        const tags = [];
+        tags.push(`<span class="worldbook-tag">${Utils.escapeHtml(entry.position)}</span>`);
+        tags.push(entry.enabled ? '<span class="worldbook-tag">启用</span>' : '<span class="worldbook-tag">停用</span>');
+        if (entry.constant) tags.push('<span class="worldbook-tag constant">常驻</span>');
+        if (!entry.constant && !(entry.keys || []).length) tags.push('<span class="worldbook-tag manual">无关键词</span>');
+        const preview = Utils.escapeHtml((entry.content || '').trim() || '暂无正文').replace(/\n/g, '<br>');
+        return `
+          <div class="worldbook-editor-entry${isExpanded ? ' expanded' : ''}${isSelected ? ' selected' : ''}">
+            <div class="worldbook-editor-head" onclick="toggleWorldBookEntry(${entry.uid})">
+              <div class="worldbook-editor-title-row">
+                <div class="worldbook-editor-title-group">
+                  <div class="worldbook-editor-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
+                  <div class="worldbook-editor-meta">#${index + 1} · 排序 ${entry.order} · 关键词 ${(entry.keys || []).length} · 正文 ${(entry.content || '').length} 字</div>
+                </div>
+                <div class="worldbook-editor-tags">${tags.join('')}</div>
+                <div class="worldbook-editor-chevron">▶</div>
+              </div>
+              <div class="worldbook-editor-preview">${preview}</div>
+            </div>
+            <div class="worldbook-editor-body${isExpanded ? '' : ' collapsed'}">
+              ${isExpanded ? buildWorldBookEntryEditorFields(entry) : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function toggleWorldBookEntry(uid) {
+  const nextUid = Number(uid);
+  worldBookSelectedUid = nextUid;
+  worldBookExpandedUid = worldBookExpandedUid === nextUid ? null : nextUid;
+  renderWorldBookUI();
+}
+
+function updateWorldBookMeta(field, value) {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  book[field] = value;
+}
+
+function updateWorldBookSetting(field, value, type = 'text') {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  if (type === 'number') book.settings[field] = Math.max(0, Number(value) || 0);
+  else if (type === 'boolean') book.settings[field] = !!value;
+  else book.settings[field] = value;
+  renderWorldBookUI();
+}
+
+function getSelectedWorldBookEntry() {
+  const book = getWorldBookDraft();
+  if (!book) return null;
+  return book.entries.find(entry => entry.uid === worldBookSelectedUid) || null;
+}
+
+function updateWorldBookEntryField(field, value, type = 'text') {
+  const entry = getSelectedWorldBookEntry();
+  if (!entry) return;
+  if (type === 'number') entry[field] = Number(value) || 0;
+  else if (type === 'boolean') {
+    entry[field] = !!value;
+  } else {
+    entry[field] = value;
+    if (field === 'comment') entry.title = value || entry.title;
+  }
+  renderWorldBookUI();
+}
+
+function updateWorldBookEntryListField(field, value) {
+  const entry = getSelectedWorldBookEntry();
+  if (!entry) return;
+  entry[field] = String(value || '').split(/\r?\n|,/).map(item => item.trim()).filter(Boolean);
+  renderWorldBookUI();
+}
+
+function addWorldBookEntry() {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const entry = WorldBook.createEntry();
+  book.entries.unshift(entry);
+  worldBookSelectedUid = entry.uid;
+  worldBookExpandedUid = entry.uid;
+  renderWorldBookUI();
+}
+
+function duplicateWorldBookEntry() {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  const copy = WorldBook.createEntry({
+    ...JSON.parse(JSON.stringify(entry)),
+    comment: (entry.comment || entry.title || '条目') + ' (副本)',
+  });
+  const index = book.entries.findIndex(item => item.uid === entry.uid);
+  book.entries.splice(index + 1, 0, copy);
+  worldBookSelectedUid = copy.uid;
+  worldBookExpandedUid = copy.uid;
+  renderWorldBookUI();
+}
+
+function deleteWorldBookEntry() {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  UI.showConfirm({
+    title: '删除世界书条目',
+    message: `确定删除「${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}」吗？`,
+    onConfirm: () => {
+      book.entries = book.entries.filter(item => item.uid !== entry.uid);
+      worldBookSelectedUid = book.entries[0]?.uid || null;
+      worldBookExpandedUid = worldBookSelectedUid;
+      renderWorldBookUI();
+    },
+  });
+}
+
+function deleteCurrentWorldBook() {
+  if (!worldSettingDraft || !conversation) return;
+  const book = getWorldBookDraft();
+  const entryCount = Array.isArray(book.entries) ? book.entries.length : 0;
+  UI.showConfirm({
+    title: '清空当前世界书',
+    message: `确定清空当前世界书的全部 ${entryCount} 条条目吗？`,
+    onConfirm: () => {
+      worldSettingDraft.worldBook = WorldBook.createEmptyBook((conversation.name || '未命名故事') + ' 世界书');
+      worldBookSelectedUid = null;
+      worldBookExpandedUid = null;
+      renderWorldBookUI();
+      UI.showToast('当前世界书已清空，点击保存后正式生效', 'success');
+    },
+  });
+}
+
+function moveWorldBookEntry(delta) {
+  const book = getWorldBookDraft();
+  const entry = getSelectedWorldBookEntry();
+  if (!book || !entry) return;
+  const index = book.entries.findIndex(item => item.uid === entry.uid);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= book.entries.length) return;
+  const [item] = book.entries.splice(index, 1);
+  book.entries.splice(target, 0, item);
+  renderWorldBookUI();
+}
+
+function triggerWorldBookImport() {
+  document.getElementById('worldBookImportInput').click();
+}
+
+function handleWorldBookImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = WorldBook.importAny(JSON.parse(e.target.result));
+      if (!worldSettingDraft) return;
+      worldSettingDraft.worldBook = imported;
+      worldBookSelectedUid = imported.entries[0]?.uid || null;
+      worldBookExpandedUid = worldBookSelectedUid;
+      renderWorldBookUI();
+      UI.showToast(`世界书导入成功，共 ${imported.entries.length} 条`, 'success');
+    } catch (err) {
+      UI.showToast('世界书文件格式无效: ' + err.message, 'error');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function exportWorldBook(format) {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const payload = format === 'tavern' ? WorldBook.exportSillyTavern(book) : WorldBook.exportAirp(book);
+  const extName = format === 'tavern' ? 'tavern' : 'airp';
+  const baseName = (book.name || 'worldbook').replace(/[\/\\:*?"<>|]/g, '_');
+  Utils.downloadFile(
+    JSON.stringify(payload, null, 2),
+    `${baseName}-${extName}.json`,
+    'application/json;charset=utf-8'
+  );
+  UI.showToast('世界书已导出', 'success');
 }
 
 // ============================================================
@@ -3492,9 +4399,12 @@ function renderMvuToolbar() {
   const hasMvu = conversation?.phase === 'rp' && !!conversation?.mvu;
   const fieldCount = hasMvu ? Object.keys(conversation.mvu.state || {}).length : 0;
   const changedCount = hasMvu ? (conversation.mvu._changedFields || []).length : 0;
+  const lastChangeCount = hasMvu ? (conversation.mvu._lastChanges || []).length : 0;
   const visualActive = mvuViewMode === 'visual' ? ' active' : '';
   const dataActive = mvuViewMode === 'data' ? ' active' : '';
+  const changeActive = mvuChangesOpen && mvuViewMode === 'data' ? ' change-active' : '';
   const disabled = hasMvu ? '' : ' disabled';
+  const changeDock = hasMvu && mvuViewMode === 'data' && mvuChangesOpen ? MVU._renderChangePanel(conversation.mvu) : '';
 
   toolbar.innerHTML = `
     <div class="mvu-toolbar-top">
@@ -3504,6 +4414,7 @@ function renderMvuToolbar() {
       </div>
       <div class="mvu-toolbar-actions">
         ${changedCount ? `<span class="mvu-change-pill">${changedCount}项变化</span>` : ''}
+        <button class="btn-icon" title="新增角色" onclick="openMvuCharacterEditor(-1)"${disabled}>${MVUGameIcons.character}</button>
         <button class="btn-icon" title="刷新状态栏" onclick="refreshMvuSidebar()"${disabled}>${Icons.refresh}</button>
         <button class="btn-icon" title="编辑状态栏" onclick="enterEditMvuMode()"${disabled}>${Icons.edit}</button>
       </div>
@@ -3511,15 +4422,28 @@ function renderMvuToolbar() {
     <div class="mvu-view-toggle">
       <button class="mvu-view-btn${visualActive}" onclick="setMvuViewMode('visual')"${disabled}>美化视图</button>
       <button class="mvu-view-btn${dataActive}" onclick="setMvuViewMode('data')"${disabled}>变量视图</button>
+      <button class="mvu-view-btn${changeActive}" onclick="toggleMvuChangesPanel()"${disabled}>本轮变化 · ${lastChangeCount}</button>
     </div>
+    <div class="mvu-change-dock${changeDock ? ' visible' : ''}">${changeDock}</div>
     <input class="mvu-search${mvuViewMode === 'data' ? ' visible' : ''}" value="${Utils.escapeHtml(mvuSearchQuery)}" placeholder="搜索变量、分组或内容" oninput="handleMvuSearch(this.value)"${disabled}>
   `;
 }
 
 function setMvuViewMode(mode) {
   mvuViewMode = ['visual', 'data'].includes(mode) ? mode : 'visual';
+  if (mvuViewMode !== 'data') mvuChangesOpen = false;
   if (mvuViewMode === 'visual' && syncMvuHtmlWithState()) {
     Storage.saveConversation(conversation);
+  }
+  renderMvuSidebar();
+}
+
+function toggleMvuChangesPanel() {
+  if (mvuViewMode !== 'data') {
+    mvuViewMode = 'data';
+    mvuChangesOpen = true;
+  } else {
+    mvuChangesOpen = !mvuChangesOpen;
   }
   renderMvuSidebar();
 }
@@ -3563,8 +4487,60 @@ function markMvuFieldsChanged(fields) {
   conversation.mvu._changedFields = [...new Set((fields || []).filter(Boolean))];
 }
 
+function cloneMvuState() {
+  return JSON.parse(JSON.stringify(conversation?.mvu?.state || {}));
+}
+
+function stableMvuValue(value) {
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+function recordMvuChanges(beforeState, fields, source = 'ai') {
+  if (!conversation?.mvu?.state) return;
+  const schema = conversation.mvu.schema || {};
+  const afterState = conversation.mvu.state || {};
+  const targetFields = [...new Set((fields && fields.length ? fields : Object.keys(afterState)).filter(Boolean))];
+  const changes = [];
+  for (const field of targetFields) {
+    const before = beforeState ? beforeState[field] : undefined;
+    const after = afterState[field];
+    if (stableMvuValue(before) === stableMvuValue(after)) continue;
+    const def = schema[field] || {};
+    changes.push({
+      field,
+      label: def.label || field,
+      type: def.type || (Array.isArray(after) ? 'list' : typeof after),
+      before,
+      after,
+      delta: getMvuChangeDelta(before, after),
+      source,
+      time: Date.now(),
+    });
+  }
+  conversation.mvu._lastChanges = changes;
+}
+
+function getMvuChangeDelta(before, after) {
+  if (typeof before === 'number' && typeof after === 'number') {
+    const diff = after - before;
+    if (diff > 0) return `+${diff}`;
+    if (diff < 0) return String(diff);
+    return '0';
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    const diff = after.length - before.length;
+    if (diff > 0) return `新增 ${diff}`;
+    if (diff < 0) return `删除 ${Math.abs(diff)}`;
+    return '修改';
+  }
+  if (before === undefined || before === null || before === '') return '新增';
+  if (after === undefined || after === null || after === '') return '清空';
+  return '修改';
+}
+
 function handleMvuFieldInput(field, type, value) {
   if (!conversation?.mvu?.state || !(field in conversation.mvu.state)) return;
+  const beforeState = cloneMvuState();
   let nextValue = value;
   if (type === 'number' || type === 'bar') {
     const parsed = Number(value);
@@ -3572,6 +4548,7 @@ function handleMvuFieldInput(field, type, value) {
   }
   conversation.mvu.state[field] = nextValue;
   markMvuFieldsChanged([field]);
+  recordMvuChanges(beforeState, [field], 'manual');
   syncMvuHtmlWithState();
   Storage.saveConversation(conversation);
   renderMvuSidebar();
@@ -3579,6 +4556,7 @@ function handleMvuFieldInput(field, type, value) {
 
 function handleMvuListItemInput(field, index, value) {
   if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  const beforeState = cloneMvuState();
   const oldValue = conversation.mvu.state[field][index];
   let nextValue = value;
   if (oldValue && typeof oldValue === 'object') {
@@ -3586,6 +4564,7 @@ function handleMvuListItemInput(field, index, value) {
   }
   conversation.mvu.state[field][index] = nextValue;
   markMvuFieldsChanged([field]);
+  recordMvuChanges(beforeState, [field], 'manual');
   syncMvuHtmlWithState();
   Storage.saveConversation(conversation);
   renderMvuSidebar();
@@ -3593,6 +4572,7 @@ function handleMvuListItemInput(field, index, value) {
 
 function addMvuListItem(field) {
   if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  const beforeState = cloneMvuState();
   const list = conversation.mvu.state[field];
   const sample = list.find(item => item && typeof item === 'object');
   if (sample) {
@@ -3607,6 +4587,7 @@ function addMvuListItem(field) {
     list.push('');
   }
   markMvuFieldsChanged([field]);
+  recordMvuChanges(beforeState, [field], 'manual');
   syncMvuHtmlWithState();
   Storage.saveConversation(conversation);
   renderMvuSidebar();
@@ -3614,8 +4595,10 @@ function addMvuListItem(field) {
 
 function removeMvuListItem(field, index) {
   if (!Array.isArray(conversation?.mvu?.state?.[field])) return;
+  const beforeState = cloneMvuState();
   conversation.mvu.state[field].splice(index, 1);
   markMvuFieldsChanged([field]);
+  recordMvuChanges(beforeState, [field], 'manual');
   syncMvuHtmlWithState();
   Storage.saveConversation(conversation);
   renderMvuSidebar();
@@ -4618,7 +5601,10 @@ const MVUInteraction = {
     const field = directField || listEl?.dataset.fieldList || '';
     const def = field ? (schema[field] || {}) : {};
     const value = field ? state[field] : undefined;
-    const listIndex = listEl ? Array.from(listEl.children).indexOf(el) : -1;
+    const indexedEl = el.closest('[data-mvu-index]');
+    const indexedValue = indexedEl?.dataset?.mvuIndex;
+    const parsedIndex = indexedValue !== undefined ? Number(indexedValue) : NaN;
+    const listIndex = Number.isInteger(parsedIndex) ? parsedIndex : (listEl ? Array.from(listEl.children).indexOf(el) : -1);
     const itemValue = listIndex >= 0 && Array.isArray(value) ? value[listIndex] : undefined;
     const objectValue = itemValue && typeof itemValue === 'object' ? itemValue : null;
 
@@ -4644,7 +5630,20 @@ const MVUInteraction = {
     }
     if (def.rule) rows.push(['来源', def.rule]);
 
-    return { title, type, desc: this.formatValue(desc), field, rows };
+    if (field === 'characters' && objectValue) {
+      const characterDesc = objectValue.profile || objectValue.desc || objectValue.description || objectValue.note || desc;
+      return {
+        title,
+        type,
+        desc: this.formatValue(characterDesc),
+        field,
+        listIndex,
+        rows,
+        character: objectValue,
+      };
+    }
+
+    return { title, type, desc: this.formatValue(desc), field, listIndex, rows };
   },
 
   cleanText(text) {
@@ -4661,7 +5660,27 @@ const MVUInteraction = {
   },
 
   prettyKey(key) {
-    const map = { effect: '效果', count: '数量', rarity: '稀有度', status: '状态', location: '位置', owner: '持有者' };
+    const map = {
+      effect: '效果',
+      count: '数量',
+      rarity: '稀有度',
+      status: '状态',
+      location: '位置',
+      owner: '持有者',
+      profile: '档案',
+      outfit: '外观',
+      affection: '好感',
+      relation: '关系',
+      personality: '性格',
+      attitude: '态度',
+      thoughts: '想法',
+      role: '定位',
+      identity: '身份',
+      ability: '能力',
+      abilities: '能力',
+      power: '能力',
+      skill: '技能',
+    };
     return map[key] || key;
   },
 
@@ -4683,24 +5702,103 @@ const MVUInteraction = {
   },
 };
 
+function renderMvuCharacterDetail(detail, rows) {
+  const character = detail.character || {};
+  const esc = value => Utils.escapeHtml(String(value ?? '')).replace(/\n/g, '<br>');
+  const chips = [
+    character.relation && `关系：${character.relation}`,
+    character.affection !== undefined && character.affection !== '' && `好感：${character.affection}`,
+    character.location && `位置：${character.location}`,
+    character.status && `状态：${character.status}`,
+    character.identity && `身份：${character.identity}`,
+  ].filter(Boolean);
+  const sections = [
+    ['当前档案', detail.desc || character.profile || character.desc || character.description || character.note],
+    ['外观/装备', character.outfit],
+    ['性格', character.personality],
+    ['态度', character.attitude],
+    ['当前想法', character.thoughts],
+    ['能力/备注', character.ability || character.abilities || character.power || character.skill || character.note],
+  ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+  const used = new Set(['序号', '关系', '好感', '位置', '状态', '身份', '档案', '外观', '性格', '态度', '想法', '能力', '技能', 'profile', 'desc', 'description', 'note', 'outfit', 'personality', 'attitude', 'thoughts', 'ability', 'abilities', 'power', 'skill']);
+  const extraRows = rows.filter(([label]) => !used.has(label));
+
+  return `<div class="mvu-character-detail">
+    ${chips.length ? `<div class="mvu-character-detail-summary">${chips.map(chip => `<span class="mvu-character-detail-chip">${esc(chip)}</span>`).join('')}</div>` : ''}
+    ${sections.map(([title, value]) => `
+      <section class="mvu-character-detail-section">
+        <div class="mvu-character-detail-heading">${esc(title)}</div>
+        <div class="mvu-character-detail-text">${esc(value)}</div>
+      </section>
+    `).join('')}
+    ${extraRows.length ? `<div class="mvu-detail-grid">${extraRows.map(([label, value]) => `
+      <div class="mvu-detail-row"><span>${esc(label)}</span><span>${esc(value)}</span></div>
+    `).join('')}</div>` : ''}
+    <div class="mvu-detail-actions">
+      <button class="btn btn-primary" onclick="openMvuCharacterEditor(${detail.listIndex})">编辑角色</button>
+    </div>
+  </div>`;
+}
+
+function applyMvuThemeToDetailOverlay() {
+  const overlay = document.getElementById('mvuDetailOverlay');
+  const cards = [
+    document.querySelector('#mvuDetailOverlay .mvu-detail-card'),
+    document.querySelector('#mvuCharacterEditOverlay .mvu-detail-card'),
+  ].filter(Boolean);
+  const source = document.querySelector('#mvuContent .mvu-root') || document.querySelector('#mvuContent > *');
+  if (!source || !cards.length) return;
+  const styles = getComputedStyle(source);
+  const vars = [
+    '--mvu-bg',
+    '--mvu-panel',
+    '--mvu-card',
+    '--mvu-accent',
+    '--mvu-accent-2',
+    '--mvu-warn',
+    '--mvu-text',
+    '--mvu-muted',
+    '--mvu-border',
+    '--mvu-radius',
+    '--mvu-shadow',
+    '--mvu-texture',
+  ];
+  for (const card of cards) {
+    for (const name of vars) {
+      const value = styles.getPropertyValue(name).trim();
+      if (value) card.style.setProperty(name, value);
+    }
+  }
+  if (overlay) overlay.dataset.mvuThemeApplied = source.className || 'mvu';
+}
+
 function openMvuDetail(detail) {
   const overlay = document.getElementById('mvuDetailOverlay');
   const titleEl = document.getElementById('mvuDetailTitle');
   const typeEl = document.getElementById('mvuDetailType');
   const bodyEl = document.getElementById('mvuDetailBody');
   if (!overlay || !titleEl || !typeEl || !bodyEl) return;
+  applyMvuThemeToDetailOverlay();
 
   titleEl.textContent = detail.title || '详情';
   typeEl.textContent = detail.type || '详情';
   const rows = (detail.rows || []).filter(row => row[1] !== undefined && row[1] !== '');
-  bodyEl.innerHTML = `
+  if (detail.field === 'characters' && detail.listIndex >= 0 && detail.character) {
+    bodyEl.innerHTML = renderMvuCharacterDetail(detail, rows);
+  } else {
+    bodyEl.innerHTML = `
     <div class="mvu-detail-desc">${Utils.escapeHtml(detail.desc || '').replace(/\n/g, '<br>')}</div>
     ${rows.length ? `<div class="mvu-detail-grid">${rows.map(([label, value]) => `
       <div class="mvu-detail-row"><span>${Utils.escapeHtml(label)}</span><span>${Utils.escapeHtml(String(value)).replace(/\n/g, '<br>')}</span></div>
     `).join('')}</div>` : ''}
-  `;
+    ${detail.field === 'characters' && detail.listIndex >= 0 ? `<div class="mvu-detail-actions">
+      <button class="btn btn-primary" onclick="openMvuCharacterEditor(${detail.listIndex})">编辑角色</button>
+    </div>` : ''}
+    `;
+  }
   overlay.dataset.title = detail.title || '';
   overlay.dataset.field = detail.field || '';
+  overlay.dataset.index = detail.listIndex >= 0 ? String(detail.listIndex) : '';
   overlay.classList.add('visible');
 }
 
@@ -4713,6 +5811,184 @@ function copyMvuDetailText(kind) {
   const text = kind === 'field' ? overlay?.dataset.field : overlay?.dataset.title;
   if (!text) return;
   navigator.clipboard?.writeText(text).then(() => UI.showToast('已复制', 'success')).catch(() => UI.showToast(text, 'info'));
+}
+
+function ensureMvuCharactersField() {
+  if (!conversation?.mvu) return null;
+  if (!conversation.mvu.schema) conversation.mvu.schema = {};
+  if (!conversation.mvu.state) conversation.mvu.state = {};
+  if (!conversation.mvu.schema.characters) {
+    conversation.mvu.schema.characters = {
+      type: 'list',
+      label: '角色档案',
+      rule: '遇到新角色时追加对象；关系、好感、位置、穿着、想法变化时更新对应对象',
+    };
+  }
+  if (!Array.isArray(conversation.mvu.state.characters)) conversation.mvu.state.characters = [];
+  return conversation.mvu.state.characters;
+}
+
+function getDefaultMvuCharacter() {
+  return {
+    id: `char_${Date.now()}`,
+    name: '',
+    profile: '',
+    outfit: '',
+    affection: 0,
+    relation: '',
+    personality: '',
+    attitude: '',
+    thoughts: '',
+    location: '',
+  };
+}
+
+function openMvuCharacterEditor(index = -1) {
+  if (conversation?.phase !== 'rp' || !conversation?.mvu) {
+    UI.showToast('只有在 RP 阶段才能编辑角色档案', 'info');
+    return;
+  }
+  const characters = ensureMvuCharactersField();
+  if (!characters) return;
+  const numericIndex = Number(index);
+  editingMvuCharacterIndex = Number.isInteger(numericIndex) ? numericIndex : -1;
+  const current = editingMvuCharacterIndex >= 0 && characters[editingMvuCharacterIndex] && typeof characters[editingMvuCharacterIndex] === 'object'
+    ? { ...getDefaultMvuCharacter(), ...characters[editingMvuCharacterIndex] }
+    : getDefaultMvuCharacter();
+
+  const overlay = document.getElementById('mvuCharacterEditOverlay');
+  const titleEl = document.getElementById('mvuCharacterEditTitle');
+  const typeEl = document.getElementById('mvuCharacterEditType');
+  const bodyEl = document.getElementById('mvuCharacterEditBody');
+  if (!overlay || !titleEl || !typeEl || !bodyEl) return;
+  applyMvuThemeToDetailOverlay();
+
+  titleEl.textContent = editingMvuCharacterIndex >= 0 ? '编辑角色' : '新增角色';
+  typeEl.textContent = current.name || '角色档案';
+  bodyEl.innerHTML = renderMvuCharacterEditForm(current, editingMvuCharacterIndex >= 0);
+  closeMvuDetail();
+  overlay.classList.add('visible');
+}
+
+function renderMvuCharacterEditForm(character, canDelete) {
+  const val = (key) => Utils.escapeHtml(String(character?.[key] ?? ''));
+  return `<div class="mvu-character-edit-form">
+    <div class="mvu-character-edit-grid">
+      <div class="mvu-character-edit-field">
+        <label for="mvuCharName">姓名</label>
+        <input class="mvu-character-edit-input" id="mvuCharName" value="${val('name')}" placeholder="角色名">
+      </div>
+      <div class="mvu-character-edit-field">
+        <label for="mvuCharAffection">好感度</label>
+        <input class="mvu-character-edit-input" id="mvuCharAffection" type="number" value="${val('affection')}" placeholder="0">
+      </div>
+      <div class="mvu-character-edit-field">
+        <label for="mvuCharRelation">关系</label>
+        <input class="mvu-character-edit-input" id="mvuCharRelation" value="${val('relation')}" placeholder="未相遇 / 同伴 / 恋人">
+      </div>
+      <div class="mvu-character-edit-field">
+        <label for="mvuCharLocation">位置</label>
+        <input class="mvu-character-edit-input" id="mvuCharLocation" value="${val('location')}" placeholder="当前位置">
+      </div>
+      <div class="mvu-character-edit-field full">
+        <label for="mvuCharOutfit">当前穿着/装备</label>
+        <textarea class="mvu-character-edit-textarea" id="mvuCharOutfit" placeholder="当前服装、装备或外观变化">${val('outfit')}</textarea>
+      </div>
+      <div class="mvu-character-edit-field full">
+        <label for="mvuCharPersonality">当前性格</label>
+        <textarea class="mvu-character-edit-textarea" id="mvuCharPersonality" placeholder="当前性格关键词或变化">${val('personality')}</textarea>
+      </div>
+      <div class="mvu-character-edit-field full">
+        <label for="mvuCharAttitude">对主角态度</label>
+        <textarea class="mvu-character-edit-textarea" id="mvuCharAttitude" placeholder="对主角的态度倾向">${val('attitude')}</textarea>
+      </div>
+      <div class="mvu-character-edit-field full">
+        <label for="mvuCharThoughts">心理活动</label>
+        <textarea class="mvu-character-edit-textarea" id="mvuCharThoughts" placeholder="当前内心想法">${val('thoughts')}</textarea>
+      </div>
+      <div class="mvu-character-edit-field full">
+        <label for="mvuCharProfile">基础档案</label>
+        <textarea class="mvu-character-edit-textarea" id="mvuCharProfile" placeholder="外貌、年龄、背景、能力、长期记忆">${val('profile')}</textarea>
+      </div>
+    </div>
+    <div class="mvu-character-edit-actions">
+      ${canDelete ? '<button class="btn btn-secondary" onclick="deleteMvuCharacter()">删除</button>' : ''}
+      <button class="btn btn-secondary" onclick="closeMvuCharacterEditor()">取消</button>
+      <button class="btn btn-primary" onclick="saveMvuCharacterEditor()">保存</button>
+    </div>
+  </div>`;
+}
+
+function readMvuCharacterEditor() {
+  const value = (id) => document.getElementById(id)?.value?.trim() || '';
+  const affectionText = value('mvuCharAffection');
+  const affectionNum = Number(affectionText);
+  return {
+    name: value('mvuCharName'),
+    profile: value('mvuCharProfile'),
+    outfit: value('mvuCharOutfit'),
+    affection: Number.isFinite(affectionNum) ? affectionNum : affectionText,
+    relation: value('mvuCharRelation'),
+    personality: value('mvuCharPersonality'),
+    attitude: value('mvuCharAttitude'),
+    thoughts: value('mvuCharThoughts'),
+    location: value('mvuCharLocation'),
+  };
+}
+
+function saveMvuCharacterEditor() {
+  const characters = ensureMvuCharactersField();
+  if (!characters) return;
+  const next = readMvuCharacterEditor();
+  if (!next.name) {
+    UI.showToast('请先填写角色姓名', 'info');
+    return;
+  }
+  const beforeState = cloneMvuState();
+  if (editingMvuCharacterIndex >= 0 && characters[editingMvuCharacterIndex]) {
+    const previous = characters[editingMvuCharacterIndex] && typeof characters[editingMvuCharacterIndex] === 'object'
+      ? characters[editingMvuCharacterIndex]
+      : {};
+    characters[editingMvuCharacterIndex] = { ...previous, ...next, id: previous.id || slugifyMvuCharacterId(next.name) };
+  } else {
+    characters.push({ ...getDefaultMvuCharacter(), ...next, id: slugifyMvuCharacterId(next.name) });
+  }
+  finishMvuCharacterChange('角色档案已保存', beforeState);
+}
+
+function deleteMvuCharacter() {
+  const characters = ensureMvuCharactersField();
+  if (!characters || editingMvuCharacterIndex < 0 || !characters[editingMvuCharacterIndex]) return;
+  const beforeState = cloneMvuState();
+  characters.splice(editingMvuCharacterIndex, 1);
+  finishMvuCharacterChange('角色已删除', beforeState);
+}
+
+function finishMvuCharacterChange(message, beforeState = null) {
+  editingMvuCharacterIndex = -1;
+  markMvuFieldsChanged(['characters']);
+  if (beforeState) recordMvuChanges(beforeState, ['characters'], 'manual');
+  syncMvuHtmlWithState();
+  Storage.saveConversation(conversation);
+  closeMvuCharacterEditor();
+  renderMvuSidebar();
+  UI.showToast(message, 'success');
+}
+
+function closeMvuCharacterEditor() {
+  document.getElementById('mvuCharacterEditOverlay')?.classList.remove('visible');
+}
+
+function slugifyMvuCharacterId(name) {
+  const base = String(name || 'character').trim().toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^\w\u4e00-\u9fa5-]/g, '')
+    .slice(0, 24) || 'character';
+  const existing = new Set((conversation?.mvu?.state?.characters || []).map(char => String(char?.id || '')));
+  let id = base;
+  let i = 2;
+  while (existing.has(id)) id = `${base}_${i++}`;
+  return id;
 }
 
 function jumpToMvuField(field) {
@@ -4849,8 +6125,8 @@ async function streamAIResponse(retryAttempt = 0) {
   if (editMvuMode) {
     ({ systemPrompt, messages } = buildEditMvuPrompt());
   } else {
-    ({ systemPrompt, messages } = PromptBuilder.buildMessages(conversation));
-    _lastBuiltPrompt = { systemPrompt, messages };
+    _lastBuiltPrompt = PromptBuilder.buildMessages(conversation);
+    ({ systemPrompt, messages } = _lastBuiltPrompt);
   }
 
   // Create AI placeholder message
@@ -5268,6 +6544,7 @@ function processMvuFromResponse(text, aiMsg) {
         log('[MVU Analysis]', patchData.analysis);
       }
       const container = document.getElementById('mvuContent');
+      const beforeState = cloneMvuState();
       const changedFields = [];
       const patchList = Array.isArray(patchData) ? patchData : (patchData.patches || []);
       for (const p of patchList) {
@@ -5286,6 +6563,7 @@ function processMvuFromResponse(text, aiMsg) {
       conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
       const normalized = normalizeMvuStructure(changedFields.length ? changedFields : ['characters', 'main_quests', 'side_quests']);
       markMvuFieldsChanged(changedFields);
+      recordMvuChanges(beforeState, changedFields, 'ai');
       // Snapshot state onto the AI message for revert
       if (aiMsg) {
         aiMsg.mvuSnapshot = JSON.parse(JSON.stringify(conversation.mvu.state));
@@ -5954,7 +7232,13 @@ function showPromptDebug() {
   if (existing) { closeDebug(); return; }
 
   if (!conversation) return;
-  const { systemPrompt, messages } = _lastBuiltPrompt || PromptBuilder.buildMessages(conversation);
+  const promptSnapshot = _lastBuiltPrompt || PromptBuilder.buildMessages(conversation);
+  const {
+    systemPrompt,
+    messages,
+    activeWorldBookEntries = [],
+    blockedWorldBookEntries = [],
+  } = promptSnapshot;
   const THRESHOLD = 200;
 
   function msgBlock(role, content, idx) {
@@ -5977,6 +7261,45 @@ function showPromptDebug() {
     </div>`;
   }
 
+  function worldBookBlock(entry, idx, blocked = false) {
+    const title = entry.comment || entry.title || ('条目 ' + entry.uid);
+    const keys = [...(entry._matchedPrimaryKeys || []), ...(entry._matchedSecondaryKeys || [])].slice(0, 8);
+    const sources = (entry._matchSources || []).map(source => source.label || source.kind).filter(Boolean).slice(0, 4);
+    const mode = entry._activationMode === 'constant'
+      ? '常驻'
+      : (entry._matchKind === 'recursive' ? '递归命中' : '自动命中');
+    const reason = blocked ? (entry._blockedReason === 'budget' ? '预算不足' : '条目数上限') : mode;
+    const meta = `${reason} · ${entry.position || 'after_char'} · 排序 ${Number(entry.order) || 0} · ${(entry.content || '').length}字`;
+    const tags = [
+      ...keys.map(key => `关键词 ${key}`),
+      ...sources.map(source => `来源 ${source}`),
+    ].map(tag => `<span class="debug-badge">${Utils.escapeHtml(tag)}</span>`).join('');
+    return `<div class="debug-message">
+      <div class="debug-msg-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+        <span class="debug-role debug-role-${blocked ? 'sys' : 'user'}">${blocked ? 'BLOCKED' : 'WB'}</span>
+        <span class="debug-msg-meta">#${idx + 1} · ${Utils.escapeHtml(meta)}</span>
+        <span class="debug-preview">${Utils.escapeHtml(title)}</span>
+      </div>
+      <pre class="debug-pre collapsed">${tags ? tags + '\n\n' : ''}${Utils.escapeHtml(entry.content || '')}</pre>
+    </div>`;
+  }
+
+  function worldBookSection() {
+    const activeHtml = activeWorldBookEntries.map((entry, i) => worldBookBlock(entry, i)).join('');
+    const blockedHtml = blockedWorldBookEntries.map((entry, i) => worldBookBlock(entry, i, true)).join('');
+    if (!activeHtml && !blockedHtml) {
+      return `<div class="debug-section">
+        <div class="debug-section-header"><span>世界书</span><span class="debug-badge">0条注入</span></div>
+        <div class="debug-message"><pre class="debug-pre">本轮没有世界书条目进入 Prompt。普通条目需要关键词命中；只有常驻条目会固定注入。</pre></div>
+      </div>`;
+    }
+    return `<div class="debug-section">
+      <div class="debug-section-header"><span>世界书</span><span class="debug-badge">${activeWorldBookEntries.length}条注入 / ${blockedWorldBookEntries.length}条拦截</span></div>
+      ${activeHtml}
+      ${blockedHtml ? `<div class="debug-section-header"><span>预算拦截</span><span class="debug-badge">${blockedWorldBookEntries.length}条</span></div>${blockedHtml}` : ''}
+    </div>`;
+  }
+
   const overlay = document.createElement('div');
   overlay.id = 'debugOverlay';
   overlay.className = 'debug-overlay';
@@ -5989,6 +7312,7 @@ function showPromptDebug() {
       </button>
     </div>
     <div class="debug-body">
+      ${worldBookSection()}
       <div class="debug-section">
         <div class="debug-section-header"><span>System Prompt</span><span class="debug-badge">${systemPrompt.length}字</span></div>
         ${msgBlock('system', systemPrompt, null)}
@@ -6138,6 +7462,10 @@ function buildEditMvuPrompt() {
 - 同一核心区只能存在一个：角色档案、主线任务、支线任务、物品/技能区都不要重复创建
 - 不要写死角色、任务、物品列表的正文内容；展示内容必须来自 state 绑定
 - 美化视图要保持精美布局和点击详情交互，不要输出“新增同步”“自动同步”等调试区块
+- 美化视图必须有明确题材视觉载体和布局骨架，不要只换配色。可选载体示例：玉简/命盘/符箓、手账/课程表、赛博终端/HUD、案卷/证物袋、末日求生手册、宫廷奏折、都市App、奇幻羊皮书。
+- CSS 必须在 .mvu-root 或最外层容器定义主题变量：--mvu-bg、--mvu-panel、--mvu-card、--mvu-accent、--mvu-accent-2、--mvu-warn、--mvu-text、--mvu-muted、--mvu-border、--mvu-radius、--mvu-shadow、--mvu-texture。系统角色卡和详情弹窗会继承这些变量。
+- 反同质化：不要默认黑底金边半透明卡片；不要所有模块都是圆角卡片；不要只靠渐变表达题材；至少加入一个题材符号或微装饰，如符箓角标、案卷编号、终端状态灯、手账贴纸、警示封条、朱批印章等。
+- 系统托管组件优先：角色、任务、物品、技能等可增长列表优先用 data-field-list 绑定，AI 负责主题外壳、分区和 CSS 换皮。
 
 templates（模板）用于RP阶段动态添加新角色/NPC等。定义格式：
 "模板名": {
@@ -6210,6 +7538,7 @@ function processEditMvuResponse(text) {
   // Parse mvu_update
   const updateData = MVU.parseMvuUpdate(text);
   if (updateData) {
+    const beforeState = cloneMvuState();
     const changedFields = [];
     if (updateData.schema) {
       // Merge into existing schema (AI only sends modified fields)
@@ -6253,12 +7582,14 @@ function processEditMvuResponse(text) {
     shouldWarnMvuBinding = changedFields.length > 0;
     bindingCheckFields = changedFields;
     if (changedFields.length) markMvuFieldsChanged(changedFields);
+    recordMvuChanges(beforeState, changedFields, 'edit');
     changed = true;
     log('processEditMvuResponse: mvu_update applied', { schema: !!updateData.schema, state: !!updateData.state, patches: Array.isArray(updateData.patches), html: !!updateData.html, css: !!updateData.css, templates: !!updateData.templates });
   } else {
     const patchData = MVU.parsePatch(text);
     if (patchData) {
       const container = document.getElementById('mvuContent');
+      const beforeState = cloneMvuState();
       MVU.applyTemplateOps(conversation.mvu, patchData, container);
       conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
       const changedFields = [];
@@ -6270,6 +7601,7 @@ function processEditMvuResponse(text) {
       shouldWarnMvuBinding = changedFields.length > 0;
       bindingCheckFields = changedFields;
       if (changedFields.length) markMvuFieldsChanged(changedFields);
+      recordMvuChanges(beforeState, changedFields, 'edit');
       changed = true;
       log('processEditMvuResponse: json:mvu patches applied', changedFields);
     }

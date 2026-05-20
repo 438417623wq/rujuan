@@ -64,6 +64,12 @@ tasks.register('syncWebAssets', Copy) {
     into("$projectDir/src/main/assets")
 }
 
+tasks.matching { task ->
+    task.name.startsWith('merge') && task.name.endsWith('Assets')
+}.configureEach {
+    dependsOn(tasks.named('syncWebAssets'))
+}
+
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.activity:activity:1.9.1'
