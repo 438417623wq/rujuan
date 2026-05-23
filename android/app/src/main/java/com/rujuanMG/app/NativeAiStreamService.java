@@ -820,6 +820,7 @@ public class NativeAiStreamService extends Service {
         int hashIndex = value.indexOf('#');
         if (hashIndex >= 0) value = value.substring(0, hashIndex);
         value = value.replaceAll("/+$", "");
+        value = value.replaceAll("/models/[^/]+:(?:streamGenerateContent|generateContent)$", "");
         value = value.replaceAll("/(?:chat/completions|responses|messages|models)$", "");
         return value.replaceAll("/+$", "");
     }

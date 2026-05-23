@@ -497,10 +497,22 @@ public class AndroidBridge {
             if (!hasCustomAuth && !apiKey.isBlank()) {
                 headers.put("Authorization", "Bearer " + apiKey);
             }
+            if (isMimoProfile(profile) && !hasHeader(extraHeaders, "api-key") && !apiKey.isBlank()) {
+                headers.put("api-key", apiKey);
+            }
         }
 
         headers.putAll(extraHeaders);
         return headers;
+    }
+
+    private boolean isMimoProfile(JSONObject profile) {
+        String haystack = (
+                profile.optString("provider", "") + " "
+                        + profile.optString("name", "") + " "
+                        + profile.optString("baseUrl", "")
+        ).toLowerCase(Locale.US);
+        return haystack.contains("mimo") || haystack.contains("xiaomi") || haystack.contains("mi.com");
     }
 
     private void applyRequestHeaders(HttpURLConnection connection, Map<String, String> headers) {
@@ -656,6 +668,7 @@ public class AndroidBridge {
         int hashIndex = value.indexOf('#');
         if (hashIndex >= 0) value = value.substring(0, hashIndex);
         value = value.replaceAll("/+$", "");
+        value = value.replaceAll("/models/[^/]+:(?:streamGenerateContent|generateContent)$", "");
         value = value.replaceAll("/(?:chat/completions|responses|messages|models)$", "");
         return value.replaceAll("/+$", "");
     }

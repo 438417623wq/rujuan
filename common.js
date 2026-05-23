@@ -388,19 +388,117 @@ const Storage = {
 // ============================================================
 const API = {
   _getBaseUrl(p) {
-    if (p.baseUrl) return p.baseUrl.replace(/\/$/, '');
+    if (p.baseUrl) return this._normalizeBaseUrl(p);
     const defaults = { openai: 'https://api.openai.com/v1', claude: 'https://api.anthropic.com/v1', 'google-ai-studio': 'https://generativelanguage.googleapis.com/v1beta' };
     return defaults[p.provider] || '';
   },
 
+  _ensureBaseUrlScheme(raw) {
+    let value = (raw || '').trim();
+    if (!value) return '';
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)) return value;
+    if (value.startsWith('//')) return 'https:' + value;
+    const isLocal = /^(localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(?::\d+)?(?:\/|$)/.test(value);
+    return (isLocal ? 'http://' : 'https://') + value;
+  },
+
+  _sanitizeBaseUrl(raw) {
+    let value = this._ensureBaseUrlScheme(raw);
+    if (!value) return '';
+    value = value.split('#')[0].split('?')[0].replace(/\/+$/, '');
+    value = value.replace(/\/models\/[^/]+:(?:streamGenerateContent|generateContent)$/i, '');
+    value = value.replace(/\/(?:chat\/completions|responses|messages|models)$/i, '');
+    return value.replace(/\/+$/, '');
+  },
+
+  _shouldAppendDefaultVersion(path) {
+    const clean = (path || '').replace(/\/+$/, '');
+    if (!clean) return true;
+    if (/\/v\d+(?:beta)?$/i.test(clean)) return false;
+    return /\/(?:api|openai)$/i.test(clean);
+  },
+
+  _appendPathSegment(path, segment) {
+    const clean = (path || '').replace(/\/+$/, '');
+    return clean ? clean + '/' + segment : '/' + segment;
+  },
+
+  _normalizeBaseUrl(p) {
+    const provider = p?.provider || 'openai';
+    const rawBase = this._sanitizeBaseUrl(p?.baseUrl || '');
+    if (!rawBase) return '';
+    try {
+      const url = new URL(rawBase);
+      let path = url.pathname.replace(/\/+$/, '');
+      const host = url.hostname.toLowerCase();
+      if (provider === 'google-ai-studio') {
+        if (host.includes('generativelanguage.googleapis') && !/\/v\d+(?:beta)?$/i.test(path)) {
+          path = this._appendPathSegment(path, 'v1beta');
+        }
+      } else if (provider === 'claude') {
+        if (!path || /\/(?:api|anthropic)$/i.test(path)) path = this._appendPathSegment(path, 'v1');
+      } else if (this._shouldAppendDefaultVersion(path)) {
+        path = this._appendPathSegment(path, 'v1');
+      }
+      return `${url.protocol}//${url.host}${path}`.replace(/\/+$/, '');
+    } catch {
+      let value = rawBase;
+      const path = value.replace(/^https?:\/\/[^/]+/i, '');
+      if (provider === 'google-ai-studio') {
+        if (value.includes('generativelanguage.googleapis') && !/\/v\d+(?:beta)?$/i.test(value)) value += '/v1beta';
+      } else if (provider === 'claude') {
+        if (/^https?:\/\/[^/]+$/i.test(value) || /\/(?:api|anthropic)$/i.test(value)) value += '/v1';
+      } else if (this._shouldAppendDefaultVersion(path)) {
+        value += '/v1';
+      }
+      return value.replace(/\/+$/, '');
+    }
+  },
+
   _getHeaders(p, model = '') {
     const h = { 'Content-Type': 'application/json' };
-    if (p.provider === 'claude') { h['x-api-key'] = p.apiKey; h['anthropic-version'] = '2023-06-01'; }
-    else if (p.provider !== 'google-ai-studio') {
-      h['Authorization'] = `Bearer ${p.apiKey}`;
-      if (this._isMimoProfile(p, model)) h['api-key'] = p.apiKey;
+    const extra = this._parseExtraHeaders(p?.extraHeaders || '');
+    const provider = this._detect(p, model);
+    if (provider === 'claude') {
+      if (!this._hasHeader(extra, 'x-api-key')) h['x-api-key'] = p.apiKey;
+      if (!this._hasHeader(extra, 'anthropic-version')) h['anthropic-version'] = '2023-06-01';
+    } else if (provider !== 'google') {
+      if (!this._hasHeader(extra, 'authorization') && !this._hasHeader(extra, 'api-key') && !this._hasHeader(extra, 'x-api-key')) {
+        h['Authorization'] = `Bearer ${p.apiKey}`;
+      }
+      if (this._isMimoProfile(p, model) && !this._hasHeader(extra, 'api-key')) h['api-key'] = p.apiKey;
     }
-    return h;
+    return { ...h, ...extra };
+  },
+
+  _parseExtraHeaders(raw) {
+    const headers = {};
+    const text = (raw || '').trim();
+    if (!text) return headers;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (String(key).trim() && value !== undefined && value !== null && String(value).trim()) headers[String(key).trim()] = String(value).trim();
+        }
+        return headers;
+      }
+    } catch {}
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) continue;
+      const key = trimmed.slice(0, idx).trim();
+      const value = trimmed.slice(idx + 1).trim();
+      if (key && value) headers[key] = value;
+    }
+    return headers;
+  },
+
+  _hasHeader(headers, name) {
+    const target = String(name || '').toLowerCase();
+    return Object.keys(headers || {}).some(key => key.toLowerCase() === target);
   },
 
   _isMimoProfile(p, model = '') {
@@ -412,7 +510,7 @@ const API = {
   _detect(p, model = '') {
     if (p.provider === 'claude') return 'claude';
     if (p.provider === 'google-ai-studio') return 'google';
-    const url = (p.baseUrl || '').toLowerCase();
+    const url = this._getBaseUrl(p).toLowerCase();
     if (url.includes('anthropic')) return 'claude';
     if (url.includes('generativelanguage.googleapis')) return 'google';
     // OpenAI-compatible (covers proxies for Claude/Gemini too)
@@ -421,11 +519,12 @@ const API = {
 
   _buildUrl(p, model, stream) {
     const base = this._getBaseUrl(p);
-    if (p.provider === 'google-ai-studio') {
+    const provider = this._detect(p, model);
+    if (provider === 'google') {
       const act = stream ? 'streamGenerateContent?alt=sse&' : 'generateContent?';
-      return `${base}/models/${model}:${act}key=${p.apiKey}`;
+      return `${base}/models/${encodeURIComponent(model)}:${act}key=${encodeURIComponent(p.apiKey || '')}`;
     }
-    if (p.provider === 'claude') return `${base}/messages`;
+    if (provider === 'claude') return `${base}/messages`;
     return `${base}/chat/completions`;
   },
 
@@ -917,17 +1016,71 @@ const API = {
   async fetchModels(apiProfileId) {
     const p = Storage.getApiProfile(apiProfileId);
     if (!p) return { success: false, models: [] };
+    if (window.AndroidBridge?.fetchModels) {
+      try {
+        const nativeResult = JSON.parse(window.AndroidBridge.fetchModels(JSON.stringify(p)) || '{}');
+        if (nativeResult.success) return nativeResult;
+      } catch (e) {
+        log('Native fetchModels failed, fallback to fetch:', e.message);
+      }
+    }
     const base = this._getBaseUrl(p);
-    const url = p.provider === 'google-ai-studio' ? `${base}/models?key=${p.apiKey}` : `${base}/models`;
+    const provider = this._detect(p);
+    const urls = provider === 'google'
+      ? [`${base}/models?key=${encodeURIComponent(p.apiKey || '')}`]
+      : [...new Set([`${base}/models`, base.toLowerCase().includes('nano-gpt') ? `${base}/models?detailed=true` : ''].filter(Boolean))];
+    const diagnostics = [];
     try {
-      const res = await fetch(url, { headers: this._getHeaders(p) });
-      if (!res.ok) return { success: false, models: [] };
-      const data = await res.json();
-      let models = [];
-      if (p.provider === 'google-ai-studio') models = (data.models || []).filter(m => m.name?.includes('gemini')).map(m => m.name.replace('models/', ''));
-      else models = (data.data || []).map(m => m.id);
-      return { success: true, models };
-    } catch { return { success: false, models: [] }; }
+      for (const url of urls) {
+        try {
+          const res = await fetch(url, { headers: this._getHeaders(p) });
+          const text = await res.text();
+          if (!res.ok) {
+            diagnostics.push({ url, status: res.status, error: text.slice(0, 300) });
+            continue;
+          }
+          const data = text ? JSON.parse(text) : {};
+          const models = this._extractModelIds(data, provider);
+          if (models.length) return { success: true, models, endpoint: url };
+          diagnostics.push({ url, status: res.status, error: '接口成功返回，但未解析到模型列表' });
+        } catch (e) {
+          diagnostics.push({ url, status: 0, error: e.message });
+        }
+      }
+      return { success: false, models: [], diagnostics, error: diagnostics[0]?.error || '拉取失败' };
+    } catch (e) { return { success: false, models: [], error: e.message, diagnostics }; }
+  },
+
+  _extractModelIds(data, provider = '') {
+    const out = [];
+    const seen = new Set();
+    const add = value => {
+      const clean = String(value || '').trim().replace(/^models\//, '');
+      if (!clean || seen.has(clean)) return;
+      if (provider === 'google' && !clean.includes('gemini')) return;
+      seen.add(clean);
+      out.push(clean);
+    };
+    const collect = arr => {
+      if (!Array.isArray(arr)) return;
+      for (const item of arr) {
+        if (typeof item === 'string') add(item);
+        else if (item && typeof item === 'object') add(item.id || item.name || item.model || item.slug || item.value);
+      }
+    };
+    if (Array.isArray(data)) collect(data);
+    if (data && typeof data === 'object') {
+      collect(data.data);
+      collect(data.models);
+      collect(data.items);
+      collect(data.results);
+      collect(data.model_list);
+      collect(data.data?.models);
+      collect(data.data?.items);
+      collect(data.result?.models);
+      collect(data.result?.items);
+    }
+    return out;
   },
 };
 
