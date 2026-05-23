@@ -571,6 +571,41 @@
       text-decoration: underline;
     }
 
+    .toggle-card {
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg-surface);
+      cursor: pointer;
+    }
+
+    .toggle-card input[type="checkbox"] {
+      margin-top: 2px;
+      transform: scale(1.1);
+    }
+
+    .toggle-card-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .toggle-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .toggle-card-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
     /* ── Data Management ──────────────────────────── */
     .data-actions {
       display: flex;
@@ -676,6 +711,23 @@
       <!-- icon injected by JS -->
     </button>
   </header>
+
+  <!-- Section 0: Notification Settings -->
+  <div class="section" id="sectionNotification">
+    <div class="section-title" id="titleNotification">
+      <!-- icon injected --> 通知栏提示
+    </div>
+    <p class="section-desc">
+      开启后，安卓端会把 AI 生成切到原生前台服务，切后台或锁屏时也能在通知栏显示生成状态。
+    </p>
+    <label class="toggle-card" for="chkNotificationBar">
+      <input type="checkbox" id="chkNotificationBar" onchange="onDefaultsChange('notification')">
+      <span class="toggle-card-main">
+        <span class="toggle-card-title">后台生成与通知栏常驻</span>
+        <span class="toggle-card-desc">启用后，生成中会显示“软件正在后台运行/生成中”，完成、失败或取消时同步更新通知。</span>
+      </span>
+    </label>
+  </div>
 
   <!-- ══════════════════════════════════════════ -->
   <!-- Section 1: API Profiles                    -->
@@ -864,6 +916,7 @@
 
     // Section title icons
     const titleIcons = {
+      titleNotification: 'settings',
       titleApi: 'settings',
       titleDefaults: 'edit',
       titlePromptEntries: 'menu',  // Prompt 预设
@@ -1166,6 +1219,8 @@
     document.getElementById('inputDefaultModel').value = settings.defaultModel || '';
     document.getElementById('selDefaultModel').style.display = 'none';
     document.getElementById('selExportFormat').value = settings.exportFormat || 'md';
+    const notificationEl = document.getElementById('chkNotificationBar');
+    if (notificationEl) notificationEl.checked = settings.enableNotificationBar !== false;
     document.getElementById('chkPromptInspector').checked = !!settings.showPromptInspector;
   }
 
@@ -1228,6 +1283,8 @@
 
     settings.defaultApiProfileId = newApiId;
     settings.exportFormat = document.getElementById('selExportFormat').value;
+    const notificationEl = document.getElementById('chkNotificationBar');
+    if (notificationEl) settings.enableNotificationBar = notificationEl.checked;
     settings.showPromptInspector = document.getElementById('chkPromptInspector').checked;
     Storage.saveSettings(settings);
   }

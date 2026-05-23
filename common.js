@@ -250,6 +250,7 @@ const Storage = {
   _SETTINGS_DEFAULTS: {
     defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
     articleWordCount: 500, summaryWordCount: 50,
+    enableNotificationBar: true,
     showPromptInspector: false,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
     promptPresets: null, activePresetId: 'default',
@@ -1455,11 +1456,11 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     };
   },
 
-  buildMessages(conversation) {
+  buildMessages(conversation, options = {}) {
     const settings = Storage.getSettings();
     const phase = conversation.phase || 'init';
     const preset = this.getActivePreset(settings);
-    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation);
+    const worldBookBlocks = WorldBook.buildPromptBlocks(conversation, { commit: !!options.commitWorldBook });
 
     if (phase === 'init') {
       const initPrompt = preset.initPrompt || this.DEFAULT_INIT_PROMPT;
@@ -1480,6 +1481,9 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
         messages: msgs,
         activeWorldBookEntries: worldBookBlocks.active || [],
         blockedWorldBookEntries: worldBookBlocks.blocked || [],
+        candidateWorldBookEntries: worldBookBlocks.candidates || [],
+        worldBookScanSources: worldBookBlocks.scanSources || [],
+        worldBookSettings: worldBookBlocks.worldBookSettings || {},
       };
     }
 
@@ -1648,6 +1652,9 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
         messages: merged,
         activeWorldBookEntries: worldBookBlocks.active || [],
         blockedWorldBookEntries: worldBookBlocks.blocked || [],
+        candidateWorldBookEntries: worldBookBlocks.candidates || [],
+        worldBookScanSources: worldBookBlocks.scanSources || [],
+        worldBookSettings: worldBookBlocks.worldBookSettings || {},
       };
     }
 
@@ -1762,6 +1769,9 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       messages: merged,
       activeWorldBookEntries: worldBookBlocks.active || [],
       blockedWorldBookEntries: worldBookBlocks.blocked || [],
+      candidateWorldBookEntries: worldBookBlocks.candidates || [],
+      worldBookScanSources: worldBookBlocks.scanSources || [],
+      worldBookSettings: worldBookBlocks.worldBookSettings || {},
     };
   },
 
@@ -1784,8 +1794,9 @@ const WorldBook = {
     maxRecursionSteps: 2,
     caseSensitive: false,
     matchWholeWords: false,
+    scanSourceVersion: 2,
     includeStorySetting: false,
-    includeMvuState: true,
+    includeMvuState: false,
   },
 
   POSITION_MAP: {
@@ -1855,6 +1866,10 @@ const WorldBook = {
     if (book.matchWholeWords !== undefined) settings.matchWholeWords = !!book.matchWholeWords;
     if (book.includeStorySetting !== undefined) settings.includeStorySetting = !!book.includeStorySetting;
     if (book.includeMvuState !== undefined) settings.includeMvuState = !!book.includeMvuState;
+    if ((book.settings || {}).scanSourceVersion === undefined && book.includeMvuState === undefined) {
+      settings.includeMvuState = false;
+    }
+    settings.scanSourceVersion = this.DEFAULT_SETTINGS.scanSourceVersion;
 
     let rawEntries = [];
     if (Array.isArray(book.entries)) rawEntries = book.entries;
@@ -1905,6 +1920,9 @@ const WorldBook = {
       afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
       active,
       blocked: active.blocked || [],
+      scanSources: active.scanSources || [],
+      worldBookSettings: active.settings || book.settings || {},
+      totalChars: active.totalChars || 0,
     };
   },
 
@@ -1914,35 +1932,69 @@ const WorldBook = {
       entry.enabled
       && String(entry.content || '').trim()
     ));
-    if (!entries.length) return [];
+    if (!entries.length) {
+      const empty = [];
+      empty.blocked = [];
+      empty.scanSources = [];
+      empty.settings = normalized.settings;
+      return empty;
+    }
 
     const active = [];
     const addedIds = new Set();
     const blocked = [];
     let totalChars = 0;
 
-    const compareEntries = (a, b) => {
+    const compareForInsertion = (a, b) => {
       const posA = this.POSITION_MAP[a.position] ?? 99;
       const posB = this.POSITION_MAP[b.position] ?? 99;
       if (posA !== posB) return posA - posB;
       if (a.constant !== b.constant) return a.constant ? -1 : 1;
       if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
-      if (a.order !== b.order) return a.order - b.order;
+      if (a.order !== b.order) return b.order - a.order;
       return a.uid - b.uid;
     };
 
-    const tryAdd = (entry) => {
+    const compareForBudget = (a, b) => {
+      const rankA = this._activationBudgetRank(a);
+      const rankB = this._activationBudgetRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+      if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
+      if (a.order !== b.order) return b.order - a.order;
+      return a.uid - b.uid;
+    };
+
+    const tryAdd = (entry, budgetIndex = active.length) => {
       if (!entry || addedIds.has(entry.uid)) return false;
-      if (active.length >= normalized.settings.maxEntries) {
-        blocked.push({ ...entry, _blockedReason: 'maxEntries' });
-        return false;
-      }
       const nextLen = String(entry.content || '').length;
-      if (active.length > 0 && totalChars + nextLen > normalized.settings.maxChars) {
-        blocked.push({ ...entry, _blockedReason: 'budget' });
+      if (active.length >= normalized.settings.maxEntries) {
+        blocked.push({
+          ...entry,
+          _blockedReason: 'maxEntries',
+          _blockedDetail: `达到最大注入条目 ${normalized.settings.maxEntries}`,
+          _budgetRank: budgetIndex + 1,
+          _currentChars: totalChars,
+          _entryChars: nextLen,
+        });
         return false;
       }
-      active.push(entry);
+      if (active.length > 0 && totalChars + nextLen > normalized.settings.maxChars) {
+        blocked.push({
+          ...entry,
+          _blockedReason: 'budget',
+          _blockedDetail: `${totalChars} + ${nextLen} > ${normalized.settings.maxChars}`,
+          _budgetRank: budgetIndex + 1,
+          _currentChars: totalChars,
+          _entryChars: nextLen,
+        });
+        return false;
+      }
+      active.push({
+        ...entry,
+        _budgetRank: budgetIndex + 1,
+        _currentCharsBefore: totalChars,
+        _entryChars: nextLen,
+      });
       addedIds.add(entry.uid);
       totalChars += nextLen;
       return true;
@@ -1959,13 +2011,14 @@ const WorldBook = {
         _matchSources: [{ kind: 'constant', label: '常驻条目', preview: '' }],
         _matchStep: 0,
       }))
-      .sort(compareEntries);
+      .sort(compareForBudget);
 
-    for (const entry of constantEntries) tryAdd(entry);
+    const candidates = [...constantEntries];
+    const candidateIds = new Set(candidates.map(entry => entry.uid));
 
     const autoEntries = entries
       .filter(entry => !entry.constant && (entry.keys || []).length > 0)
-      .sort((a, b) => (a.order !== b.order ? a.order - b.order : a.uid - b.uid));
+      .sort((a, b) => (a.order !== b.order ? b.order - a.order : a.uid - b.uid));
 
     const baseScanSources = this._buildScanSources(conversation, normalized.settings);
     let recursiveSources = [];
@@ -1979,7 +2032,7 @@ const WorldBook = {
       if (!sourcePool.length) break;
       const matchedThisStep = [];
       for (const entry of autoEntries) {
-        if (addedIds.has(entry.uid)) continue;
+        if (candidateIds.has(entry.uid)) continue;
         if (step > 0 && entry.preventRecursion) continue;
         const match = this._findEntryMatch(entry, sourcePool, normalized.settings);
         if (!match.matched) continue;
@@ -1988,7 +2041,7 @@ const WorldBook = {
           ...entry,
           _activationMode: 'auto',
           _matchKind: step === 0 ? 'direct' : 'recursive',
-          _matchStep: step + 1,
+          _matchStep: step,
           _matchedPrimaryKeys: match.primaryMatches,
           _matchedSecondaryKeys: match.secondaryMatches,
           _matchSources: match.sources,
@@ -1996,10 +2049,12 @@ const WorldBook = {
       }
 
       if (!matchedThisStep.length) break;
-      matchedThisStep.sort(compareEntries);
+      matchedThisStep.sort(compareForBudget);
       const addedThisStep = [];
       for (const entry of matchedThisStep) {
-        if (tryAdd(entry)) addedThisStep.push(entry);
+        candidates.push(entry);
+        candidateIds.add(entry.uid);
+        addedThisStep.push(entry);
       }
       if (!normalized.settings.recursiveScan || !addedThisStep.length) break;
       recursiveSources = addedThisStep.map(entry => ({
@@ -2009,8 +2064,13 @@ const WorldBook = {
       }));
     }
 
-    active.sort(compareEntries);
+    candidates.sort(compareForBudget);
+    candidates.forEach((entry, index) => tryAdd(entry, index));
+    active.sort(compareForInsertion);
     active.blocked = blocked;
+    active.scanSources = baseScanSources;
+    active.settings = normalized.settings;
+    active.totalChars = totalChars;
     return active;
   },
 
@@ -2047,6 +2107,8 @@ const WorldBook = {
       maxRecursionSteps: normalized.settings.maxRecursionSteps,
       matchWholeWords: normalized.settings.matchWholeWords,
       caseSensitive: normalized.settings.caseSensitive,
+      includeStorySetting: normalized.settings.includeStorySetting,
+      includeMvuState: normalized.settings.includeMvuState,
     };
   },
 
@@ -2079,6 +2141,13 @@ const WorldBook = {
     }
     const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
     return ['and_any', 'and_all', 'not_any', 'not_all'].includes(normalized) ? normalized : 'and_any';
+  },
+
+  _activationBudgetRank(entry) {
+    if (entry?.constant || entry?._activationMode === 'constant') return 0;
+    if (entry?._matchKind === 'direct') return 1;
+    if (entry?._matchKind === 'recursive') return 2;
+    return 3;
   },
 
   _buildScanSources(conversation, settings) {
@@ -2219,6 +2288,622 @@ const WorldBook = {
   },
 };
 
+Object.assign(WorldBook.DEFAULT_SETTINGS, {
+  scanSourceVersion: 3,
+  scanMode: WorldBook.DEFAULT_SETTINGS.scanMode || 'recent_chat',
+});
+
+Object.assign(WorldBook, {
+  _legacyCreateEntry: WorldBook.createEntry,
+  _legacyNormalizeBook: WorldBook.normalizeBook,
+  _legacyBuildPromptBlocks: WorldBook.buildPromptBlocks,
+  _legacyGetActiveEntries: WorldBook.getActiveEntries,
+
+  createEmptyBook(name = '世界书') {
+    return {
+      version: 1,
+      name,
+      description: '',
+      settings: { ...this.DEFAULT_SETTINGS },
+      entries: [],
+      worldBookState: { entries: {} },
+    };
+  },
+
+  createEntry(partial = {}) {
+    const entry = this._legacyCreateEntry(partial);
+    entry.role = this._normalizeRole(partial.role);
+    entry.depth = this._nonNegativeNumber(partial.depth ?? partial.insertionDepth ?? partial.insertion_depth, 0);
+    entry.scanDepth = this._nullablePositiveNumber(partial.scanDepth ?? partial.scan_depth ?? partial.extensions?.scanDepth);
+    entry.group = String(partial.group ?? partial.groupName ?? partial.group_name ?? '').trim();
+    entry.groupWeight = Number.isFinite(Number(partial.groupWeight ?? partial.group_weight))
+      ? Number(partial.groupWeight ?? partial.group_weight)
+      : 100;
+    entry.groupScoring = this._normalizeGroupScoring(partial.groupScoring ?? partial.group_scoring);
+    entry.sticky = this._nonNegativeNumber(partial.sticky ?? partial.stickyDelay ?? partial.sticky_delay, 0);
+    entry.cooldown = this._nonNegativeNumber(partial.cooldown ?? partial.cooldownDelay ?? partial.cooldown_delay, 0);
+    entry.delay = this._nonNegativeNumber(partial.delay ?? partial.activationDelay ?? partial.activation_delay, 0);
+    return entry;
+  },
+
+  normalizeBook(book, fallbackName = '世界书') {
+    const normalized = this._legacyNormalizeBook(book, fallbackName);
+    normalized.settings = { ...this.DEFAULT_SETTINGS, ...(normalized.settings || {}) };
+    normalized.settings.scanMode = this._normalizeScanMode(normalized.settings.scanMode);
+    normalized.settings.maxEntries = Math.max(1, Number(normalized.settings.maxEntries) || this.DEFAULT_SETTINGS.maxEntries);
+    normalized.settings.maxChars = Math.max(200, Number(normalized.settings.maxChars) || this.DEFAULT_SETTINGS.maxChars);
+    normalized.settings.scanDepth = Math.max(1, Number(normalized.settings.scanDepth) || this.DEFAULT_SETTINGS.scanDepth);
+    normalized.settings.maxRecursionSteps = Math.max(0, Number(normalized.settings.maxRecursionSteps) || 0);
+    normalized.settings.scanSourceVersion = this.DEFAULT_SETTINGS.scanSourceVersion;
+    normalized.worldBookState = this._normalizeState(book?.worldBookState || book?.entryState || {});
+    normalized.entries = (normalized.entries || []).map(entry => this.createEntry(entry));
+    return normalized;
+  },
+
+  buildPromptBlocks(conversation, options = {}) {
+    const book = this.ensureConversation(conversation);
+    const active = this.getActiveEntries(book, conversation, options);
+    const buckets = {
+      beforeStory: [],
+      afterStory: [],
+      beforeInput: [],
+      afterInput: [],
+    };
+
+    for (const entry of active) {
+      const prompt = this._formatEntryPrompt(entry);
+      if (!prompt) continue;
+      if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
+      else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
+      else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
+      else buckets.afterStory.push(prompt);
+    }
+
+    return {
+      beforeStory: this._wrapPromptBucket('背景前置', buckets.beforeStory),
+      afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
+      beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
+      afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
+      active,
+      blocked: active.blocked || [],
+      candidates: active.candidates || [],
+      scanSources: active.scanSources || [],
+      worldBookSettings: active.settings || book.settings || {},
+      totalChars: active.totalChars || 0,
+    };
+  },
+
+  getActiveEntries(book, conversation, options = {}) {
+    const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
+    const commit = !!options.commit;
+    const entries = normalized.entries.filter(entry => entry.enabled && String(entry.content || '').trim());
+    const active = [];
+    const blocked = [];
+    const candidates = [];
+    const addedIds = new Set();
+    const blockedKeys = new Set();
+    let totalChars = 0;
+
+    const attachMeta = (entry, meta = {}) => ({
+      ...entry,
+      _matchedPrimaryKeys: meta.primaryMatches || entry._matchedPrimaryKeys || [],
+      _matchedSecondaryKeys: meta.secondaryMatches || entry._matchedSecondaryKeys || [],
+      _matchSources: meta.sources || entry._matchSources || [],
+      _matchStep: Number.isFinite(Number(meta.step ?? entry._matchStep)) ? Number(meta.step ?? entry._matchStep) : 0,
+      _matchKind: meta.kind || entry._matchKind || 'direct',
+      _activationMode: meta.mode || entry._activationMode || 'auto',
+      _turnIndex: meta.turnIndex,
+      _turnKey: meta.turnKey,
+      _matchScore: meta.matchScore ?? entry._matchScore ?? 0,
+      _sourceDepth: meta.sourceDepth ?? entry._sourceDepth ?? null,
+    });
+
+    const compareForInsertion = (a, b) => {
+      const posA = this.POSITION_MAP[a.position] ?? 99;
+      const posB = this.POSITION_MAP[b.position] ?? 99;
+      if (posA !== posB) return posA - posB;
+      if ((a.depth || 0) !== (b.depth || 0)) return (a.depth || 0) - (b.depth || 0);
+      if (a.constant !== b.constant) return a.constant ? -1 : 1;
+      if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
+      if (a.order !== b.order) return b.order - a.order;
+      return a.uid - b.uid;
+    };
+
+    const compareForBudget = (a, b) => {
+      const rankA = this._activationBudgetRank(a);
+      const rankB = this._activationBudgetRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+      if ((a._matchStep || 0) !== (b._matchStep || 0)) return (a._matchStep || 0) - (b._matchStep || 0);
+      if ((b._matchScore || 0) !== (a._matchScore || 0)) return (b._matchScore || 0) - (a._matchScore || 0);
+      if ((b.groupWeight || 0) !== (a.groupWeight || 0)) return (b.groupWeight || 0) - (a.groupWeight || 0);
+      if (a.order !== b.order) return b.order - a.order;
+      return a.uid - b.uid;
+    };
+
+    const blockEntry = (entry, reason, detail = '', extra = {}) => {
+      if (!entry) return;
+      const key = `${entry.uid}:${reason}:${entry._matchKind || ''}:${entry._matchStep || 0}`;
+      if (blockedKeys.has(key)) return;
+      blockedKeys.add(key);
+      blocked.push({ ...entry, ...extra, _blockedReason: reason, _blockedDetail: detail });
+    };
+
+    const tryAdd = (entry, budgetIndex = active.length) => {
+      if (!entry || addedIds.has(entry.uid)) return false;
+      const nextLen = String(entry.content || '').length;
+      if (active.length >= normalized.settings.maxEntries) {
+        blockEntry(entry, 'maxEntries', `达到最大注入条目 ${normalized.settings.maxEntries}`, {
+          _budgetRank: budgetIndex + 1,
+          _currentChars: totalChars,
+          _entryChars: nextLen,
+        });
+        return false;
+      }
+      if (active.length > 0 && totalChars + nextLen > normalized.settings.maxChars) {
+        blockEntry(entry, 'budget', `${totalChars} + ${nextLen} > ${normalized.settings.maxChars}`, {
+          _budgetRank: budgetIndex + 1,
+          _currentChars: totalChars,
+          _entryChars: nextLen,
+        });
+        return false;
+      }
+      active.push({
+        ...entry,
+        _budgetRank: budgetIndex + 1,
+        _currentCharsBefore: totalChars,
+        _entryChars: nextLen,
+      });
+      addedIds.add(entry.uid);
+      totalChars += nextLen;
+      return true;
+    };
+
+    const maxScanDepth = this._maxScanDepth(entries, normalized.settings);
+    const baseScanSources = this._buildScanSources(conversation, normalized.settings, maxScanDepth);
+    const state = normalized.worldBookState || { entries: {} };
+    const turnIndex = this._getTurnIndex(conversation);
+    const turnKey = this._getTurnKey(conversation, turnIndex);
+
+    if (!entries.length) {
+      active.blocked = [];
+      active.candidates = [];
+      active.scanSources = baseScanSources;
+      active.settings = normalized.settings;
+      active.totalChars = 0;
+      return active;
+    }
+
+    const constantEntries = entries
+      .filter(entry => entry.constant)
+      .map(entry => attachMeta(entry, {
+        mode: 'constant',
+        kind: 'constant',
+        step: 0,
+        turnIndex,
+        turnKey,
+        sources: [{ kind: 'constant', label: '常驻条目', preview: '' }],
+      }));
+    for (const entry of constantEntries) candidates.push(entry);
+
+    const candidateIds = new Set(constantEntries.map(entry => entry.uid));
+    const autoEntries = entries
+      .filter(entry => !entry.constant && (entry.keys || []).length > 0)
+      .sort((a, b) => (a.order !== b.order ? b.order - a.order : a.uid - b.uid));
+
+    let recursiveSources = [];
+    const recursionSteps = normalized.settings.recursiveScan
+      ? Math.max(0, Number(normalized.settings.maxRecursionSteps) || 0)
+      : 0;
+    const maxSteps = 1 + recursionSteps;
+
+    for (let step = 0; step < maxSteps; step++) {
+      const sourcePool = step === 0 ? baseScanSources : recursiveSources;
+      if (!sourcePool.length) break;
+      const matchedThisStep = [];
+
+      for (const entry of autoEntries) {
+        if (candidateIds.has(entry.uid)) continue;
+        if (step > 0 && entry.preventRecursion) continue;
+        const entrySources = step === 0
+          ? this._selectScanSourcesForEntry(entry, sourcePool, normalized.settings)
+          : sourcePool;
+        const match = this._findEntryMatch(entry, entrySources, normalized.settings);
+        if (!match.matched) continue;
+
+        const matchedEntry = attachMeta(entry, {
+          mode: 'auto',
+          kind: step === 0 ? 'direct' : 'recursive',
+          step,
+          turnIndex,
+          turnKey,
+          primaryMatches: match.primaryMatches,
+          secondaryMatches: match.secondaryMatches,
+          sources: match.sources,
+          matchScore: this._scoreMatch(match),
+          sourceDepth: entry.scanDepth || normalized.settings.scanDepth,
+        });
+
+        const timing = this._passesTimedEffects(matchedEntry, state.entries?.[String(entry.uid)] || {}, turnIndex, turnKey);
+        if (!timing.passed) {
+          blockEntry(matchedEntry, timing.reason, timing.detail, timing.extra || {});
+          candidateIds.add(entry.uid);
+          continue;
+        }
+        const probability = this._passesProbability(matchedEntry, conversation, step, turnKey);
+        if (!probability.passed) {
+          blockEntry(matchedEntry, 'probability', probability.detail, { _probabilityRoll: probability.roll });
+          candidateIds.add(entry.uid);
+          continue;
+        }
+        matchedThisStep.push(matchedEntry);
+      }
+
+      if (step === 0) {
+        for (const entry of autoEntries) {
+          if (candidateIds.has(entry.uid)) continue;
+          const stickyEntry = this._buildStickyCandidate(entry, state.entries?.[String(entry.uid)] || {}, turnIndex, turnKey);
+          if (stickyEntry) matchedThisStep.push(stickyEntry);
+        }
+      }
+
+      if (!matchedThisStep.length) break;
+      matchedThisStep.sort(compareForBudget);
+      const addedThisStep = [];
+      for (const entry of matchedThisStep) {
+        if (candidateIds.has(entry.uid)) continue;
+        candidates.push(entry);
+        candidateIds.add(entry.uid);
+        addedThisStep.push(entry);
+      }
+      if (!normalized.settings.recursiveScan || !addedThisStep.length) break;
+      recursiveSources = addedThisStep
+        .filter(entry => !entry.preventRecursion)
+        .map(entry => ({
+          kind: 'recursion',
+          label: `递归：${entry.comment || entry.title || entry.uid}`,
+          content: String(entry.content || ''),
+        }));
+    }
+
+    const budgetCandidates = this._applyGroups(candidates, compareForBudget, blockEntry);
+    budgetCandidates.sort(compareForBudget);
+    budgetCandidates.forEach((entry, index) => tryAdd(entry, index));
+    active.sort(compareForInsertion);
+
+    active.blocked = blocked.sort(compareForBudget);
+    active.candidates = candidates.sort(compareForBudget);
+    active.scanSources = baseScanSources;
+    active.settings = normalized.settings;
+    active.totalChars = totalChars;
+
+    if (commit) this._commitActivationState(book, normalized, conversation, active, blocked, turnIndex, turnKey);
+    return active;
+  },
+
+  exportSillyTavern(book) {
+    const normalized = this.normalizeBook(book);
+    const entries = {};
+    for (const entry of normalized.entries) {
+      entries[String(entry.uid)] = {
+        uid: entry.uid,
+        comment: entry.comment || entry.title || '',
+        content: entry.content,
+        constant: entry.constant,
+        selective: !!entry.selective && entry.secondaryKeys.length > 0,
+        key: [...entry.keys],
+        keysecondary: [...entry.secondaryKeys],
+        order: entry.order,
+        position: this.POSITION_MAP[entry.position] ?? 1,
+        role: entry.role,
+        depth: entry.depth,
+        scanDepth: entry.scanDepth,
+        group: entry.group,
+        groupWeight: entry.groupWeight,
+        groupScoring: entry.groupScoring,
+        sticky: entry.sticky,
+        cooldown: entry.cooldown,
+        delay: entry.delay,
+        disable: !entry.enabled,
+        probability: entry.probability,
+        selectiveLogic: this.LOGIC_MAP?.[entry.selectiveLogic] ?? 0,
+      };
+    }
+    return {
+      name: normalized.name,
+      description: normalized.description,
+      entries,
+      tokenBudget: normalized.settings.maxChars,
+      scanDepth: normalized.settings.scanDepth,
+      scanMode: normalized.settings.scanMode,
+      recursiveScanning: normalized.settings.recursiveScan,
+      maxRecursionSteps: normalized.settings.maxRecursionSteps,
+      matchWholeWords: normalized.settings.matchWholeWords,
+      caseSensitive: normalized.settings.caseSensitive,
+      includeStorySetting: normalized.settings.includeStorySetting,
+      includeMvuState: normalized.settings.includeMvuState,
+    };
+  },
+
+  commitConversationActivation(conversation) {
+    if (!conversation) return null;
+    const blocks = this.buildPromptBlocks(conversation, { commit: true });
+    return blocks;
+  },
+
+  commitPromptSnapshot(conversation, promptSnapshot) {
+    if (!conversation || !promptSnapshot) return null;
+    const book = this.ensureConversation(conversation);
+    const normalized = this.normalizeBook(book, (conversation?.name || '世界书') + ' 世界书');
+    const turnIndex = this._getTurnIndex(conversation);
+    const turnKey = this._getTurnKey(conversation, turnIndex);
+    this._commitActivationState(
+      book,
+      normalized,
+      conversation,
+      promptSnapshot.activeWorldBookEntries || [],
+      promptSnapshot.blockedWorldBookEntries || [],
+      turnIndex,
+      turnKey
+    );
+    return conversation.worldBook?.worldBookState || null;
+  },
+
+  _normalizeRole(value) {
+    if (typeof value === 'number') return ['system', 'user', 'assistant'][value] || 'user';
+    const normalized = String(value || '').trim().toLowerCase();
+    return ['system', 'user', 'assistant'].includes(normalized) ? normalized : 'user';
+  },
+
+  _normalizeGroupScoring(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['order', 'weight', 'score'].includes(normalized) ? normalized : 'weight';
+  },
+
+  _normalizeScanMode(value) {
+    const normalized = String(value || '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+    return ['recent_chat', 'latest_user'].includes(normalized) ? normalized : 'recent_chat';
+  },
+
+  _normalizeState(state) {
+    const rawEntries = state?.entries && typeof state.entries === 'object' ? state.entries : {};
+    const entries = {};
+    for (const [uid, item] of Object.entries(rawEntries)) {
+      if (!item || typeof item !== 'object') continue;
+      entries[String(uid)] = {
+        firstMatchTurn: Number.isFinite(Number(item.firstMatchTurn)) ? Number(item.firstMatchTurn) : null,
+        lastMatchTurn: Number.isFinite(Number(item.lastMatchTurn)) ? Number(item.lastMatchTurn) : null,
+        lastActiveTurn: Number.isFinite(Number(item.lastActiveTurn)) ? Number(item.lastActiveTurn) : null,
+        lastPromptKey: String(item.lastPromptKey || ''),
+      };
+    }
+    return { entries };
+  },
+
+  _nonNegativeNumber(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(0, Math.floor(number)) : fallback;
+  },
+
+  _nullablePositiveNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+  },
+
+  _activationBudgetRank(entry) {
+    if (entry?.constant || entry?._activationMode === 'constant') return 0;
+    if (entry?._activationMode === 'sticky') return 1;
+    if (entry?._matchKind === 'direct') return 2;
+    if (entry?._matchKind === 'recursive') return 3;
+    return 4;
+  },
+
+  _maxScanDepth(entries, settings) {
+    return Math.max(
+      Math.max(1, Number(settings.scanDepth) || this.DEFAULT_SETTINGS.scanDepth),
+      ...entries.map(entry => Number(entry.scanDepth) || 0)
+    );
+  },
+
+  _buildScanSources(conversation, settings, depthOverride = null) {
+    const sources = [];
+    const messages = (conversation?.messages || []).filter(msg => !msg.hidden && String(msg.content || '').trim());
+    const depth = Math.max(1, Number(depthOverride ?? settings.scanDepth) || 6);
+    let recent = messages.slice(-depth);
+    if (settings.scanMode === 'latest_user') {
+      const lastUser = [...messages].reverse().find(msg => msg.role === 'user' && String(msg.content || '').trim());
+      recent = lastUser ? [lastUser] : [];
+    }
+    const lastUserIndex = recent.map(msg => msg.role).lastIndexOf('user');
+    for (let i = 0; i < recent.length; i++) {
+      const msg = recent[i];
+      let content = String(msg.content || '');
+      if (msg.role === 'assistant' && typeof Summary !== 'undefined' && typeof MVU !== 'undefined') {
+        content = Summary.cleanAbstract(MVU.cleanText(content));
+      }
+      sources.push({
+        kind: msg.role === 'user' && i === lastUserIndex ? 'latest_user' : 'chat',
+        label: msg.role === 'user' && i === lastUserIndex ? '最新用户输入' : (msg.role === 'assistant' ? '最近AI回复' : '最近用户输入'),
+        role: msg.role,
+        messageOrdinal: i,
+        content,
+      });
+    }
+    if (settings.includeStorySetting && conversation?.storySetting) {
+      sources.push({ kind: 'story', label: '故事设定', content: String(conversation.storySetting || '') });
+    }
+    if (settings.includeMvuState && conversation?.mvu?.state) {
+      sources.push({ kind: 'mvu', label: '状态栏', content: JSON.stringify(conversation.mvu.state, null, 2) });
+    }
+    return sources.filter(source => String(source.content || '').trim());
+  },
+
+  _selectScanSourcesForEntry(entry, sources, settings) {
+    const depth = Number(entry.scanDepth) || Number(settings.scanDepth) || 6;
+    if (!Number.isFinite(depth) || depth <= 0) return sources;
+    const messageSources = sources.filter(source => source.messageOrdinal !== undefined);
+    const kept = new Set(messageSources.slice(-depth).map(source => source));
+    return sources.filter(source => source.messageOrdinal === undefined || kept.has(source));
+  },
+
+  _passesTimedEffects(entry, entryState, turnIndex, turnKey) {
+    const state = entryState || {};
+    const delay = Math.max(0, Number(entry.delay) || 0);
+    if (delay > 0 && (state.firstMatchTurn === null || state.firstMatchTurn === undefined)) {
+      return {
+        passed: false,
+        reason: 'delay',
+        detail: `首次命中后延迟 ${delay} 轮`,
+        extra: { _pendingFirstMatchTurn: turnIndex },
+      };
+    }
+    if (delay > 0 && state.firstMatchTurn !== null && turnIndex - Number(state.firstMatchTurn) < delay) {
+      return {
+        passed: false,
+        reason: 'delay',
+        detail: `还需 ${delay - (turnIndex - Number(state.firstMatchTurn))} 轮后注入`,
+      };
+    }
+    const cooldown = Math.max(0, Number(entry.cooldown) || 0);
+    if (
+      cooldown > 0
+      && state.lastActiveTurn !== null
+      && state.lastPromptKey !== turnKey
+      && turnIndex - Number(state.lastActiveTurn) <= cooldown
+    ) {
+      return {
+        passed: false,
+        reason: 'cooldown',
+        detail: `冷却中，剩余 ${cooldown - (turnIndex - Number(state.lastActiveTurn)) + 1} 轮`,
+      };
+    }
+    return { passed: true };
+  },
+
+  _passesProbability(entry, conversation, step, turnKey = '') {
+    const probability = Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100;
+    if (probability >= 100) return { passed: true, roll: 0, detail: '100%' };
+    if (probability <= 0) return { passed: false, roll: 100, detail: '触发概率为 0%' };
+    const seed = `${conversation?.id || ''}|${turnKey}|${entry.uid}|${step}|${entry._matchKind || ''}`;
+    const roll = this._stableHash(seed) % 100;
+    return {
+      passed: roll < probability,
+      roll,
+      detail: `概率 ${probability}%，本轮 ${roll + 1}`,
+    };
+  },
+
+  _buildStickyCandidate(entry, entryState, turnIndex, turnKey) {
+    const sticky = Math.max(0, Number(entry.sticky) || 0);
+    if (!sticky || entryState.lastActiveTurn === null || !entryState.lastPromptKey) return null;
+    const elapsed = turnIndex - Number(entryState.lastActiveTurn);
+    if (elapsed <= 0 || elapsed > sticky) return null;
+    return {
+      ...entry,
+      _activationMode: 'sticky',
+      _matchKind: 'sticky',
+      _matchStep: 0,
+      _matchedPrimaryKeys: [],
+      _matchedSecondaryKeys: [],
+      _matchSources: [{ kind: 'sticky', label: '黏滞保留', preview: `上次命中后保留 ${sticky} 轮` }],
+      _turnIndex: turnIndex,
+      _turnKey: turnKey,
+      _matchScore: Math.max(1, sticky - elapsed + 1),
+    };
+  },
+
+  _scoreMatch(match) {
+    return (
+      (match.primaryMatches || []).length * 10
+      + (match.secondaryMatches || []).length * 4
+      + (match.sources || []).length
+    );
+  },
+
+  _applyGroups(candidates, compareForBudget, blockEntry) {
+    const grouped = new Map();
+    const ungrouped = [];
+    for (const entry of candidates) {
+      const group = String(entry.group || '').trim();
+      if (!group) {
+        ungrouped.push(entry);
+        continue;
+      }
+      if (!grouped.has(group)) grouped.set(group, []);
+      grouped.get(group).push(entry);
+    }
+    const winners = [];
+    for (const [group, entries] of grouped.entries()) {
+      const sorted = [...entries].sort((a, b) => this._compareGroupChoice(a, b, compareForBudget));
+      const winner = sorted[0];
+      winners.push(winner);
+      for (const loser of sorted.slice(1)) {
+        blockEntry(loser, 'group', `同组「${group}」由「${winner.comment || winner.title || winner.uid}」胜出`, {
+          _groupWinnerUid: winner.uid,
+        });
+      }
+    }
+    return [...ungrouped, ...winners];
+  },
+
+  _compareGroupChoice(a, b, compareForBudget) {
+    const scoring = a.groupScoring || b.groupScoring || 'weight';
+    if (scoring === 'score' && (b._matchScore || 0) !== (a._matchScore || 0)) {
+      return (b._matchScore || 0) - (a._matchScore || 0);
+    }
+    if (scoring === 'weight' && (b.groupWeight || 0) !== (a.groupWeight || 0)) {
+      return (b.groupWeight || 0) - (a.groupWeight || 0);
+    }
+    if (a.order !== b.order) return b.order - a.order;
+    return compareForBudget(a, b);
+  },
+
+  _commitActivationState(book, normalized, conversation, active, blocked, turnIndex, turnKey) {
+    const state = normalized.worldBookState || { entries: {} };
+    state.entries = state.entries || {};
+    const markFirstMatch = entry => {
+      if (!entry || !entry.uid) return;
+      const uid = String(entry.uid);
+      const item = state.entries[uid] || {};
+      if (item.firstMatchTurn === null || item.firstMatchTurn === undefined) item.firstMatchTurn = turnIndex;
+      item.lastMatchTurn = turnIndex;
+      state.entries[uid] = item;
+    };
+    for (const entry of [...active, ...blocked]) {
+      if (entry._matchKind && !['constant', 'sticky'].includes(entry._matchKind)) markFirstMatch(entry);
+      if (entry._pendingFirstMatchTurn !== undefined) markFirstMatch(entry);
+    }
+    for (const entry of active) {
+      const uid = String(entry.uid);
+      const item = state.entries[uid] || {};
+      if (item.firstMatchTurn === null || item.firstMatchTurn === undefined) item.firstMatchTurn = turnIndex;
+      if (entry._activationMode !== 'sticky') item.lastActiveTurn = turnIndex;
+      item.lastPromptKey = turnKey;
+      state.entries[uid] = item;
+    }
+    book.worldBookState = state;
+    if (conversation?.worldBook) conversation.worldBook.worldBookState = state;
+  },
+
+  _getTurnIndex(conversation) {
+    return (conversation?.messages || []).filter(msg => !msg.hidden && msg.role === 'user').length;
+  },
+
+  _getTurnKey(conversation, turnIndex) {
+    const lastUser = [...(conversation?.messages || [])].reverse().find(msg => !msg.hidden && msg.role === 'user') || {};
+    return `${conversation?.id || ''}|${turnIndex}|${lastUser.id || ''}|${this._stableHash(lastUser.content || '')}`;
+  },
+
+  _formatEntryPrompt(entry) {
+    const title = entry.comment || entry.title || `条目 ${entry.uid}`;
+    return `### ${title}\n${String(entry.content || '').trim()}`;
+  },
+
+  _wrapPromptBucket(label, items) {
+    if (!items || items.length === 0) return '';
+    return `【世界书：${label}】\n` + items.join('\n\n');
+  },
+});
+
 // ============================================================
 // MVU Module
 // ============================================================
@@ -2286,6 +2971,24 @@ const MVU = {
     .mvu-data-mini-btn { height: 30px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--text-secondary); cursor: pointer; }
     .mvu-data-mini-btn:hover { color: var(--accent); border-color: var(--accent); }
     .mvu-data-empty { color: var(--text-muted); text-align: center; font-size: 12px; padding: 24px 8px; }
+    .mvu-changes-view { display: flex; flex-direction: column; gap: 10px; }
+    .mvu-changes-summary { border: 1px solid rgba(201,164,76,0.18); border-radius: 8px; background: rgba(201,164,76,0.07); padding: 12px; display: grid; gap: 3px; }
+    .mvu-changes-summary strong { color: var(--accent); font-size: 14px; }
+    .mvu-changes-summary span { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+    .mvu-change-card { border: 1px solid rgba(201,164,76,0.16); border-radius: 8px; background: rgba(255,255,255,0.028); padding: 11px; display: grid; gap: 9px; }
+    .mvu-change-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .mvu-change-title { min-width: 0; display: grid; gap: 2px; }
+    .mvu-change-label { color: var(--text-primary); font-size: 13px; font-weight: 700; word-break: break-word; }
+    .mvu-change-key { color: var(--text-muted); font-size: 10px; font-family: monospace; word-break: break-all; }
+    .mvu-change-delta { flex: 0 0 auto; max-width: 90px; border: 1px solid rgba(201,164,76,0.24); border-radius: 999px; background: rgba(201,164,76,0.11); color: var(--accent); font-size: 11px; font-weight: 700; line-height: 1.25; padding: 3px 8px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mvu-change-meta { display: flex; flex-wrap: wrap; gap: 5px; }
+    .mvu-change-tag { border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 10px; line-height: 1.2; padding: 3px 7px; }
+    .mvu-change-compare { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
+    .mvu-change-side { border-radius: 7px; background: rgba(0,0,0,0.16); padding: 8px; display: grid; gap: 4px; min-width: 0; }
+    .mvu-change-side b { color: var(--text-muted); font-size: 10px; font-weight: 600; }
+    .mvu-change-side p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 84px; overflow: auto; }
+    .mvu-change-side.after p { color: var(--text-primary); }
+    .mvu-change-empty { border: 1px dashed rgba(201,164,76,0.2); border-radius: 8px; padding: 28px 14px; text-align: center; color: var(--text-muted); font-size: 12px; line-height: 1.6; background: rgba(255,255,255,0.02); }
   `,
   parseStorySetting(text) {
     const m = text.match(/```text:story_setting\s*\n([\s\S]*?)\n```/);
@@ -2811,6 +3514,109 @@ const MVU = {
       </div>
       ${control}
     </div>`;
+  },
+
+  renderChangesView(container, mvuData) {
+    if (!container || !mvuData) return;
+    let styleEl = document.getElementById('mvu-custom-style');
+    if (!styleEl) { styleEl = document.createElement('style'); styleEl.id = 'mvu-custom-style'; document.head.appendChild(styleEl); }
+    styleEl.textContent = this.BASE_STYLE + '\n' + (mvuData.css || '');
+
+    const changes = Array.isArray(mvuData._lastChanges) ? mvuData._lastChanges : [];
+    if (!changes.length) {
+      container.innerHTML = `<div class="mvu-changes-view">
+        <div class="mvu-change-empty">本轮暂无状态栏变化<br><span>AI 回复或手动编辑状态栏后，会在这里显示变化记录</span></div>
+      </div>`;
+      return;
+    }
+
+    const sourceLabel = this._formatChangeSource(changes[0]?.source);
+    const latestTime = changes.reduce((max, change) => Math.max(max, Number(change.time || 0)), 0);
+    let html = `<div class="mvu-changes-view">
+      <div class="mvu-changes-summary">
+        <strong>本轮变化 · ${changes.length}</strong>
+        <span>来源：${Utils.escapeHtml(sourceLabel)}${latestTime ? ` · ${Utils.escapeHtml(this._formatChangeTime(latestTime))}` : ''}</span>
+      </div>`;
+    for (const change of changes) html += this._renderChangeCard(change);
+    html += '</div>';
+    container.innerHTML = html;
+  },
+
+  _renderChangeCard(change) {
+    const label = change.label || change.field || '未命名条目';
+    const field = change.field || '';
+    const type = change.type || '';
+    const delta = change.delta || this._inferChangeDelta(change.before, change.after);
+    const before = this._formatChangeValue(change.before);
+    const after = this._formatChangeValue(change.after);
+    const source = this._formatChangeSource(change.source);
+    const time = change.time ? this._formatChangeTime(change.time) : '';
+    return `<article class="mvu-change-card">
+      <div class="mvu-change-head">
+        <div class="mvu-change-title">
+          <span class="mvu-change-label">${Utils.escapeHtml(String(label))}</span>
+          ${field ? `<span class="mvu-change-key">${Utils.escapeHtml(String(field))}</span>` : ''}
+        </div>
+        <span class="mvu-change-delta">${Utils.escapeHtml(String(delta || '修改'))}</span>
+      </div>
+      <div class="mvu-change-meta">
+        ${type ? `<span class="mvu-change-tag">${Utils.escapeHtml(String(type))}</span>` : ''}
+        <span class="mvu-change-tag">${Utils.escapeHtml(source)}</span>
+        ${time ? `<span class="mvu-change-tag">${Utils.escapeHtml(time)}</span>` : ''}
+      </div>
+      <div class="mvu-change-compare">
+        <div class="mvu-change-side before"><b>修改前</b><p>${Utils.escapeHtml(before || '空')}</p></div>
+        <div class="mvu-change-side after"><b>修改后</b><p>${Utils.escapeHtml(after || '空')}</p></div>
+      </div>
+    </article>`;
+  },
+
+  _formatChangeValue(value) {
+    if (value === undefined || value === null || value === '') return '';
+    if (typeof value === 'string') return this._limitChangeText(value);
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (Array.isArray(value)) {
+      if (!value.length) return '[]';
+      return this._limitChangeText(value.map(item => this._formatDisplayValue(item)).join('\n'));
+    }
+    if (typeof value === 'object') {
+      const summary = this._formatDisplayValue(value);
+      return this._limitChangeText(summary || JSON.stringify(value, null, 2));
+    }
+    return this._limitChangeText(String(value));
+  },
+
+  _limitChangeText(text, max = 420) {
+    const clean = String(text || '').trim();
+    return clean.length > max ? clean.slice(0, max - 3) + '...' : clean;
+  },
+
+  _formatChangeSource(source) {
+    const map = { ai: 'AI 更新', edit: '手动编辑', manual: '手动编辑' };
+    return map[source] || '状态栏更新';
+  },
+
+  _formatChangeTime(time) {
+    const date = new Date(time);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  },
+
+  _inferChangeDelta(before, after) {
+    if (typeof before === 'number' && typeof after === 'number') {
+      const diff = after - before;
+      if (diff > 0) return `+${diff}`;
+      if (diff < 0) return String(diff);
+      return '0';
+    }
+    if (Array.isArray(before) && Array.isArray(after)) {
+      const diff = after.length - before.length;
+      if (diff > 0) return `新增 ${diff}`;
+      if (diff < 0) return `删除 ${Math.abs(diff)}`;
+    }
+    if (before === undefined || before === null || before === '') return '新增';
+    if (after === undefined || after === null || after === '') return '清空';
+    return '修改';
   },
 
   render(container, mvuData) {

@@ -2867,6 +2867,7 @@
             <button class="btn btn-secondary" onclick="triggerWorldBookImport()">导入</button>
             <button class="btn btn-secondary" onclick="exportWorldBook('airp')">导出 AIRP</button>
             <button class="btn btn-secondary" onclick="exportWorldBook('tavern')">导出酒馆</button>
+            <button class="btn btn-secondary" onclick="cleanWorldBookConstantEntries()">清理误常驻</button>
             <button class="btn btn-secondary" onclick="deleteCurrentWorldBook()" style="border-color:rgba(201,106,90,0.45);color:var(--danger);">清空世界书</button>
           </div>
         </div>
@@ -2899,10 +2900,17 @@
               <label>递归层数</label>
               <input type="number" min="0" max="10" id="worldBookMaxRecursionSteps" onchange="updateWorldBookSetting('maxRecursionSteps', this.value, 'number')">
             </div>
+            <div class="form-group">
+              <label>扫描模式</label>
+              <select id="worldBookScanMode" onchange="updateWorldBookSetting('scanMode', this.value)">
+                <option value="recent_chat">最近聊天</option>
+                <option value="latest_user">仅本轮输入</option>
+              </select>
+            </div>
           </div>
           <div class="worldbook-checkboxes" style="margin-top:12px;">
             <label class="worldbook-checkbox"><input type="checkbox" id="worldBookRecursiveScan" onchange="updateWorldBookSetting('recursiveScan', this.checked, 'boolean')">递归扫描</label>
-            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookIncludeMvuState" onchange="updateWorldBookSetting('includeMvuState', this.checked, 'boolean')">扫描状态栏</label>
+            <label class="worldbook-checkbox"><input type="checkbox" id="worldBookIncludeMvuState" onchange="updateWorldBookSetting('includeMvuState', this.checked, 'boolean')">扫描状态栏（默认关闭）</label>
             <label class="worldbook-checkbox"><input type="checkbox" id="worldBookIncludeStorySetting" onchange="updateWorldBookSetting('includeStorySetting', this.checked, 'boolean')">扫描故事设定</label>
             <label class="worldbook-checkbox"><input type="checkbox" id="worldBookCaseSensitive" onchange="updateWorldBookSetting('caseSensitive', this.checked, 'boolean')">全局区分大小写</label>
             <label class="worldbook-checkbox"><input type="checkbox" id="worldBookMatchWholeWords" onchange="updateWorldBookSetting('matchWholeWords', this.checked, 'boolean')">全局整词匹配</label>
@@ -2961,7 +2969,6 @@ let mvuGameSelection = {
 let mvuGameDetailOpen = false;
 let mvuSearchQuery = '';
 let editingMvuCharacterIndex = -1;
-let mvuChangesOpen = false;
 let userScrolledUp = false;
 let _lastBuiltPrompt = null; // cached prompt for debug inspector
 let pendingMvuInit = null;
@@ -2972,14 +2979,152 @@ let worldBookFilter = 'all';
 let worldBookSelectedUid = null;
 let worldBookExpandedUid = null;
 let currentAbortController = null;
+let nativeAiNotificationStarted = false;
+let nativeStreamSessionId = null;
+let nativeStreamPollTimer = null;
+let nativeStreamLastText = '';
+let nativeStreamAiMsgId = null;
 let streamStartTime = 0;
 let streamStatusTimer = null;
 let lastFailedUserMsgId = null;
+
+function getNativeNotificationTargetPath() {
+  return conversation?.id ? `chat.html?id=${encodeURIComponent(conversation.id)}` : 'index.html';
+}
+
+function getNativeNotificationTitle() {
+  return (conversation?.name || '未命名故事').trim();
+}
+
+function buildNativeAiNotificationPreview(text) {
+  const raw = Utils.extractStoryContent(text, true) || Summary.cleanAbstract(MVU.cleanText(text)) || '';
+  const plain = raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain || 'AI 已生成新内容，点按查看';
+}
+
+function areNotificationPromptsEnabled() {
+  return Storage.getSettings().enableNotificationBar !== false;
+}
+
+function notifyAiStreamingStart() {
+  if (!areNotificationPromptsEnabled()) return;
+  if (nativeAiNotificationStarted) return;
+  nativeAiNotificationStarted = true;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.notifyAiStreaming) {
+      window.AndroidBridge.notifyAiStreaming(getNativeNotificationTargetPath(), getNativeNotificationTitle());
+    }
+  } catch (e) {
+    log('notifyAiStreaming failed:', e);
+  }
+}
+
+function notifyAiStreamingDone(text) {
+  if (!areNotificationPromptsEnabled()) return;
+  nativeAiNotificationStarted = false;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.notifyAiReply) {
+      window.AndroidBridge.notifyAiReply(
+        getNativeNotificationTargetPath(),
+        getNativeNotificationTitle(),
+        buildNativeAiNotificationPreview(text)
+      );
+    }
+  } catch (e) {
+    log('notifyAiReply failed:', e);
+  }
+}
+
+function notifyAiStreamingFailed() {
+  if (!areNotificationPromptsEnabled()) return;
+  nativeAiNotificationStarted = false;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.notifyAiError) {
+      window.AndroidBridge.notifyAiError(getNativeNotificationTargetPath(), getNativeNotificationTitle());
+    } else if (window.AndroidBridge && window.AndroidBridge.cancelAiNotification) {
+      window.AndroidBridge.cancelAiNotification();
+    }
+  } catch (e) {
+    log('notifyAiError failed:', e);
+  }
+}
+
+function cancelAiStreamingNotification() {
+  if (!areNotificationPromptsEnabled()) return;
+  nativeAiNotificationStarted = false;
+  try {
+    if (window.AndroidBridge && window.AndroidBridge.cancelAiNotification) {
+      window.AndroidBridge.cancelAiNotification();
+    }
+  } catch (e) {
+    log('cancelAiNotification failed:', e);
+  }
+}
+
+function canUseNativeBackgroundStreaming() {
+  return areNotificationPromptsEnabled() && !editMvuMode && !!(window.AndroidBridge && window.AndroidBridge.startNativeAiStream);
+}
+
+function clearNativeStreamPolling() {
+  if (nativeStreamPollTimer) {
+    clearInterval(nativeStreamPollTimer);
+    nativeStreamPollTimer = null;
+  }
+}
+
+function clearNativeStreamTracking() {
+  clearNativeStreamPolling();
+  nativeStreamSessionId = null;
+  nativeStreamLastText = '';
+  nativeStreamAiMsgId = null;
+}
+
+function getNativeStreamState(sessionId) {
+  if (!sessionId || !window.AndroidBridge?.getNativeAiStreamState) return null;
+  try {
+    const raw = window.AndroidBridge.getNativeAiStreamState(sessionId);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    log('getNativeStreamState failed:', e);
+    return null;
+  }
+}
+
+function clearNativeStreamState(sessionId) {
+  try {
+    if (sessionId && window.AndroidBridge?.clearNativeAiStreamState) {
+      window.AndroidBridge.clearNativeAiStreamState(sessionId);
+    }
+  } catch (e) {
+    log('clearNativeAiStreamState failed:', e);
+  }
+}
+
+function setNativeAbortController(sessionId) {
+  currentAbortController = {
+    isNative: true,
+    sessionId,
+    abort() {
+      try {
+        if (window.AndroidBridge?.cancelNativeAiStream) {
+          window.AndroidBridge.cancelNativeAiStream(sessionId);
+        }
+      } catch (e) {
+        log('cancelNativeAiStream failed:', e);
+      }
+    },
+  };
+}
 
 // ============================================================
 // Initialization
 // ============================================================
 document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    resumeNativeStreamIfNeeded();
+  }
+});
 
 async function init() {
   await Config.load();
@@ -3061,6 +3206,7 @@ async function init() {
   setupScrollDetection();
   setupIOSKeyboardFix();
   updateSendButton();
+  resumeNativeStreamIfNeeded();
 
   // Restore options from last AI message
   const lastAiMsg = [...conversation.messages].reverse().find(m => m.role === 'assistant');
@@ -3383,6 +3529,7 @@ function renderWorldBookUI() {
   document.getElementById('worldBookMaxChars').value = book.settings.maxChars;
   document.getElementById('worldBookScanDepth').value = book.settings.scanDepth;
   document.getElementById('worldBookMaxRecursionSteps').value = book.settings.maxRecursionSteps;
+  document.getElementById('worldBookScanMode').value = book.settings.scanMode || 'recent_chat';
   document.getElementById('worldBookRecursiveScan').checked = !!book.settings.recursiveScan;
   document.getElementById('worldBookIncludeMvuState').checked = !!book.settings.includeMvuState;
   document.getElementById('worldBookIncludeStorySetting').checked = !!book.settings.includeStorySetting;
@@ -3417,6 +3564,7 @@ function getFilteredWorldBookEntries(entries) {
       entry.title,
       entry.comment,
       entry.content,
+      entry.group,
       ...(entry.keys || []),
       ...(entry.secondaryKeys || []),
     ].join('\n').toLowerCase();
@@ -3425,13 +3573,16 @@ function getFilteredWorldBookEntries(entries) {
 }
 
 function renderWorldBookStats(book) {
-  const activeCount = WorldBook.buildPromptBlocks({ ...conversation, worldBook: book, storySetting: worldSettingDraft?.storySetting || '' }).active.length;
+  const blocks = WorldBook.buildPromptBlocks({ ...conversation, worldBook: book, storySetting: worldSettingDraft?.storySetting || '' });
+  const activeCount = blocks.active.length;
   const stats = [
     { label: '总条目', value: book.entries.length },
     { label: '已启用', value: book.entries.filter(entry => entry.enabled).length },
     { label: '常驻项', value: book.entries.filter(entry => entry.constant).length },
     { label: '自动条目', value: book.entries.filter(entry => entry.enabled && !entry.constant && (entry.keys || []).length).length },
+    { label: '候选命中', value: (blocks.candidates || []).length },
     { label: '将注入', value: activeCount },
+    { label: '被拦截', value: (blocks.blocked || []).length },
   ];
   document.getElementById('worldBookStats').innerHTML = stats.map(item => `
     <div class="worldbook-stat">
@@ -3441,37 +3592,78 @@ function renderWorldBookStats(book) {
   `).join('');
 }
 
+function getWorldBookActivationLabel(entry) {
+  if (entry._activationMode === 'constant') return '常驻';
+  if (entry._activationMode === 'sticky') return '黏滞保留';
+  if (entry._matchKind === 'recursive') return '递归命中';
+  return '自动命中';
+}
+
+function getWorldBookBlockedReason(entry) {
+  const reasons = {
+    budget: '预算不足',
+    maxEntries: '条目上限',
+    group: '同组未选中',
+    probability: '概率未过',
+    cooldown: '冷却中',
+    delay: '延迟等待',
+  };
+  return reasons[entry._blockedReason] || '已拦截';
+}
+
 function renderWorldBookActivePreview(book) {
   const container = document.getElementById('worldBookActivePreview');
   if (!container) return;
   const blocks = WorldBook.buildPromptBlocks({ ...conversation, worldBook: book, storySetting: worldSettingDraft?.storySetting || '' });
   const active = blocks.active || [];
   const blocked = blocks.blocked || [];
+  const candidates = blocks.candidates || [];
+  const scanSources = blocks.scanSources || [];
+  const settings = blocks.worldBookSettings || book.settings || {};
+  const scanMode = settings.scanMode === 'latest_user' ? '仅本轮输入' : '最近聊天';
+  const sourceSummary = scanSources.length
+    ? scanSources.map(source => `${source.label || source.kind} ${(source.content || '').length}字`).join(' / ')
+    : '无可扫描上下文';
+  const blockedPreview = blocked.slice(0, 6).map(entry => {
+    const title = entry.comment || entry.title || ('条目 ' + entry.uid);
+    const reason = getWorldBookBlockedReason(entry);
+    return `<span class="worldbook-tag manual">${Utils.escapeHtml(title)}：${reason}</span>`;
+  }).join('');
   if (!active.length) {
     container.innerHTML = `
       <div class="worldbook-card-title">本轮自动命中预览</div>
+      <div class="worldbook-card-subtitle">扫描模式：${scanMode}；扫描源：${Utils.escapeHtml(sourceSummary)}。状态栏扫描${settings.includeMvuState ? '已开启，可能导致角色名/地点长期固定命中。' : '已关闭。'}${blocked.length ? ` 有 ${blocked.length} 条命中后被规则或预算拦截。` : ''}</div>
+      ${blockedPreview ? `<div class="worldbook-editor-tags" style="margin-bottom:10px;">${blockedPreview}</div>` : ''}
       <div class="worldbook-entry-empty">当前上下文没有命中普通条目。只有常驻条目会固定注入；缺少关键词的普通条目不会自动触发。${blocked.length ? `另有 ${blocked.length} 条被预算或条目上限拦截。` : ''}</div>
     `;
     return;
   }
   container.innerHTML = `
     <div class="worldbook-card-title">本轮自动命中预览</div>
-    <div class="worldbook-card-subtitle">根据当前最近聊天、状态栏和递归规则实时计算，保存后每轮都会重新判断。${blocked.length ? `有 ${blocked.length} 条命中但被预算/条目上限拦截。` : ''}</div>
+    <div class="worldbook-card-subtitle">扫描模式：${scanMode}；候选 ${candidates.length} 条，实际注入 ${active.length} 条。扫描源：${Utils.escapeHtml(sourceSummary)}。状态栏扫描${settings.includeMvuState ? '已开启，可能造成固定命中。' : '已关闭。'}${blocked.length ? ` 有 ${blocked.length} 条命中后被规则或预算拦截。` : ''}</div>
+    ${blockedPreview ? `<div class="worldbook-editor-tags" style="margin-bottom:10px;">${blockedPreview}</div>` : ''}
     <div class="worldbook-editor-list">
       ${active.slice(0, 12).map(entry => {
         const keys = [...(entry._matchedPrimaryKeys || []), ...(entry._matchedSecondaryKeys || [])].slice(0, 6);
         const sources = (entry._matchSources || []).map(source => source.label || source.kind).filter(Boolean).slice(0, 3);
+        const extraTags = [
+          entry.group ? `组 ${entry.group}` : '',
+          entry.sticky ? `黏滞 ${entry.sticky}` : '',
+          entry.cooldown ? `冷却 ${entry.cooldown}` : '',
+          entry.delay ? `延迟 ${entry.delay}` : '',
+        ].filter(Boolean);
         return `
           <div class="worldbook-editor-entry">
             <div class="worldbook-editor-head" style="cursor:default;">
               <div class="worldbook-editor-title-row">
                 <div class="worldbook-editor-title-group">
                   <div class="worldbook-editor-title">${Utils.escapeHtml(entry.comment || entry.title || ('条目 ' + entry.uid))}</div>
-                  <div class="worldbook-editor-meta">${entry._activationMode === 'constant' ? '常驻' : (entry._matchKind === 'recursive' ? '递归命中' : '自动命中')} · ${Utils.escapeHtml(entry.position)} · ${(entry.content || '').length} 字</div>
+                  <div class="worldbook-editor-meta">${getWorldBookActivationLabel(entry)} · 预算#${entry._budgetRank || '-'} · ${Utils.escapeHtml(entry.position)} · ${(entry.content || '').length} 字</div>
                 </div>
                 <div class="worldbook-editor-tags">
                   ${keys.map(key => `<span class="worldbook-tag">${Utils.escapeHtml(key)}</span>`).join('')}
                   ${sources.map(source => `<span class="worldbook-tag manual">${Utils.escapeHtml(source)}</span>`).join('')}
+                  ${extraTags.map(tag => `<span class="worldbook-tag">${Utils.escapeHtml(tag)}</span>`).join('')}
                 </div>
               </div>
             </div>
@@ -3521,6 +3713,44 @@ function buildWorldBookEntryEditorFields(entry) {
       <div class="form-group">
         <label>触发概率</label>
         <input type="number" min="0" max="100" value="${Number.isFinite(Number(entry.probability)) ? Number(entry.probability) : 100}" onchange="updateWorldBookEntryField('probability', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>条目扫描深度</label>
+        <input type="number" min="0" max="50" value="${Number(entry.scanDepth) || 0}" onchange="updateWorldBookEntryField('scanDepth', this.value, 'nullableNumber')" placeholder="0=使用全局">
+      </div>
+      <div class="form-group">
+        <label>插入深度</label>
+        <input type="number" min="0" max="100" value="${Number(entry.depth) || 0}" onchange="updateWorldBookEntryField('depth', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>分组</label>
+        <input type="text" value="${Utils.escapeHtml(entry.group || '')}" onchange="updateWorldBookEntryField('group', this.value)" placeholder="同组只保留一个">
+      </div>
+      <div class="form-group">
+        <label>分组权重</label>
+        <input type="number" value="${Number.isFinite(Number(entry.groupWeight)) ? Number(entry.groupWeight) : 100}" onchange="updateWorldBookEntryField('groupWeight', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>分组评分</label>
+        <select onchange="updateWorldBookEntryField('groupScoring', this.value)">
+          ${[
+            ['weight', '按权重'],
+            ['score', '按命中强度'],
+            ['order', '按排序'],
+          ].map(([value, label]) => `<option value="${value}" ${(entry.groupScoring || 'weight') === value ? 'selected' : ''}>${label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>黏滞轮数</label>
+        <input type="number" min="0" max="50" value="${Number(entry.sticky) || 0}" onchange="updateWorldBookEntryField('sticky', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>冷却轮数</label>
+        <input type="number" min="0" max="50" value="${Number(entry.cooldown) || 0}" onchange="updateWorldBookEntryField('cooldown', this.value, 'number')">
+      </div>
+      <div class="form-group">
+        <label>延迟轮数</label>
+        <input type="number" min="0" max="50" value="${Number(entry.delay) || 0}" onchange="updateWorldBookEntryField('delay', this.value, 'number')">
       </div>
     </div>
     <div class="worldbook-checkboxes">
@@ -3623,6 +3853,10 @@ function updateWorldBookEntryField(field, value, type = 'text') {
   const entry = getSelectedWorldBookEntry();
   if (!entry) return;
   if (type === 'number') entry[field] = Number(value) || 0;
+  else if (type === 'nullableNumber') {
+    const number = Number(value);
+    entry[field] = Number.isFinite(number) && number > 0 ? Math.floor(number) : null;
+  }
   else if (type === 'boolean') {
     entry[field] = !!value;
   } else {
@@ -3693,6 +3927,27 @@ function deleteCurrentWorldBook() {
       worldBookExpandedUid = null;
       renderWorldBookUI();
       UI.showToast('当前世界书已清空，点击保存后正式生效', 'success');
+    },
+  });
+}
+
+function cleanWorldBookConstantEntries() {
+  const book = getWorldBookDraft();
+  if (!book) return;
+  const convertible = book.entries.filter(entry => entry.enabled && entry.constant && (entry.keys || []).length > 0);
+  if (!convertible.length) {
+    UI.showToast('没有发现带关键词的误常驻条目', 'info');
+    return;
+  }
+  UI.showConfirm({
+    title: '清理误常驻条目',
+    message: `将 ${convertible.length} 条“有关键词但被设为常驻”的条目改为自动触发。无关键词常驻项会保留。`,
+    onConfirm: () => {
+      for (const entry of convertible) {
+        entry.constant = false;
+      }
+      renderWorldBookUI();
+      UI.showToast(`已转为自动触发：${convertible.length} 条`, 'success');
     },
   });
 }
@@ -4385,6 +4640,8 @@ function renderMvuSidebar() {
 
   if (mvuViewMode === 'data') {
     MVU.renderDataView(container, conversation.mvu, { query: mvuSearchQuery });
+  } else if (mvuViewMode === 'changes') {
+    MVU.renderChangesView(container, conversation.mvu);
   } else {
     const normalized = normalizeMvuStructure(['characters', 'main_quests', 'side_quests']);
     if (normalized.changed) Storage.saveConversation(conversation);
@@ -4402,9 +4659,8 @@ function renderMvuToolbar() {
   const lastChangeCount = hasMvu ? (conversation.mvu._lastChanges || []).length : 0;
   const visualActive = mvuViewMode === 'visual' ? ' active' : '';
   const dataActive = mvuViewMode === 'data' ? ' active' : '';
-  const changeActive = mvuChangesOpen && mvuViewMode === 'data' ? ' change-active' : '';
+  const changeActive = mvuViewMode === 'changes' ? ' active' : '';
   const disabled = hasMvu ? '' : ' disabled';
-  const changeDock = hasMvu && mvuViewMode === 'data' && mvuChangesOpen ? MVU._renderChangePanel(conversation.mvu) : '';
 
   toolbar.innerHTML = `
     <div class="mvu-toolbar-top">
@@ -4422,16 +4678,14 @@ function renderMvuToolbar() {
     <div class="mvu-view-toggle">
       <button class="mvu-view-btn${visualActive}" onclick="setMvuViewMode('visual')"${disabled}>美化视图</button>
       <button class="mvu-view-btn${dataActive}" onclick="setMvuViewMode('data')"${disabled}>变量视图</button>
-      <button class="mvu-view-btn${changeActive}" onclick="toggleMvuChangesPanel()"${disabled}>本轮变化 · ${lastChangeCount}</button>
+      <button class="mvu-view-btn${changeActive}" onclick="setMvuViewMode('changes')"${disabled}>本轮变化 · ${lastChangeCount}</button>
     </div>
-    <div class="mvu-change-dock${changeDock ? ' visible' : ''}">${changeDock}</div>
     <input class="mvu-search${mvuViewMode === 'data' ? ' visible' : ''}" value="${Utils.escapeHtml(mvuSearchQuery)}" placeholder="搜索变量、分组或内容" oninput="handleMvuSearch(this.value)"${disabled}>
   `;
 }
 
 function setMvuViewMode(mode) {
-  mvuViewMode = ['visual', 'data'].includes(mode) ? mode : 'visual';
-  if (mvuViewMode !== 'data') mvuChangesOpen = false;
+  mvuViewMode = ['visual', 'data', 'changes'].includes(mode) ? mode : 'visual';
   if (mvuViewMode === 'visual' && syncMvuHtmlWithState()) {
     Storage.saveConversation(conversation);
   }
@@ -4439,13 +4693,7 @@ function setMvuViewMode(mode) {
 }
 
 function toggleMvuChangesPanel() {
-  if (mvuViewMode !== 'data') {
-    mvuViewMode = 'data';
-    mvuChangesOpen = true;
-  } else {
-    mvuChangesOpen = !mvuChangesOpen;
-  }
-  renderMvuSidebar();
+  setMvuViewMode('changes');
 }
 
 function setMvuGameTab(tab) {
@@ -6108,13 +6356,313 @@ function removeStreamStatus() {
   if (streamStatusTimer) { clearInterval(streamStatusTimer); streamStatusTimer = null; }
 }
 
-// ============================================================
-// Streaming
-// ============================================================
-async function streamAIResponse(retryAttempt = 0) {
+function finalizeStreamCleanup() {
+  isStreaming = false;
+  streamAborted = false;
+  streamStopRequested = false;
+  currentAbortController = null;
+  updateSendButton();
+  if (pendingMvuInit && conversation.phase === 'init') {
+    showMvuInitConfirmation();
+  }
+}
+
+function removeAiPlaceholderMessage(aiMsg) {
+  if (editMvuMode) {
+    editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
+  } else {
+    conversation.messages = conversation.messages.filter(m => m.id !== aiMsg.id);
+    Storage.saveConversation(conversation);
+  }
+  const el = document.getElementById(`msg-${aiMsg.id}`);
+  if (el) el.remove();
+}
+
+function handleEmptyAiResponse(aiMsg) {
+  log('onDone with empty response, removing placeholder');
+  cancelAiStreamingNotification();
+  removeAiPlaceholderMessage(aiMsg);
+  UI.showToast('AI 返回空响应', 'error');
+  finalizeStreamCleanup();
+}
+
+function compactWorldBookPromptSnapshot(promptSnapshot) {
+  if (!promptSnapshot) return null;
+  const compactEntry = entry => ({
+    uid: entry.uid,
+    _matchKind: entry._matchKind,
+    _activationMode: entry._activationMode,
+    _pendingFirstMatchTurn: entry._pendingFirstMatchTurn,
+  });
+  return {
+    activeWorldBookEntries: (promptSnapshot.activeWorldBookEntries || []).map(compactEntry),
+    blockedWorldBookEntries: (promptSnapshot.blockedWorldBookEntries || []).map(compactEntry),
+  };
+}
+
+function attachWorldBookSnapshotToAiMsg(aiMsg, promptSnapshot) {
+  if (!aiMsg || editMvuMode) return;
+  const snapshot = compactWorldBookPromptSnapshot(promptSnapshot);
+  if (snapshot) aiMsg.worldBookPromptSnapshot = snapshot;
+}
+
+function commitWorldBookSnapshotForAiMsg(aiMsg) {
+  if (!aiMsg || editMvuMode) return;
+  const snapshot = aiMsg.worldBookPromptSnapshot || _lastBuiltPrompt;
+  if (!snapshot) return;
+  WorldBook.commitPromptSnapshot(conversation, snapshot);
+  delete aiMsg.worldBookPromptSnapshot;
+}
+
+function applyCompletedAiResponse(aiMsg, fullText) {
+  aiMsg.content = fullText;
+  aiMsg.timestamp = Date.now();
+  updateAssistantBubble(aiMsg.id, fullText, false);
+
+  if (editMvuMode) {
+    processEditMvuResponse(fullText);
+  } else {
+    const abstract = Summary.parseAbstract(fullText);
+    if (abstract) aiMsg.abstract = abstract;
+
+    const refineArr = MVU.parseRefine(fullText);
+    if (refineArr && refineArr.length > 0) {
+      const originalStory = Utils.extractStoryContent(fullText);
+      const refinedStory = MVU.applyRefine(originalStory, refineArr);
+      if (refinedStory !== originalStory) {
+        fullText = fullText.replace(
+          /(<story>)([\s\S]*?)(<\/story>)/,
+          (m, open, content, close) => open + MVU.applyRefine(content, refineArr) + close
+        );
+        aiMsg.content = fullText;
+        updateAssistantBubble(aiMsg.id, fullText, false);
+        log('[Refine] Applied', refineArr.length, 'replacements');
+      }
+    }
+
+    processMvuFromResponse(fullText, aiMsg);
+    processWritingAdvice(fullText);
+    commitWorldBookSnapshotForAiMsg(aiMsg);
+    Storage.saveConversation(conversation);
+    renderOptionsBar(fullText);
+    if (summaryPanelOpen) renderSummaryPanel();
+    checkBigSummaryTrigger();
+    lastFailedUserMsgId = null;
+    removeRetryBar();
+  }
+
+  scrollToBottom(false);
+}
+
+function handleNativeStreamError(aiMsg, state) {
+  removeStreamStatus();
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeAiPlaceholderMessage(aiMsg);
+
+  const httpStatus = Number(state.httpStatus || 0);
+  const rawError = state.error || 'Unknown error';
+  const classified = API.classifyError(httpStatus, rawError);
+  const errDetail = `[${classified.type}] ${rawError}${httpStatus ? ' (HTTP ' + httpStatus + ')' : ''}`;
+
+  const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
+  if (lastUserMsg) {
+    lastFailedUserMsgId = lastUserMsg.id;
+    showRetryBar(lastUserMsg.id, `${classified.userMessage} | ${errDetail}`);
+  } else {
+    UI.showToast(classified.userMessage || rawError, 'error');
+  }
+
+  Storage.saveConversation(conversation);
+  finalizeStreamCleanup();
+}
+
+function handleNativeStreamCancelled(aiMsg, state) {
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeStreamStatus();
+  aiMsg.content = Utils.cleanNullFlood(state.fullText || '');
+  handleStreamStopped(aiMsg);
+}
+
+function handleNativeStreamCompleted(aiMsg, state) {
+  clearNativeStreamState(state.sessionId);
+  clearNativeStreamTracking();
+  removeStreamStatus();
+  const fullText = Utils.cleanNullFlood(state.fullText || '');
+  if (!fullText.trim()) {
+    handleEmptyAiResponse(aiMsg);
+    return;
+  }
+  applyCompletedAiResponse(aiMsg, fullText);
+  finalizeStreamCleanup();
+}
+
+function updateNativeStreamUi(aiMsg, state) {
+  const fullText = Utils.cleanNullFlood(state.fullText || '');
+  aiMsg.content = fullText;
+  updateAssistantBubble(aiMsg.id, fullText, state.status !== 'completed');
+  if (state.status === 'starting') {
+    showStreamStatus('connecting');
+  } else if (state.status === 'streaming') {
+    showStreamStatus('streaming');
+    updateStreamStatusText(`生成中 (${fullText.length}字)`);
+  }
+}
+
+function pollNativeStreamState(aiMsg) {
+  if (!nativeStreamSessionId) return;
+  const state = getNativeStreamState(nativeStreamSessionId);
+  if (!state) return;
+  if (state.conversationId && conversation?.id && state.conversationId !== conversation.id) return;
+  if (streamStopRequested && !['completed', 'cancelled', 'error'].includes(state.status)) return;
+
+  if ((state.fullText || '') !== nativeStreamLastText || state.status === 'starting' || state.status === 'streaming') {
+    nativeStreamLastText = state.fullText || '';
+    updateNativeStreamUi(aiMsg, state);
+  }
+
+  if (state.status === 'completed') {
+    handleNativeStreamCompleted(aiMsg, state);
+  } else if (state.status === 'cancelled') {
+    handleNativeStreamCancelled(aiMsg, state);
+  } else if (state.status === 'error') {
+    handleNativeStreamError(aiMsg, state);
+  }
+}
+
+function startNativeStreamPolling(aiMsg) {
+  clearNativeStreamPolling();
+  nativeStreamAiMsgId = aiMsg.id;
+  nativeStreamLastText = '';
+  pollNativeStreamState(aiMsg);
+  nativeStreamPollTimer = setInterval(() => pollNativeStreamState(aiMsg), 500);
+}
+
+function resumeNativeStreamIfNeeded() {
+  if (!canUseNativeBackgroundStreaming()) return;
+  let state = null;
+  try {
+    const activeRaw = window.AndroidBridge?.getActiveNativeAiStream?.();
+    const latestRaw = !activeRaw ? window.AndroidBridge?.getLatestNativeAiStream?.() : null;
+    state = activeRaw ? JSON.parse(activeRaw) : (latestRaw ? JSON.parse(latestRaw) : null);
+  } catch (e) {
+    log('resumeNativeStreamIfNeeded failed:', e);
+    return;
+  }
+
+  if (!state || state.conversationId !== conversation?.id || !state.sessionId) return;
+
+  let aiMsg = findMessage(state.aiMsgId);
+  if (!aiMsg) {
+    aiMsg = {
+      id: state.aiMsgId || Utils.generateId('msg'),
+      role: 'assistant',
+      content: state.fullText || '',
+      timestamp: Date.now(),
+      hidden: false,
+      abstract: null,
+    };
+    conversation.messages.push(aiMsg);
+    appendMessageElement(aiMsg);
+    Storage.saveConversation(conversation);
+  }
+
+  nativeStreamSessionId = state.sessionId;
+  setNativeAbortController(state.sessionId);
+  isStreaming = !['completed', 'cancelled', 'error'].includes(state.status);
+  streamAborted = false;
+  updateSendButton();
+
+  if (state.status === 'completed') {
+    handleNativeStreamCompleted(aiMsg, state);
+  } else if (state.status === 'cancelled') {
+    handleNativeStreamCancelled(aiMsg, state);
+  } else if (state.status === 'error') {
+    handleNativeStreamError(aiMsg, state);
+  } else {
+    startNativeStreamPolling(aiMsg);
+  }
+}
+
+async function streamAIResponseNative(retryAttempt = 0) {
   isStreaming = true;
   streamAborted = false;
   streamStopRequested = false;
+  clearNativeStreamTracking();
+  updateSendButton();
+
+  const settings = Storage.getSettings();
+  _lastBuiltPrompt = PromptBuilder.buildMessages(conversation);
+  const { systemPrompt, messages } = _lastBuiltPrompt;
+
+  const aiMsg = {
+    id: Utils.generateId('msg'),
+    role: 'assistant',
+    content: '',
+    timestamp: Date.now(),
+    hidden: false,
+    abstract: null,
+  };
+  attachWorldBookSnapshotToAiMsg(aiMsg, _lastBuiltPrompt);
+  conversation.messages.push(aiMsg);
+  appendMessageElement(aiMsg);
+  Storage.saveConversation(conversation);
+
+  showStreamStatus('connecting');
+
+  const apiProfileId = settings.defaultApiProfileId;
+  const model = settings.defaultModel;
+  const apiProfile = Storage.getApiProfile(apiProfileId);
+  if (!apiProfile) {
+    removeAiPlaceholderMessage(aiMsg);
+    removeStreamStatus();
+    UI.showToast('API 配置不存在', 'error');
+    finalizeStreamCleanup();
+    return;
+  }
+
+  const payload = {
+    sessionId: Utils.generateId('nstream'),
+    conversationId: conversation.id,
+    conversationTitle: getNativeNotificationTitle(),
+    aiMsgId: aiMsg.id,
+    apiProfile,
+    model,
+    systemPrompt,
+    messages,
+  };
+
+  try {
+    nativeStreamSessionId = window.AndroidBridge.startNativeAiStream(JSON.stringify(payload));
+  } catch (e) {
+    log('startNativeAiStream failed:', e);
+    nativeStreamSessionId = null;
+  }
+
+  if (!nativeStreamSessionId) {
+    removeAiPlaceholderMessage(aiMsg);
+    removeStreamStatus();
+    UI.showToast('启动后台生成失败', 'error');
+    finalizeStreamCleanup();
+    return streamAIResponse(retryAttempt, false);
+  }
+
+  setNativeAbortController(nativeStreamSessionId);
+  startNativeStreamPolling(aiMsg);
+}
+
+// ============================================================
+// Streaming
+// ============================================================
+async function streamAIResponse(retryAttempt = 0, allowNativeStreaming = true) {
+  if (allowNativeStreaming && canUseNativeBackgroundStreaming()) {
+    return streamAIResponseNative(retryAttempt);
+  }
+  isStreaming = true;
+  streamAborted = false;
+  streamStopRequested = false;
+  if (retryAttempt === 0) nativeAiNotificationStarted = false;
   updateSendButton();
 
   const MAX_AUTO_RETRIES = 2;
@@ -6138,6 +6686,7 @@ async function streamAIResponse(retryAttempt = 0) {
     hidden: false,
     abstract: null,
   };
+  if (!editMvuMode) attachWorldBookSnapshotToAiMsg(aiMsg, _lastBuiltPrompt);
   if (editMvuMode) {
     editMvuMessages.push(aiMsg);
   } else {
@@ -6168,6 +6717,9 @@ async function streamAIResponse(retryAttempt = 0) {
 
     onChunk(chunk, fullText) {
       if (streamAborted) return;
+      if (fullText && fullText.trim()) {
+        notifyAiStreamingStart();
+      }
       aiMsg.content = fullText;
       updateAssistantBubble(aiMsg.id, fullText, true);
       updateStreamStatusText(`生成中 (${fullText.length}字)`);
@@ -6183,6 +6735,7 @@ async function streamAIResponse(retryAttempt = 0) {
       // Guard: if response is completely empty, treat as error
       if (!fullText || !fullText.trim()) {
         log('onDone with empty response, removing placeholder');
+        notifyAiStreamingFailed();
         if (editMvuMode) {
           editMvuMessages = editMvuMessages.filter(m => m.id !== aiMsg.id);
         } else {
@@ -6230,6 +6783,7 @@ async function streamAIResponse(retryAttempt = 0) {
 
         processMvuFromResponse(fullText, aiMsg);
         processWritingAdvice(fullText);
+        commitWorldBookSnapshotForAiMsg(aiMsg);
         Storage.saveConversation(conversation);
         renderOptionsBar(fullText);
         if (summaryPanelOpen) renderSummaryPanel();
@@ -6239,6 +6793,8 @@ async function streamAIResponse(retryAttempt = 0) {
         lastFailedUserMsgId = null;
         removeRetryBar();
       }
+
+      notifyAiStreamingDone(fullText);
 
       isStreaming = false;
       streamAborted = false;
@@ -6293,6 +6849,7 @@ async function streamAIResponse(retryAttempt = 0) {
       }
 
       // All retries exhausted or non-retryable: show error retry bar
+      notifyAiStreamingFailed();
       const lastUserMsg = [...conversation.messages].reverse().find(m => m.role === 'user');
       if (lastUserMsg) {
         lastFailedUserMsgId = lastUserMsg.id;
@@ -6312,6 +6869,7 @@ async function streamAIResponse(retryAttempt = 0) {
 }
 
 function handleStreamStopped(aiMsg) {
+  cancelAiStreamingNotification();
   try {
     if (aiMsg.content) {
       // Keep partial content
@@ -6330,6 +6888,7 @@ function handleStreamStopped(aiMsg) {
         aiMsg.abstract = Summary.parseAbstract(aiMsg.content);
         processMvuFromResponse(aiMsg.content, aiMsg);
         processWritingAdvice(aiMsg.content);
+        commitWorldBookSnapshotForAiMsg(aiMsg);
         Storage.saveConversation(conversation);
       }
     } else {
@@ -6365,6 +6924,7 @@ function stopStreaming() {
 
   streamAborted = true;
   streamStopRequested = true;
+  cancelAiStreamingNotification();
   currentAbortController.abort();
   removeStreamStatus();
   updateSendButton();
@@ -6573,6 +7133,8 @@ function processMvuFromResponse(text, aiMsg) {
       // Update DOM
       if (mvuViewMode === 'data') {
         MVU.renderDataView(container, conversation.mvu, { query: mvuSearchQuery });
+      } else if (mvuViewMode === 'changes') {
+        MVU.renderChangesView(container, conversation.mvu);
       } else if (normalized.changed) {
         renderMvuSidebar();
       } else {
@@ -7238,6 +7800,9 @@ function showPromptDebug() {
     messages,
     activeWorldBookEntries = [],
     blockedWorldBookEntries = [],
+    candidateWorldBookEntries = [],
+    worldBookScanSources = [],
+    worldBookSettings = {},
   } = promptSnapshot;
   const THRESHOLD = 200;
 
@@ -7261,22 +7826,29 @@ function showPromptDebug() {
     </div>`;
   }
 
-  function worldBookBlock(entry, idx, blocked = false) {
+  function worldBookBlock(entry, idx, blocked = false, badge = '') {
     const title = entry.comment || entry.title || ('条目 ' + entry.uid);
     const keys = [...(entry._matchedPrimaryKeys || []), ...(entry._matchedSecondaryKeys || [])].slice(0, 8);
     const sources = (entry._matchSources || []).map(source => source.label || source.kind).filter(Boolean).slice(0, 4);
-    const mode = entry._activationMode === 'constant'
-      ? '常驻'
-      : (entry._matchKind === 'recursive' ? '递归命中' : '自动命中');
-    const reason = blocked ? (entry._blockedReason === 'budget' ? '预算不足' : '条目数上限') : mode;
-    const meta = `${reason} · ${entry.position || 'after_char'} · 排序 ${Number(entry.order) || 0} · ${(entry.content || '').length}字`;
+    const mode = getWorldBookActivationLabel(entry);
+    const reason = blocked ? getWorldBookBlockedReason(entry) : mode;
+    const detail = blocked && entry._blockedDetail ? ` · ${entry._blockedDetail}` : '';
+    const scoreText = Number(entry._matchScore) ? ` · 命中分 ${entry._matchScore}` : '';
+    const groupText = entry.group ? ` · 组 ${entry.group}` : '';
+    const meta = `${reason}${detail} · 预算#${entry._budgetRank || '-'} · ${entry.position || 'after_char'} · Order ${Number(entry.order) || 0}${scoreText}${groupText} · ${(entry.content || '').length}字`;
     const tags = [
       ...keys.map(key => `关键词 ${key}`),
       ...sources.map(source => `来源 ${source}`),
+      entry.scanDepth ? `条目扫描深度 ${entry.scanDepth}` : '',
+      entry.sticky ? `黏滞 ${entry.sticky}` : '',
+      entry.cooldown ? `冷却 ${entry.cooldown}` : '',
+      entry.delay ? `延迟 ${entry.delay}` : '',
+      Number(entry.probability) < 100 ? `概率 ${entry.probability}%` : '',
     ].map(tag => `<span class="debug-badge">${Utils.escapeHtml(tag)}</span>`).join('');
+    const roleBadge = badge || (blocked ? 'BLOCKED' : 'WB');
     return `<div class="debug-message">
       <div class="debug-msg-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
-        <span class="debug-role debug-role-${blocked ? 'sys' : 'user'}">${blocked ? 'BLOCKED' : 'WB'}</span>
+        <span class="debug-role debug-role-${blocked ? 'sys' : 'user'}">${roleBadge}</span>
         <span class="debug-msg-meta">#${idx + 1} · ${Utils.escapeHtml(meta)}</span>
         <span class="debug-preview">${Utils.escapeHtml(title)}</span>
       </div>
@@ -7287,16 +7859,44 @@ function showPromptDebug() {
   function worldBookSection() {
     const activeHtml = activeWorldBookEntries.map((entry, i) => worldBookBlock(entry, i)).join('');
     const blockedHtml = blockedWorldBookEntries.map((entry, i) => worldBookBlock(entry, i, true)).join('');
+    const candidateHtml = candidateWorldBookEntries
+      .filter(entry => !activeWorldBookEntries.some(active => active.uid === entry.uid))
+      .slice(0, 24)
+      .map((entry, i) => worldBookBlock(entry, i, false, 'CAND'))
+      .join('');
+    const scanHtml = worldBookScanSources.length
+      ? worldBookScanSources.map((source, i) => {
+          const content = String(source.content || '');
+          return `<div class="debug-message">
+            <div class="debug-msg-header" onclick="this.nextElementSibling.classList.toggle('collapsed')">
+              <span class="debug-role debug-role-sys">SCAN</span>
+              <span class="debug-msg-meta">#${i + 1} · ${Utils.escapeHtml(source.label || source.kind)} · ${content.length}字</span>
+              <span class="debug-preview">${Utils.escapeHtml(content.replace(/\s+/g, ' ').slice(0, 70))}</span>
+            </div>
+            <pre class="debug-pre collapsed">${Utils.escapeHtml(content)}</pre>
+          </div>`;
+        }).join('')
+      : '<div class="debug-message"><pre class="debug-pre">本轮没有可扫描文本。</pre></div>';
+    const scanModeText = worldBookSettings.scanMode === 'latest_user' ? '仅本轮输入' : '最近聊天';
+    const settingsText = `扫描模式 ${scanModeText} · 扫描深度 ${worldBookSettings.scanDepth || 0} · 状态栏扫描 ${worldBookSettings.includeMvuState ? '开启' : '关闭'} · 故事设定扫描 ${worldBookSettings.includeStorySetting ? '开启' : '关闭'} · 递归 ${worldBookSettings.recursiveScan ? '开启' : '关闭'}`;
     if (!activeHtml && !blockedHtml) {
       return `<div class="debug-section">
         <div class="debug-section-header"><span>世界书</span><span class="debug-badge">0条注入</span></div>
+        <div class="debug-message"><pre class="debug-pre">${Utils.escapeHtml(settingsText)}</pre></div>
+        <div class="debug-section-header"><span>扫描源</span><span class="debug-badge">${worldBookScanSources.length}项</span></div>
+        ${scanHtml}
+        ${candidateHtml ? `<div class="debug-section-header"><span>候选命中</span><span class="debug-badge">${candidateWorldBookEntries.length}条</span></div>${candidateHtml}` : ''}
         <div class="debug-message"><pre class="debug-pre">本轮没有世界书条目进入 Prompt。普通条目需要关键词命中；只有常驻条目会固定注入。</pre></div>
       </div>`;
     }
     return `<div class="debug-section">
       <div class="debug-section-header"><span>世界书</span><span class="debug-badge">${activeWorldBookEntries.length}条注入 / ${blockedWorldBookEntries.length}条拦截</span></div>
+      <div class="debug-message"><pre class="debug-pre">${Utils.escapeHtml(settingsText)}</pre></div>
+      <div class="debug-section-header"><span>扫描源</span><span class="debug-badge">${worldBookScanSources.length}项</span></div>
+      ${scanHtml}
       ${activeHtml}
-      ${blockedHtml ? `<div class="debug-section-header"><span>预算拦截</span><span class="debug-badge">${blockedWorldBookEntries.length}条</span></div>${blockedHtml}` : ''}
+      ${candidateHtml ? `<div class="debug-section-header"><span>候选未注入</span><span class="debug-badge">${candidateWorldBookEntries.length - activeWorldBookEntries.length}条</span></div>${candidateHtml}` : ''}
+      ${blockedHtml ? `<div class="debug-section-header"><span>规则/预算拦截</span><span class="debug-badge">${blockedWorldBookEntries.length}条</span></div>${blockedHtml}` : ''}
     </div>`;
   }
 
