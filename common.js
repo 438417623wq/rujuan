@@ -247,7 +247,7 @@ const Storage = {
 
   // ---- Settings ----
   _SETTINGS_DEFAULTS: {
-    defaultApiProfileId: '', defaultModel: '', summaryInterval: 100, exportFormat: 'md',
+    defaultApiProfileId: '', defaultModel: '', summaryInterval: 80, exportFormat: 'md',
     articleWordCount: 500, summaryWordCount: 50,
     showPromptInspector: false, enableWebSearch: false,
     promptInit: '', promptSummaryGen: '', promptEntries: null,
@@ -1459,7 +1459,7 @@ mvu_update 中每个字段都是可选的，只包含真正需要修改的部分
 
   DEFAULT_SUMMARY_MERGE_PROMPT: `你是"小克"，故事总结助手。
 
-你现在帮用户执行故事摘要压缩任务。请将以下原始摘要（ab序列）中相关联的剧情进行合并，最终整合成一份不多于20条的精炼摘要（sm序列）。
+你现在帮用户执行故事摘要压缩任务。请将用户消息中的原始摘要（ab序列）按剧情关联合并成精炼摘要（sm序列），目标条数见用户消息末尾的【本次要求】。
 
 【压缩原则】
 - 合并相关联的剧情，属于同一事件/场景的摘要合并为一条
@@ -1467,6 +1467,7 @@ mvu_update 中每个字段都是可选的，只包含真正需要修改的部分
 - 必须保留：角色关系变化、重要物品的获得或失去、技能/能力的习得或突破、关键剧情转折和决策
 - 禁止虚构原始摘要中不存在的信息
 - 确保仅凭压缩后的摘要即可完整理解已发生的故事
+- 已有的 sm 条目仅作上下文参考，不要重写它们
 
 请先在<think></think>中分析原始摘要的剧情脉络，规划如何分组合并，然后输出结果。
 
@@ -1477,6 +1478,28 @@ mvu_update 中每个字段都是可选的，只包含真正需要修改的部分
 ...
 
 编号从已有sm的下一个编号开始（如已有sm01-sm20，则从sm21开始）。`,
+
+  DEFAULT_ARCHIVE_PROMPT: `你是"小克"，故事档案管理员。
+
+你现在执行远期记忆归档任务：用户消息中有一批较早的剧情摘要（sm序列），它们即将退出"近期记忆"，请把它们按剧情弧压缩成少量"档案条目"（ar序列），目标条数见用户消息末尾的【本次要求】。
+
+【归档原则】
+- **按剧情弧自然分段**：一条档案对应一段完整的剧情阶段（一次冒险/一个事件的起因经过结局），严禁机械地按条数切分、把不相干的剧情弧混进同一条
+- 每条档案 500-800 字，可以比普通摘要更长——这是这段剧情未来唯一的记忆载体
+- 优先保留跨弧的主线事实：角色关系的定局、重大承诺与恩怨、关键能力/物品的来历、影响后续的决策与后果
+- 压掉过程性细节：具体对话、行动的逐步经过、一次性场景描写
+- 禁止虚构，禁止臆断
+- 确保仅凭这些档案即可理解这段时期发生了什么、留下了什么影响
+
+请先在<think></think>中梳理这批摘要覆盖的剧情弧，然后输出结果。
+
+【输出格式】
+<think>分析思考过程</think>
+<ar01>档案内容</ar01>
+<ar02>档案内容</ar02>
+...
+
+编号从已有档案的下一个编号开始（如已有ar01-ar03，则从ar04开始）。`,
 
   DEFAULT_PROMPT_ENTRIES: [
     { id: 'persona', name: '人设', role: 'system', enabled: true,
@@ -1905,9 +1928,15 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
       return ctx;
     };
 
-    // Build summaries (merged sm + unmerged abstracts)
+    // Build summaries — 遗忘曲线三层，按时间由远及近：
+    // 【往事纪要】archive（远期档案）→【故事总结】sm（近期合并摘要）→【近期摘要】ab（未合并）
     const buildSummaries = (allMsgs, splitAt) => {
       const parts = [];
+      const archive = conversation.summary?.archive || [];
+      if (archive.length > 0) {
+        const arText = archive.map(ar => `<${ar.code}>${ar.content}</${ar.code}>`).join('\n\n');
+        parts.push({ role: 'user', content: '【往事纪要】（更早的剧情档案）\n' + arText });
+      }
       const mergedSm = conversation.summary?.mergedSummaries || [];
       if (mergedSm.length > 0) {
         const smText = mergedSm.map(sm => `<${sm.code}>${sm.content}</${sm.code}>`).join('\n\n');
@@ -2580,7 +2609,7 @@ const Summary = {
     return count;
   },
   shouldTriggerMerge(conv) {
-    const interval = conv.summary?.interval || Storage.getSettings().summaryInterval || 100;
+    const interval = conv.summary?.interval || Storage.getSettings().summaryInterval || 80;
     return this.countUnmergedAbstracts(conv) >= interval;
   },
   /**
@@ -2617,6 +2646,14 @@ const Summary = {
     }
     return entries;
   },
+  // 分代记忆参数（遗忘曲线）：
+  //   L0 ab（每轮摘要）→ 攒满 interval（默认80）→ L1 sm（每条约7-10轮）
+  //   L1 超过 RECENT_LIMIT → 最旧 PROMOTE_BATCH 条按剧情弧归档 → L2 archive（每条约25-50轮，500-800字）
+  //   L2 超过 ARCHIVE_LIMIT（约1300轮+的超长局）→ 对最旧一批档案再归档一次
+  RECENT_LIMIT: 20,
+  PROMOTE_BATCH: 10,
+  ARCHIVE_LIMIT: 24,
+
   /**
    * Generate merged summaries (sm) from unmerged abstracts.
    * Returns { mergedSummaries: [...], lastMergedIdx: number } or null on failure.
@@ -2626,25 +2663,36 @@ const Summary = {
     const preset = PromptBuilder.getActivePreset(settings);
     const sys = preset.summaryPrompt || PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT;
 
+    // 竞态防护：在收集 ab 的同一时刻定格消息数快照。合并请求飞行期间玩家可能又跑了
+    // 新回合——那些 ab 不在本次输入里，lastMergedIdx 必须停在快照处，让它们留待下一轮，
+    // 否则会被跨过并永久丢失（修复前的真实 bug）。
+    const snapshotLen = (conv.messages || []).length;
+
     // Build user message
     let content = '';
     if (conv.storySetting) content += '【故事设定】\n' + conv.storySetting + '\n\n';
 
     const existingSm = conv.summary?.mergedSummaries || [];
     if (existingSm.length > 0) {
-      content += '【已有压缩摘要】\n';
+      content += '【已有压缩摘要（仅供上下文，不要重写）】\n';
       for (const sm of existingSm) {
         content += `<${sm.code}>${sm.content}</${sm.code}>\n\n`;
       }
     }
 
     const unmerged = this.getUnmergedAbstracts(conv);
+    if (unmerged.length === 0) return null;
     content += '【待合并原始摘要】\n';
     for (const ab of unmerged) {
       content += `<${ab.code}>${ab.content}</${ab.code}>\n\n`;
     }
 
-    log('generateMergeSummary: sending', unmerged.length, 'abstracts, existing sm:', existingSm.length);
+    // 目标条数按压缩比 1/10 ~ 1/7 动态计算（80条→8-11，100条→10-15），代码算好，不让模型自己算
+    const lo = Math.max(1, Math.ceil(unmerged.length / 10));
+    const hi = Math.max(lo, Math.ceil(unmerged.length / 7));
+    content += `【本次要求】请将以上 ${unmerged.length} 条原始摘要合并为 ${lo}-${hi} 条 sm。`;
+
+    log('generateMergeSummary: sending', unmerged.length, 'abstracts →', lo + '-' + hi, 'sm, existing sm:', existingSm.length);
 
     const result = await API.sendChat({
       apiProfileId: conv.apiProfileId || settings.defaultApiProfileId,
@@ -2663,12 +2711,109 @@ const Summary = {
       log('Merge summary: no <smXX> tags found in response');
       return null;
     }
+    // 产出质量校验：偶发抽风时模型会把几十条 ab 压成一两条超短 sm（实测 flash 出现过：
+    // 同输入第一次 1 条、重跑 9 条）。条数低于下限一半即判失败——ab 原样保留，下一轮自动重试。
+    if (newSm.length < Math.max(1, Math.floor(lo / 2))) {
+      log('Merge summary: got only', newSm.length, 'sm (expected', lo + '-' + hi, ') — rejected, will retry next turn');
+      return null;
+    }
 
     log('Merge summary: got', newSm.length, 'new sm entries');
     return {
       mergedSummaries: [...existingSm, ...newSm],
-      lastMergedIdx: (conv.messages || []).length,
+      lastMergedIdx: snapshotLen,
     };
+  },
+
+  /**
+   * Parse <arXX>...</arXX> archive entries from AI response.
+   */
+  parseArchiveEntries(text) {
+    const results = [];
+    const regex = /<ar(\d+)>([\s\S]*?)<\/ar\1>/g;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      results.push({ code: 'ar' + match[1], content: match[2].trim() });
+    }
+    return results;
+  },
+
+  /** Whether recent sm list has grown past the promotion threshold. */
+  shouldPromote(conv) {
+    return (conv.summary?.mergedSummaries || []).length > this.RECENT_LIMIT;
+  },
+
+  /**
+   * Promote the oldest sm entries into archive entries (L1 → L2 遗忘曲线晋升).
+   * Returns { archive, mergedSummaries } or null on failure. Does not mutate conv.
+   */
+  async generateArchivePromotion(conv) {
+    const settings = Storage.getSettings();
+    const recent = conv.summary?.mergedSummaries || [];
+    if (recent.length <= this.RECENT_LIMIT) return null;
+    const batch = recent.slice(0, this.PROMOTE_BATCH);
+    const existingAr = conv.summary?.archive || [];
+
+    let content = '';
+    if (conv.storySetting) content += '【故事设定】\n' + conv.storySetting + '\n\n';
+    if (existingAr.length > 0) {
+      content += '【已有档案（仅供上下文，不要重写）】\n';
+      for (const ar of existingAr) content += `<${ar.code}>${ar.content}</${ar.code}>\n\n`;
+    }
+    content += '【待归档摘要】\n';
+    for (const sm of batch) content += `<${sm.code}>${sm.content}</${sm.code}>\n\n`;
+    content += `【本次要求】请将以上 ${batch.length} 条摘要按剧情弧归档为 2-4 条 ar（每条 500-800 字）。`;
+
+    log('generateArchivePromotion: promoting', batch.length, 'sm → 2-3 ar, existing ar:', existingAr.length);
+
+    const result = await API.sendChat({
+      apiProfileId: conv.apiProfileId || settings.defaultApiProfileId,
+      model: conv.model || settings.defaultModel,
+      systemPrompt: PromptBuilder.DEFAULT_ARCHIVE_PROMPT,
+      messages: [{ role: 'user', content }],
+    });
+    if (!result.success) { log('Archive promotion API failed:', result.error); return null; }
+
+    const newAr = this.parseArchiveEntries(result.content);
+    if (newAr.length === 0) { log('Archive promotion: no <arXX> tags found'); return null; }
+
+    log('Archive promotion: got', newAr.length, 'archive entries');
+    return {
+      archive: [...existingAr, ...newAr],
+      mergedSummaries: recent.slice(batch.length),
+    };
+  },
+
+  /**
+   * Re-archive the oldest archive entries when L2 itself overflows (超长局，约1300轮+才会发生).
+   * Returns new archive array or null.
+   */
+  async generateArchiveCompaction(conv) {
+    const settings = Storage.getSettings();
+    const archive = conv.summary?.archive || [];
+    if (archive.length <= this.ARCHIVE_LIMIT) return null;
+    const batch = archive.slice(0, 8);
+    const rest = archive.slice(8);
+
+    let content = '';
+    if (conv.storySetting) content += '【故事设定】\n' + conv.storySetting + '\n\n';
+    content += '【待归档摘要】\n';
+    for (const ar of batch) content += `<${ar.code}>${ar.content}</${ar.code}>\n\n`;
+    content += `【本次要求】请将以上 ${batch.length} 条档案按剧情弧进一步归档为 2-4 条 ar（每条 500-800 字），编号从 ar01 重新开始。`;
+
+    const result = await API.sendChat({
+      apiProfileId: conv.apiProfileId || settings.defaultApiProfileId,
+      model: conv.model || settings.defaultModel,
+      systemPrompt: PromptBuilder.DEFAULT_ARCHIVE_PROMPT,
+      messages: [{ role: 'user', content }],
+    });
+    if (!result.success) { log('Archive compaction API failed:', result.error); return null; }
+    const newAr = this.parseArchiveEntries(result.content);
+    if (newAr.length === 0) return null;
+    // 重新编号，保持 ar 序列连续
+    const merged = [...newAr, ...rest].map((ar, i) => ({ code: 'ar' + String(i + 1).padStart(2, '0'), content: ar.content }));
+    log('Archive compaction:', archive.length, '→', merged.length);
+    return merged;
   },
 };
 
@@ -2678,6 +2823,12 @@ const Summary = {
 const Exporter = {
   toMarkdown(conv) {
     let md = `# ${conv.name || '未命名故事'}\n\n`;
+    const archive = conv.summary?.archive || [];
+    if (archive.length > 0) {
+      md += `## 往事纪要\n`;
+      for (const ar of archive) md += `**[${ar.code}]** ${ar.content}\n\n`;
+      md += `---\n\n`;
+    }
     const mergedSm = conv.summary?.mergedSummaries || [];
     if (mergedSm.length > 0) {
       md += `## 故事总结\n`;

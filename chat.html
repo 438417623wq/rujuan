@@ -1787,7 +1787,7 @@ async function init() {
   // Ensure summary object exists
   if (!conversation.summary) {
     const settings = Storage.getSettings();
-    conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+    conversation.summary = { mergedSummaries: [], archive: [], lastMergedIdx: 0, interval: settings.summaryInterval || 80 };
     Storage.saveConversation(conversation);
   }
   // Migrate old summary format (text → mergedSummaries)
@@ -1860,6 +1860,11 @@ async function init() {
   // In RP phase, open sidebar by default on desktop
   if (conversation.phase === 'rp' && conversation.mvu?.html && window.innerWidth > 768) {
     toggleSidebar();
+  }
+
+  // 补合并：网络波动等原因错过自动合并时，打开对话即检查补上（延迟异步，不阻塞加载）
+  if (conversation.phase === 'rp') {
+    setTimeout(() => { if (!isStreaming) checkBigSummaryTrigger(); }, 2000);
   }
 
   // Offline detection
@@ -2585,6 +2590,24 @@ function renderSummaryPanel() {
   const container = document.getElementById('summaryContent');
   let html = '';
 
+  // 手动合并入口（网络波动错过自动合并时的兜底）
+  const pendingCount = Summary.countUnmergedAbstracts(conversation);
+  if (conversation.phase === 'rp') {
+    html += `<button class="btn btn-secondary" style="width:100%;margin-bottom:12px;" onclick="checkBigSummaryTrigger(true)">立即合并摘要${pendingCount ? `（待合并 ${pendingCount} 条）` : ''}</button>`;
+  }
+
+  // Archive entries (L2 远期档案)
+  const archiveEntries = conversation.summary?.archive || [];
+  if (archiveEntries.length > 0) {
+    html += '<div class="summary-abstracts-title">往事纪要 (Archive)</div>';
+    for (const ar of archiveEntries) {
+      html += `<div class="summary-abstract-block summary-merged">
+        <span class="summary-abstract-code summary-sm-code">${ar.code}</span>
+        <div class="summary-abstract-content">${Utils.escapeHtml(ar.content).replace(/\n/g, '<br>')}</div>
+      </div>`;
+    }
+  }
+
   // Merged summaries (sm entries)
   const mergedSm = conversation.summary?.mergedSummaries || [];
   if (mergedSm.length > 0) {
@@ -3296,7 +3319,7 @@ function confirmMvuInit() {
   // Ensure summary
   if (!conversation.summary) {
     const settings = Storage.getSettings();
-    conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+    conversation.summary = { mergedSummaries: [], archive: [], lastMergedIdx: 0, interval: settings.summaryInterval || 80 };
   }
 
   // Clear init-phase messages
@@ -3337,26 +3360,62 @@ function rejectMvuInit() {
 // Big Summary
 // ============================================================
 let _isMerging = false;
-async function checkBigSummaryTrigger() {
+async function checkBigSummaryTrigger(force = false) {
   if (_isMerging) return;
-  if (!Summary.shouldTriggerMerge(conversation)) return;
+  const needMerge = force ? Summary.countUnmergedAbstracts(conversation) > 0 : Summary.shouldTriggerMerge(conversation);
+  const needPromote = Summary.shouldPromote(conversation);
+  if (!needMerge && !needPromote) {
+    if (force) UI.showToast('暂无待合并的摘要', 'info');
+    return;
+  }
 
   _isMerging = true;
-  const unmergedCount = Summary.countUnmergedAbstracts(conversation);
-  log('Triggering summary merge, unmerged abstracts:', unmergedCount);
-  UI.showToast(`正在合并 ${unmergedCount} 条摘要...`, 'info');
-
   try {
-    const result = await Summary.generateMergeSummary(conversation);
-    if (result) {
-      conversation.summary = {
-        ...conversation.summary,
-        mergedSummaries: result.mergedSummaries,
-        lastMergedIdx: result.lastMergedIdx,
-      };
-      Storage.saveConversation(conversation);
-      renderSummaryPanel();
-      UI.showToast(`摘要已合并为 ${result.mergedSummaries.length} 条总结`, 'success');
+    // 1) L0→L1：ab 合并为 sm
+    if (needMerge) {
+      const unmergedCount = Summary.countUnmergedAbstracts(conversation);
+      log('Triggering summary merge, unmerged abstracts:', unmergedCount);
+      UI.showToast(`正在合并 ${unmergedCount} 条摘要...`, 'info');
+      const result = await Summary.generateMergeSummary(conversation);
+      if (result) {
+        conversation.summary = {
+          ...conversation.summary,
+          mergedSummaries: result.mergedSummaries,
+          lastMergedIdx: result.lastMergedIdx,
+        };
+        Storage.saveConversation(conversation);
+        renderSummaryPanel();
+        UI.showToast(`摘要已合并为 ${result.mergedSummaries.length} 条总结`, 'success');
+      } else if (force) {
+        UI.showToast('摘要合并失败，可稍后重试', 'error');
+      }
+    }
+
+    // 2) L1→L2：sm 超过近期上限时，最旧一批按剧情弧归档（遗忘曲线晋升）
+    if (Summary.shouldPromote(conversation)) {
+      log('Triggering archive promotion, sm count:', conversation.summary.mergedSummaries.length);
+      UI.showToast('正在归档较早的摘要...', 'info');
+      const promo = await Summary.generateArchivePromotion(conversation);
+      if (promo) {
+        conversation.summary = {
+          ...conversation.summary,
+          archive: promo.archive,
+          mergedSummaries: promo.mergedSummaries,
+        };
+        Storage.saveConversation(conversation);
+        renderSummaryPanel();
+        UI.showToast(`已归档为 ${promo.archive.length} 条往事纪要`, 'success');
+      }
+    }
+
+    // 3) L2 自身溢出（超长局才会发生）：对最旧档案再归档
+    if ((conversation.summary?.archive || []).length > Summary.ARCHIVE_LIMIT) {
+      const compacted = await Summary.generateArchiveCompaction(conversation);
+      if (compacted) {
+        conversation.summary = { ...conversation.summary, archive: compacted };
+        Storage.saveConversation(conversation);
+        renderSummaryPanel();
+      }
     }
   } catch (e) {
     log('Summary merge failed:', e);
@@ -3638,7 +3697,7 @@ function restartGame() {
       conversation.messages = [];
       // Reset summary
       const settings = Storage.getSettings();
-      conversation.summary = { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 };
+      conversation.summary = { mergedSummaries: [], archive: [], lastMergedIdx: 0, interval: settings.summaryInterval || 80 };
       // Save
       Storage.saveConversation(conversation);
       // Refresh UI
