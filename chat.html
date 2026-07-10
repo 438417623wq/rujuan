@@ -886,6 +886,80 @@
       line-height: 1.6;
     }
 
+    /* ---- Prompt Drawer (quick toggle for preset entries) ---- */
+    .prompt-drawer {
+      width: 340px;
+      flex-shrink: 0;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding: calc(16px + env(safe-area-inset-top, var(--sat, 0px))) 16px 16px;
+      transform: translateX(0);
+      transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  opacity 0.35s ease,
+                  width 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                  padding 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 1;
+    }
+    .prompt-drawer.collapsed {
+      width: 0;
+      padding: 0;
+      opacity: 0;
+      transform: translateX(340px);
+      border-left: none;
+      overflow: hidden;
+    }
+    .prompt-drawer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .prompt-drawer-title {
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.3px;
+    }
+    .prompt-drawer-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .prompt-drawer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+      user-select: none;
+    }
+    .prompt-drawer-row:hover { background: rgba(255,255,255,0.03); }
+    .prompt-drawer-row.is-on .prompt-drawer-name { color: var(--text-primary); }
+    .prompt-drawer-row .prompt-drawer-name { color: var(--text-muted); flex: 1; font-size: 12px; line-height: 1.3; word-break: break-all; }
+    .prompt-drawer-toggle {
+      width: 16px; height: 16px; border-radius: 3px;
+      border: 1px solid var(--border);
+      background: transparent;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .prompt-drawer-row.is-on .prompt-drawer-toggle {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .prompt-drawer-row.is-on .prompt-drawer-toggle::after {
+      content: '✓';
+      color: var(--bg-primary);
+      font-size: 11px;
+      font-weight: bold;
+    }
+
     /* ---- Edit MVU Mode Bar ---- */
     .edit-mode-bar {
       display: flex;
@@ -1378,6 +1452,23 @@
       .summary-sidebar.collapsed {
         transform: translateX(100%);
       }
+      .prompt-drawer {
+        position: fixed;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: 200;
+        width: 340px;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+      }
+      .prompt-drawer.collapsed {
+        width: 340px;
+        padding: calc(16px + env(safe-area-inset-top, var(--sat, 0px))) 16px 16px;
+        opacity: 1;
+        transform: translateX(100%);
+        border-left: 1px solid var(--border);
+        overflow: auto;
+      }
       .message.user .message-bubble {
         max-width: 90%;
       }
@@ -1471,6 +1562,11 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </span>
       </button>
+      <button class="btn-icon" id="promptDrawerToggle" title="预设条目快开关" onclick="togglePromptDrawer()">
+        <span class="icon" style="width:20px;height:20px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </span>
+      </button>
       <div class="topbar-dropdown">
         <button class="btn-icon" id="moreMenuBtn" title="更多" onclick="toggleMoreMenu(event)">
           <span class="icon" style="width:20px;height:20px;">
@@ -1547,6 +1643,18 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <div class="mvu-content" id="mvuContent"></div>
+    </div>
+
+    <!-- Prompt Drawer -->
+    <div class="prompt-drawer collapsed" id="promptDrawer">
+      <button class="sidebar-close-btn" onclick="togglePromptDrawer()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="prompt-drawer-header">
+        <span class="prompt-drawer-title">条目快开关</span>
+      </div>
+      <div class="prompt-drawer-meta" id="promptDrawerMeta"></div>
+      <div id="promptDrawerList"></div>
     </div>
 
     <!-- Summary Sidebar -->
@@ -1735,11 +1843,7 @@ async function init() {
           const later = conversation.messages[j];
           if (later.role !== 'assistant' || !later.content) continue;
           const update = MVU.parseMvuUpdate(later.content);
-          if (update) {
-            if (update.schema) initData.schema = update.schema;
-            if (update.html) initData.html = update.html;
-            if (update.css) initData.css = update.css;
-          }
+          if (update) MVU.applyMvuUpdate(initData, update);
           const ss = MVU.parseStorySetting(later.content);
           if (ss) initData._storySetting = ss;
           const patch = MVU.parseStorySettingPatch(later.content);
@@ -2397,6 +2501,56 @@ function toggleSummaryPanel() {
   }
 }
 
+let promptDrawerOpen = false;
+function togglePromptDrawer() {
+  const drawer = document.getElementById('promptDrawer');
+  const overlay = document.getElementById('sidebarOverlay');
+  promptDrawerOpen = !promptDrawerOpen;
+  if (promptDrawerOpen) {
+    if (sidebarOpen) { sidebarOpen = false; document.getElementById('mvuSidebar').classList.add('collapsed'); }
+    if (summaryPanelOpen) { summaryPanelOpen = false; document.getElementById('summarySidebar').classList.add('collapsed'); }
+    drawer.classList.remove('collapsed');
+    overlay.classList.add('visible');
+    renderPromptDrawer();
+  } else {
+    drawer.classList.add('collapsed');
+    overlay.classList.remove('visible');
+  }
+}
+
+function renderPromptDrawer() {
+  const settings = Storage.getSettings();
+  const presetId = settings.activePresetId || 'default';
+  const preset = settings.promptPresets?.[presetId];
+  const list = document.getElementById('promptDrawerList');
+  const meta = document.getElementById('promptDrawerMeta');
+  if (!preset || !Array.isArray(preset.entries)) {
+    list.innerHTML = '<div style="color:var(--text-muted);font-style:italic;text-align:center;padding:20px;font-size:12px;">当前预设无 entries</div>';
+    meta.textContent = '';
+    return;
+  }
+  const onCount = preset.entries.filter(e => e.enabled).length;
+  meta.textContent = `预设：${preset.name || presetId} · ${onCount}/${preset.entries.length} 启用`;
+  list.innerHTML = preset.entries.map((e, i) => {
+    const onClass = e.enabled ? ' is-on' : '';
+    const name = (e.name || e.slot || e.id || '(无名)').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    return `<div class="prompt-drawer-row${onClass}" onclick="togglePromptEntry(${i})">
+      <div class="prompt-drawer-toggle"></div>
+      <div class="prompt-drawer-name">${name}</div>
+    </div>`;
+  }).join('');
+}
+
+function togglePromptEntry(idx) {
+  const settings = Storage.getSettings();
+  const presetId = settings.activePresetId || 'default';
+  const preset = settings.promptPresets?.[presetId];
+  if (!preset || !preset.entries[idx]) return;
+  preset.entries[idx].enabled = !preset.entries[idx].enabled;
+  Storage.saveSettings(settings);
+  renderPromptDrawer();
+}
+
 function closeAnySidebar() {
   if (sidebarOpen) {
     sidebarOpen = false;
@@ -2405,6 +2559,10 @@ function closeAnySidebar() {
   if (summaryPanelOpen) {
     summaryPanelOpen = false;
     document.getElementById('summarySidebar').classList.add('collapsed');
+  }
+  if (promptDrawerOpen) {
+    promptDrawerOpen = false;
+    document.getElementById('promptDrawer').classList.add('collapsed');
   }
   document.getElementById('sidebarOverlay').classList.remove('visible');
 }
@@ -2985,10 +3143,8 @@ function processMvuFromResponse(text, aiMsg) {
       pendingMvuInit = initData;
       changed = true;
     } else if (updateData && pendingMvuInit) {
-      // Incremental update — merge changed fields into existing draft
-      if (updateData.schema) pendingMvuInit.schema = updateData.schema;
-      if (updateData.html) pendingMvuInit.html = updateData.html;
-      if (updateData.css) pendingMvuInit.css = updateData.css;
+      // Incremental update — key-level merge for schema/templates, atomic for html/css
+      MVU.applyMvuUpdate(pendingMvuInit, updateData);
       changed = true;
     }
 
@@ -3026,7 +3182,7 @@ function processMvuFromResponse(text, aiMsg) {
       // Handle template ops first (addFromTemplate / removeFromTemplate)
       MVU.applyTemplateOps(conversation.mvu, patchData, container);
       // Then apply regular patches
-      conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData);
+      conversation.mvu.state = MVU.applyPatch(conversation.mvu.state, patchData, conversation.mvu.schema);
       // Snapshot state onto the AI message for revert
       if (aiMsg) {
         aiMsg.mvuSnapshot = JSON.parse(JSON.stringify(conversation.mvu.state));
@@ -3087,6 +3243,9 @@ function previewMvuInit() {
     }
   }
 
+  // Instantiate declared opening characters (data layer only; render() below re-creates panels)
+  MVU.applyInitInstances(tempMvu, pendingMvuInit.instances);
+
   // Render preview in sidebar
   const container = document.getElementById('mvuContent');
   MVU.render(container, tempMvu);
@@ -3124,6 +3283,10 @@ function confirmMvuInit() {
       }
     }
   }
+
+  // Instantiate declared opening characters — registers their schema fields, state values
+  // and templateInstances records; renderMvuSidebar() below re-creates the panels from those
+  MVU.applyInitInstances(conversation.mvu, pendingMvuInit.instances);
 
   // Save story setting
   if (pendingMvuInit._storySetting) {
