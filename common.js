@@ -394,10 +394,37 @@ const Storage = {
 // API Module
 // ============================================================
 const API = {
-  // gproxy 魔法串缓存触发（opt-in，需目标 provider 开 enable_magic_cache 才生效）。
-  // 1h 变体：gproxy 见到这串字符会原样剥离，并在该 block 上打 cache_control(ephemeral,1h)。
-  // 与字面量保持完全一致（来自 gproxy 源码 claude_magic_cache.rs）。
-  CACHE_MAGIC_1H: 'GPROXY_MAGIC_STRING_TRIGGER_CACHING_CREATE_1FAS5GV9R5H29T5Y2J9584K6O95M2NBVW52C95CX984FRJY',
+  _cacheControl1h() {
+    return { type: 'ephemeral', ttl: '1h' };
+  },
+
+  _isClaudeModel(model = '') {
+    return (model || '').toLowerCase().includes('claude');
+  },
+
+  _rejectsAssistantPrefill(model = '') {
+    const m = (model || '').toLowerCase();
+    return /opus-4-(?:6|7|8)|sonnet-4-6|fable-5|mythos/.test(m);
+  },
+
+  _normalizeClaudeMessage(m, model = '') {
+    if (m._assistantPrefill && this._rejectsAssistantPrefill(model)) {
+      return {
+        role: 'user',
+        content: '【回复起始格式要求】\n请在本次回复开头使用以下文本，然后继续完成回复：\n' + m.content,
+      };
+    }
+    return m;
+  },
+
+  _isClewdrClaudeRoute(p, model = '') {
+    if (p.provider !== 'openai' || !this._isClaudeModel(model)) return false;
+    try {
+      return /\/code\/v1\/?$/.test(new URL(this._getBaseUrl(p)).pathname);
+    } catch {
+      return /\/code\/v1\/?$/.test(this._getBaseUrl(p));
+    }
+  },
 
   _getBaseUrl(p) {
     if (p.baseUrl) return p.baseUrl.replace(/\/$/, '');
@@ -446,39 +473,28 @@ const API = {
 
     if (prov === 'claude') {
       // Ensure alternating roles, first must be user.
-      // content 用 block 数组而非字符串拼接：同角色相邻消息合并时，每条原始消息各自
-      // 保留成独立 block，而不是拼成一整块字符串。这样后面追加新 block（比如每轮新增的
-      // 摘要）不会让前面已经稳定的 block（人设/世界观）被判定为"整体变了"——
-      // Anthropic 的 prompt cache 是按 block 级别做前缀匹配的，块内容一变整块失效，
-      // 块之间互不影响。
+      // 每条内部消息保留为独立 content block，让摘要可以逐条追加，并把缓存断点
+      // 精确放在最新一条稳定摘要上。Anthropic 缓存匹配的是断点之前的完整前缀。
       const msgs = [];
-      let anchorBlock = null; // 指向"故事设定"块本身，而不是假设它一定排第一个
-      for (const m of messages) {
+      for (const original of messages) {
+        const m = this._normalizeClaudeMessage(original, model);
         const role = m.role === 'assistant' ? 'assistant' : 'user';
         const block = { type: 'text', text: m.content };
+        if (original._cacheControl || original._cacheAnchor) {
+          block.cache_control = this._cacheControl1h();
+        }
         if (msgs.length > 0 && msgs[msgs.length - 1].role === role) {
           msgs[msgs.length - 1].content.push(block);
         } else {
           msgs.push({ role, content: [block] });
         }
-        if (m._cacheAnchor) anchorBlock = block;
       }
       // If first message is assistant, prepend empty user
       if (msgs.length > 0 && msgs[0].role !== 'user') {
         msgs.unshift({ role: 'user', content: [{ type: 'text', text: '(continue)' }] });
       }
-      // gproxy magic-string 缓存触发（需 provider 开启 enable_magic_cache 才生效；
-      // 未开启时这串字符会原样发给 Anthropic，只是段无意义文本，不影响功能）。
-      // 打在人设(system)末尾 + 故事设定块末尾——两处在一局对话生命周期内基本不变，
-      // 用 1h TTL 覆盖玩家的思考间隔。故事设定块必须靠 _cacheAnchor 精确定位，
-      // 不能假设"第一条消息"：storySetting 为空时第一条会变成别的、每轮都在变的内容，
-      // 标记打错地方就会退化成"每次都写、从不命中"，比不加缓存还费钱。
-      // storySetting 为空（没有锚点）时宁可不加缓存标记，也不要标错。
-      let sys = systemPrompt || undefined;
-      if (sys) sys = sys + ' ' + this.CACHE_MAGIC_1H;
-      if (anchorBlock) {
-        anchorBlock.text += ' ' + this.CACHE_MAGIC_1H;
-      }
+      // 固定 system 断点也让 ClewdR/多账号网关能够按稳定 system 选择粘性账号。
+      const sys = systemPrompt ? [{ type: 'text', text: systemPrompt, cache_control: this._cacheControl1h() }] : undefined;
       const body = { model, max_tokens: this._maxTokensForModel(model), stream, system: sys, messages: msgs };
       if (webSearch) {
         body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
@@ -502,7 +518,37 @@ const API = {
       return body;
     }
 
-    // OpenAI compatible (incl. proxies wrapping Claude/Gemini)
+    // ClewdR /code/v1 accepts Claude cache_control as an OpenAI content-block extension,
+    // then preserves it while converting Chat Completions to Claude Messages.
+    if (this._isClewdrClaudeRoute(p, model)) {
+      const msgs = [];
+      if (systemPrompt) {
+        msgs.push({
+          role: 'system',
+          content: [{ type: 'text', text: systemPrompt, cache_control: this._cacheControl1h() }],
+        });
+      }
+      for (const original of messages) {
+        const m = this._normalizeClaudeMessage(original, model);
+        const role = m.role === 'assistant' ? 'assistant' : 'user';
+        const block = { type: 'text', text: m.content };
+        if (original._cacheControl || original._cacheAnchor) {
+          block.cache_control = this._cacheControl1h();
+        }
+        if (msgs.length > 0 && msgs[msgs.length - 1].role === role && msgs[msgs.length - 1].role !== 'system') {
+          msgs[msgs.length - 1].content.push(block);
+        } else {
+          msgs.push({ role, content: [block] });
+        }
+      }
+      const body = { model, messages: msgs, stream, max_tokens: this._maxTokensForModel(model) };
+      if (webSearch) {
+        body.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 5 }];
+      }
+      return body;
+    }
+
+    // Generic OpenAI compatible
     const msgs = [];
     if (systemPrompt) msgs.push({ role: 'system', content: systemPrompt });
     for (const m of messages) msgs.push({ role: m.role, content: m.content });
@@ -653,7 +699,7 @@ const API = {
         onStatus?.('streaming');
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '', fullText = '', usage = { input: 0, output: 0 };
+        let buffer = '', fullText = '', usage = this._emptyUsage();
         let finishReason = '';
         let _debugRawChunks = []; // temporary debug
 
@@ -691,9 +737,9 @@ const API = {
                 let chunk = '';
                 if (prov === 'claude') {
                   if (data.type === 'content_block_delta' && data.delta?.text) chunk = data.delta.text;
-                  if (data.type === 'message_delta' && data.usage) usage.output = data.usage.output_tokens || 0;
+                  if (data.type === 'message_delta' && data.usage) this._applyUsage(usage, data.usage);
                   if (data.type === 'message_delta' && data.delta?.stop_reason) finishReason = data.delta.stop_reason;
-                  if (data.type === 'message_start' && data.message?.usage) usage.input = data.message.usage.input_tokens || 0;
+                  if (data.type === 'message_start' && data.message?.usage) this._applyUsage(usage, data.message.usage);
                 } else if (prov === 'google') {
                   const cand = data.candidates?.[0];
                   if (cand && !cand.content) log('Google SSE: candidate without content:', JSON.stringify(cand).substring(0, 300));
@@ -705,7 +751,7 @@ const API = {
                   const delta = data.choices?.[0]?.delta;
                   if (delta?.content) chunk = delta.content;
                   if (data.choices?.[0]?.finish_reason) finishReason = data.choices[0].finish_reason;
-                  if (data.usage) { usage.input = data.usage.prompt_tokens || 0; usage.output = data.usage.completion_tokens || 0; }
+                  if (data.usage) this._applyUsage(usage, data.usage);
                 }
                 if (chunk) { fullText += chunk; onChunk?.(chunk, fullText); }
               } catch (parseErr) { log('SSE parse error:', parseErr.message, 'raw:', raw.substring(0, 200)); }
@@ -774,13 +820,26 @@ const API = {
   },
 
   _parseResponse(p, data) {
-    let text = '', usage = { input: 0, output: 0 };
-    if (data.usage) { usage.input = data.usage.input_tokens || data.usage.prompt_tokens || 0; usage.output = data.usage.output_tokens || data.usage.completion_tokens || 0; }
+    let text = '', usage = this._emptyUsage();
+    if (data.usage) this._applyUsage(usage, data.usage);
     else if (data.usageMetadata) { usage.input = data.usageMetadata.promptTokenCount || 0; usage.output = data.usageMetadata.candidatesTokenCount || 0; }
     if (data.content && Array.isArray(data.content)) text = data.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     else if (data.candidates) text = (data.candidates[0]?.content?.parts || []).map(pt => pt.text || '').join('');
     else if (data.choices) text = data.choices[0]?.message?.content || '';
     return { content: text, usage };
+  },
+
+  _emptyUsage() {
+    return { input: 0, output: 0, cacheRead: 0, cacheCreation: 0 };
+  },
+
+  _applyUsage(target, raw = {}) {
+    target.input = raw.input_tokens ?? raw.prompt_tokens ?? target.input;
+    target.output = raw.output_tokens ?? raw.completion_tokens ?? target.output;
+    const details = raw.prompt_tokens_details || raw.input_tokens_details || {};
+    target.cacheRead = raw.cache_read_input_tokens ?? details.cached_tokens ?? target.cacheRead;
+    target.cacheCreation = raw.cache_creation_input_tokens ?? details.cache_write_tokens ?? target.cacheCreation;
+    return target;
   },
 
   // ---- Server proxy methods (public mode) ----
@@ -856,7 +915,7 @@ const API = {
         onStatus?.('streaming');
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = '', fullText = '', usage = { input: 0, output: 0 };
+        let buffer = '', fullText = '', usage = this._emptyUsage();
         let finishReason = '';
 
         try {
@@ -883,9 +942,9 @@ const API = {
                 let chunk = '';
                 if (prov === 'claude') {
                   if (data.type === 'content_block_delta' && data.delta?.text) chunk = data.delta.text;
-                  if (data.type === 'message_delta' && data.usage) usage.output = data.usage.output_tokens || 0;
+                  if (data.type === 'message_delta' && data.usage) this._applyUsage(usage, data.usage);
                   if (data.type === 'message_delta' && data.delta?.stop_reason) finishReason = data.delta.stop_reason;
-                  if (data.type === 'message_start' && data.message?.usage) usage.input = data.message.usage.input_tokens || 0;
+                  if (data.type === 'message_start' && data.message?.usage) this._applyUsage(usage, data.message.usage);
                 } else if (prov === 'google') {
                   const cand = data.candidates?.[0];
                   if (cand?.finishReason) finishReason = cand.finishReason;
@@ -896,7 +955,7 @@ const API = {
                   const delta = data.choices?.[0]?.delta;
                   if (delta?.content) chunk = delta.content;
                   if (data.choices?.[0]?.finish_reason) finishReason = data.choices[0].finish_reason;
-                  if (data.usage) { usage.input = data.usage.prompt_tokens || 0; usage.output = data.usage.completion_tokens || 0; }
+                  if (data.usage) this._applyUsage(usage, data.usage);
                 }
                 if (chunk) { fullText += chunk; onChunk?.(chunk, fullText); }
               } catch {}
@@ -1933,17 +1992,19 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
     const buildSummaries = (allMsgs, splitAt) => {
       const parts = [];
       const archive = conversation.summary?.archive || [];
-      if (archive.length > 0) {
-        const arText = archive.map(ar => `<${ar.code}>${ar.content}</${ar.code}>`).join('\n\n');
-        parts.push({ role: 'user', content: '【往事纪要】（更早的剧情档案）\n' + arText });
+      for (let i = 0; i < archive.length; i++) {
+        const ar = archive[i];
+        const heading = i === 0 ? '【往事纪要】（更早的剧情档案）\n' : '';
+        parts.push({ role: 'user', content: heading + `<${ar.code}>${ar.content}</${ar.code}>` });
       }
       const mergedSm = conversation.summary?.mergedSummaries || [];
-      if (mergedSm.length > 0) {
-        const smText = mergedSm.map(sm => `<${sm.code}>${sm.content}</${sm.code}>`).join('\n\n');
-        parts.push({ role: 'user', content: '【故事总结】\n' + smText });
+      for (let i = 0; i < mergedSm.length; i++) {
+        const sm = mergedSm[i];
+        const heading = i === 0 ? '【故事总结】\n' : '';
+        parts.push({ role: 'user', content: heading + `<${sm.code}>${sm.content}</${sm.code}>` });
       }
       const lastMerged = conversation.summary?.lastMergedIdx || 0;
-      const abstracts = [];
+      let abstractCount = 0;
       let abCounter = 1;
       for (let i = 0; i < lastMerged; i++) {
         if (allMsgs[i]?.role === 'assistant' && allMsgs[i]?.abstract) abCounter++;
@@ -1953,12 +2014,16 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
         if (m.role === 'assistant' && m.abstract) {
           const code = 'ab' + String(abCounter).padStart(2, '0');
           const content = Summary.extractAbstractContent(m.abstract) || m.abstract;
-          abstracts.push(`<${code}>${content}</${code}>`);
+          const heading = abstractCount === 0 ? '【近期摘要】\n' : '';
+          parts.push({ role: 'user', content: heading + `<${code}>${content}</${code}>` });
+          abstractCount++;
           abCounter++;
         }
       }
-      if (abstracts.length > 0) {
-        parts.push({ role: 'user', content: '【近期摘要】\n' + abstracts.join('\n\n') });
+      // 移动断点只放在最后一个摘要 block。下一轮追加一条摘要时，Anthropic 向前
+      // 回看一个 block 即可命中上一轮断点；摘要总数不受 20-block 回看窗口限制。
+      if (parts.length > 0) {
+        parts[parts.length - 1]._cacheControl = true;
       }
       return parts;
     };
@@ -2085,7 +2150,9 @@ Operations: replace, delta (numeric increment, e.g. -15), add (list append), rem
       if (afterChat) {
         // After chat_history: system → user (APIs only support one system prompt block)
         const role = e.role === 'system' ? 'user' : e.role;
-        msgs.push({ role, content: c });
+        const msg = { role, content: c };
+        if (role === 'assistant') msg._assistantPrefill = true;
+        msgs.push(msg);
       } else {
         if (e.role === 'system') {
           systemParts.push(c);
