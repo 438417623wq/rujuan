@@ -835,6 +835,58 @@
         恢复默认
       </button>
     </div>
+
+    <details id="presetParamsBlock" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+      <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);">
+        预设参数（采样 / 思考）· 覆盖 API 方案
+      </summary>
+      <p class="section-desc" style="margin:10px 0;">
+        <strong>留空 = 不覆盖</strong>，继续使用 API 方案里的值。<br>
+        预设是「一整包」：切换预设会同时切换提示词与这里的采样 / 思考参数。<br>
+        最终优先级：<strong>对话级预设 &gt; 全局预设 &gt; API 方案 &gt; 内置默认</strong>。
+      </p>
+      <div class="input-row" style="gap:8px;flex-wrap:wrap;">
+        <input type="number" step="0.01" min="0" max="2" id="psTemperature" placeholder="temperature" style="flex:1;min-width:110px;">
+        <input type="number" step="0.01" min="0" max="1" id="psTopP" placeholder="top_p" style="flex:1;min-width:110px;">
+        <input type="number" step="1" min="0" id="psTopK" placeholder="top_k" style="flex:1;min-width:110px;">
+        <input type="number" step="1" min="1" id="psMaxTokens" placeholder="max_tokens" style="flex:1;min-width:110px;">
+      </div>
+      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <input type="number" step="0.1" id="psPresencePenalty" placeholder="presence_penalty" style="flex:1;min-width:110px;">
+        <input type="number" step="0.1" id="psFrequencyPenalty" placeholder="frequency_penalty" style="flex:1;min-width:110px;">
+      </div>
+      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <select id="psThinkingMode" style="flex:1;min-width:140px;">
+          <option value="">思考：不覆盖</option>
+          <option value="auto">自动（不发送）</option>
+          <option value="off">关闭（尽力而为）</option>
+          <option value="on">开启</option>
+          <option value="effort">指定力度</option>
+          <option value="custom">自定义（自己写 body）</option>
+        </select>
+        <select id="psReasoningEffort" style="flex:1;min-width:120px;">
+          <option value="">力度：不覆盖</option>
+          <option value="minimal">最低</option>
+          <option value="low">低</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="max">最高</option>
+        </select>
+      </div>
+      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+        <input type="number" step="1" min="0" id="psThinkingBudget" placeholder="思考预算 token（Claude / Gemini）" style="flex:1;min-width:170px;">
+        <select id="psHideReasoning" style="flex:1;min-width:140px;">
+          <option value="">隐藏思考内容：不覆盖</option>
+          <option value="true">隐藏</option>
+          <option value="false">显示</option>
+        </select>
+      </div>
+      <div style="margin-top:10px;">
+        <button class="btn btn-secondary" type="button" onclick="previewPresetRequest()" style="width:100%;justify-content:center;">
+          <!-- icon injected --> 预览最终请求（含本预设）
+        </button>
+      </div>
+    </details>
   </div>
 
   <!-- ══════════════════════════════════════════ -->
@@ -1290,34 +1342,63 @@
     };
   }
 
-  function previewProfileRequest() {
-    const profile = readProfileForm(null);
-    const model = (document.getElementById('edTestModel')?.value || '').trim() || settings.defaultModel || 'gpt-4o-mini';
-    let preview;
-    try {
-      preview = API.previewRequest(profile, model);
-    } catch (e) {
-      UI.showToast('预览失败：' + e.message, 'error');
-      return;
-    }
+  /** 统一的「最终请求预览」弹窗：显示 URL / 头 / 体，并列出参数的来源 */
+  function showRequestPreview(preview, model) {
     const block = (title, value) => `
       <div style="margin-bottom:12px;">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${title}</div>
         <pre style="margin:0;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;">${Utils.escapeHtml(value)}</pre>
       </div>`;
+
+    // 参数来源：让"我改了但没生效"变成一眼可见
+    const sources = preview.sources || {};
+    const samplerKeys = ['temperature', 'topP', 'topK', 'maxTokens', 'presencePenalty', 'frequencyPenalty'];
+    const thinkingKeys = ['thinkingMode', 'reasoningEffort', 'thinkingBudget', 'hideReasoning'];
+    const sourceRows = [];
+    for (const key of [...samplerKeys, ...thinkingKeys]) {
+      const from = sources[key];
+      if (!from) continue;
+      sourceRows.push(`<div style="display:flex;justify-content:space-between;gap:10px;">
+        <code>${Utils.escapeHtml(key)}</code>
+        <span style="color:var(--accent);">${Utils.escapeHtml(from)}</span>
+      </div>`);
+    }
+    const sourceBlock = sourceRows.length
+      ? `<div style="margin-bottom:12px;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.7;">
+           <div style="color:var(--text-muted);margin-bottom:6px;">参数来源（预设覆盖了 API 方案的这些字段）</div>
+           ${sourceRows.join('')}
+         </div>`
+      : '';
+
+    const presetNote = preview.presetName
+      ? `已叠加预设：<strong>${Utils.escapeHtml(preview.presetName)}</strong><br>`
+      : '';
+
     UI.showModal({
       title: '最终请求预览',
       content: `
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">
           模型：<strong>${Utils.escapeHtml(model)}</strong> · 协议：<strong>${Utils.escapeHtml(preview.provider)}</strong><br>
-          这里是实际会发出的内容（密钥已脱敏）。若某项没生效，先看这里。
+          ${presetNote}这里是实际会发出的内容（密钥已脱敏）。若某项没生效，先看这里。
         </div>
+        ${sourceBlock}
         ${block('请求地址', preview.url)}
         ${block('请求头', JSON.stringify(preview.headers, null, 2))}
         ${block('请求体', JSON.stringify(preview.body, null, 2))}
       `,
       buttons: [{ text: '关闭', class: 'btn-secondary', onclick: 'UI.closeModal()' }],
     });
+  }
+
+  function previewProfileRequest() {
+    const profile = readProfileForm(null);
+    const model = (document.getElementById('edTestModel')?.value || '').trim() || settings.defaultModel || 'gpt-4o-mini';
+    try {
+      // 只预览方案这一层：编辑方案时叠加预设会让人分不清"到底改了哪个"
+      showRequestPreview(API.previewRequest(profile, model), model);
+    } catch (e) {
+      UI.showToast('预览失败：' + e.message, 'error');
+    }
   }
 
   function saveProfile(editId) {
@@ -1556,6 +1637,77 @@
     return settings.promptPresets[getActivePresetId()];
   }
 
+  // ── 预设级参数（采样 / 思考）：预设是「一整包」，切换预设会一并切换这些 ──
+  const PRESET_PARAM_INPUTS = {
+    temperature: 'psTemperature', topP: 'psTopP', topK: 'psTopK', maxTokens: 'psMaxTokens',
+    presencePenalty: 'psPresencePenalty', frequencyPenalty: 'psFrequencyPenalty',
+    thinkingMode: 'psThinkingMode', reasoningEffort: 'psReasoningEffort',
+    thinkingBudget: 'psThinkingBudget', hideReasoning: 'psHideReasoning',
+  };
+  const PRESET_THINKING_FIELDS = ['thinkingMode', 'reasoningEffort', 'thinkingBudget', 'hideReasoning'];
+  let _presetParamsBound = false;
+
+  function renderPresetParams() {
+    const preset = getActivePresetObj();
+    if (!preset) return;
+    const sampler = preset.sampler || {};
+    const thinking = preset.thinking || {};
+    for (const [key, id] of Object.entries(PRESET_PARAM_INPUTS)) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const src = PRESET_THINKING_FIELDS.includes(key) ? thinking : sampler;
+      const value = src[key];
+      if (value === undefined || value === null) el.value = '';
+      else if (key === 'hideReasoning') el.value = String(!!value);
+      else el.value = String(value);
+    }
+    if (!_presetParamsBound) {
+      const block = document.getElementById('presetParamsBlock');
+      if (block) {
+        block.addEventListener('change', () => onPresetParamsChange());
+        _presetParamsBound = true;
+      }
+    }
+  }
+
+  function collectPresetParams() {
+    const sampler = {};
+    const thinking = {};
+    for (const [key, id] of Object.entries(PRESET_PARAM_INPUTS)) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const raw = String(el.value ?? '').trim();
+      if (raw === '') continue;                       // 空 = 不覆盖
+      if (key === 'hideReasoning') { thinking[key] = raw === 'true'; continue; }
+      if (PRESET_THINKING_FIELDS.includes(key)) thinking[key] = raw;
+      else sampler[key] = raw;
+    }
+    return { sampler, thinking };
+  }
+
+  function onPresetParamsChange() {
+    const preset = getActivePresetObj();
+    if (!preset) return;
+    const { sampler, thinking } = collectPresetParams();
+    preset.sampler = sampler;
+    preset.thinking = thinking;
+    Storage.saveSettings(settings);
+  }
+
+  /** 预览「API 方案 + 当前预设」叠加后的最终请求，并标出每个参数的来源 */
+  function previewPresetRequest() {
+    const profileId = settings.defaultApiProfileId;
+    const profile = Storage.getApiProfile(profileId);
+    if (!profile) { UI.showToast('请先在「API 方案」里配置一个默认方案', 'error'); return; }
+    const model = settings.defaultModel || 'gpt-4o-mini';
+    const preset = getActivePresetObj();
+    try {
+      showRequestPreview(API.previewRequest(profile, model, preset), model);
+    } catch (e) {
+      UI.showToast('预览失败：' + e.message, 'error');
+    }
+  }
+
   function renderPresetSelector() {
     ensurePresets();
     const container = document.getElementById('presetBar');
@@ -1575,6 +1727,7 @@
         <button class="btn-icon" onclick="triggerImportPreset()" title="导入酒馆预设"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span></button>
         <button class="btn-icon" onclick="triggerImportWritingCard()" title="导入写卡预设（酒馆原样导入）"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.book || Icons.download}</span></button>
       </div>`;
+    renderPresetParams();
   }
 
   function switchPreset(id) {

@@ -187,6 +187,60 @@
       gap: 12px;
     }
 
+    /* ── Storylines ──────────────────────────────── */
+    .storyline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .storyline-list:empty { display: none; }
+    .storyline-card {
+      background: var(--bg-glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: var(--radius-lg);
+      padding: 12px 16px;
+      transition: all var(--transition);
+    }
+    .storyline-card:hover { background: var(--accent-dim); }
+    .storyline-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .storyline-name {
+      font-family: var(--font-display);
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .storyline-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+    .storyline-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .storyline-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      color: var(--accent);
+      border: 1px solid var(--accent-dim);
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
     .conv-card {
       background: var(--bg-glass);
       backdrop-filter: blur(16px);
@@ -744,6 +798,14 @@
       </div>
     </div>
 
+    <!-- Storylines（故事线容器） -->
+    <div class="toolbar" id="storyline-section" style="display:none;">
+      <div class="toolbar-label">
+        故事线 <span class="toolbar-count" id="storyline-count"></span>
+      </div>
+    </div>
+    <div class="storyline-list" id="storyline-list"></div>
+
     <!-- Conversation List -->
     <div class="conv-list" id="conv-list">
       <!-- Cards rendered by JS -->
@@ -912,6 +974,8 @@
     const toolbar = document.getElementById('toolbar');
     const footer = document.getElementById('footer-actions');
 
+    renderStorylines();
+
     if (conversations.length === 0) {
       toolbar.style.display = 'none';
       footer.style.display = 'none';
@@ -934,6 +998,129 @@
     });
   }
 
+  // ── Storylines（故事线容器）─────────────────────
+  function renderStorylines() {
+    const section = document.getElementById('storyline-section');
+    const list = document.getElementById('storyline-list');
+    if (!section || !list) return;
+    const storylines = Storage.getStorylineList();
+    if (storylines.length === 0) {
+      section.style.display = 'none';
+      list.innerHTML = '';
+      return;
+    }
+    section.style.display = '';
+    document.getElementById('storyline-count').textContent = `(${storylines.length})`;
+    list.innerHTML = storylines.map(s => {
+      const count = Storyline.conversations(s.id).length;
+      const hasTemplate = !!(s.template && (s.template.worldBook || s.template.storySetting));
+      return `
+        <div class="storyline-card">
+          <div class="storyline-head">
+            <div class="storyline-name">${Utils.escapeHtml(s.name || '未命名故事线')}</div>
+            <div class="storyline-actions">
+              <button class="btn-icon" onclick="newFromStoryline('${s.id}', event)" title="按这条线开新对话">
+                ${getIcon('plus', 15)}
+              </button>
+              <button class="btn-icon" onclick="refreshStorylineTemplate('${s.id}', event)" title="以最新对话刷新开局模板">
+                ${getIcon('refresh', 15)}
+              </button>
+              <button class="btn-icon" onclick="renameStoryline('${s.id}', event)" title="重命名">
+                ${getIcon('edit', 15)}
+              </button>
+              <button class="btn-icon btn-danger" onclick="removeStoryline('${s.id}', event)" title="删除故事线（对话保留）">
+                ${getIcon('trash', 15)}
+              </button>
+            </div>
+          </div>
+          <div class="storyline-meta">
+            ${count} 个对话 · ${hasTemplate ? '已存开局模板' : '无开局模板'}
+            ${s.description ? ' · ' + Utils.escapeHtml(s.description) : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function newFromStoryline(id, event) {
+    if (event) event.stopPropagation();
+    const storyline = Storage.getStoryline(id);
+    if (!storyline) return;
+    const conv = Storyline.buildConversation(storyline);
+    Storage.saveConversation(conv);
+    window.location.href = `chat.html?v=12&id=${conv.id}&new=true`;
+  }
+
+  async function refreshStorylineTemplate(id, event) {
+    if (event) event.stopPropagation();
+    const storyline = Storage.getStoryline(id);
+    if (!storyline) return;
+    const convs = Storyline.conversations(id);
+    if (convs.length === 0) { UI.showToast('这条故事线下还没有对话', 'error'); return; }
+    // 用最近更新的那个对话作为模板来源
+    const latest = convs[0];
+    const full = await Storage.loadConversation(latest.id);
+    if (!full) { UI.showToast('读取对话失败', 'error'); return; }
+    Storyline.refreshTemplate(id, full);
+    UI.showToast(`已用「${full.name || '对话'}」刷新开局模板`, 'success');
+    renderStorylines();
+  }
+
+  function renameStoryline(id, event) {
+    if (event) event.stopPropagation();
+    const s = Storage.getStoryline(id);
+    if (!s) return;
+    const name = prompt('故事线名称:', s.name || '');
+    if (name === null) return;
+    Storyline.rename(id, name);
+    renderStorylines();
+    renderList();
+  }
+
+  async function removeStoryline(id, event) {
+    if (event) event.stopPropagation();
+    const s = Storage.getStoryline(id);
+    if (!s) return;
+    UI.showConfirm({
+      title: '删除故事线',
+      message: `确定删除故事线「${Utils.escapeHtml(s.name || '')}」吗？<br>线下的对话<b>不会被删除</b>，只是解除归属。`,
+      onConfirm: async () => { await Storyline.remove(id); UI.closeModal(); UI.showToast('已删除故事线', 'success'); loadConversations(); },
+    });
+  }
+
+  /** 把某个对话加入 / 移出故事线 */
+  function assignStoryline(convId, event) {
+    if (event) event.stopPropagation();
+    const storylines = Storage.getStorylineList();
+    if (storylines.length === 0) {
+      const name = prompt('还没有故事线，先创建一条（输入名称）:', '');
+      if (!name) return;
+      const conv = conversations.find(c => c.id === convId);
+      Storyline.create({ name, conversation: conv ? { ...conv, id: convId } : null });
+      UI.showToast('已创建故事线并加入', 'success');
+      loadConversations();
+      return;
+    }
+    const rows = storylines.map(s => `<button class="btn btn-secondary" style="width:100%;margin-bottom:6px;justify-content:center;"
+        onclick="doAssignStoryline('${convId}','${s.id}')">${Utils.escapeHtml(s.name)}</button>`).join('');
+    UI.showModal({
+      title: '加入故事线',
+      content: `${rows}
+        <button class="btn btn-secondary" style="width:100%;margin-top:6px;justify-content:center;" onclick="doAssignStoryline('${convId}','')">移出故事线</button>`,
+      buttons: [{ text: '关闭', class: 'btn-secondary', onclick: 'UI.closeModal()' }],
+    });
+  }
+
+  async function doAssignStoryline(convId, storylineId) {
+    const full = await Storage.loadConversation(convId);
+    if (!full) { UI.showToast('读取对话失败', 'error'); return; }
+    if (storylineId) full.storylineId = storylineId;
+    else delete full.storylineId;
+    Storage.saveConversation(full);
+    UI.closeModal();
+    UI.showToast(storylineId ? '已加入故事线' : '已移出故事线', 'success');
+    loadConversations();
+  }
+
   function renderCard(conv, index) {
     const phase = conv.phase || 'init';
     const phaseLabel = phase === 'rp' ? '进行中' : '初始化';
@@ -941,6 +1128,10 @@
     const msgCount = conv.msgCount !== undefined ? conv.msgCount : (conv.messages || []).filter(m => !m.hidden).length;
     const timeStr = conv.updatedAt ? Utils.formatRelative(conv.updatedAt) : '未知';
     const name = Utils.escapeHtml(conv.name || '未命名故事');
+    const storyline = conv.storylineId ? Storage.getStoryline(conv.storylineId) : null;
+    const storylineTag = storyline
+      ? `<span class="storyline-tag" title="所属故事线">${Utils.escapeHtml(storyline.name || '')}</span>`
+      : '';
 
     return `
       <div class="conv-card" data-id="${conv.id}" onclick="openConversation('${conv.id}', event)">
@@ -949,7 +1140,7 @@
             ${getIcon('book', 18)}
           </div>
           <div class="conv-card-info">
-            <div class="conv-card-name" id="name-${conv.id}">${name}</div>
+            <div class="conv-card-name" id="name-${conv.id}">${name}${storylineTag}</div>
             <div class="conv-card-meta">
               <span class="phase-badge ${phaseClass}">${phaseLabel}</span>
               <span class="meta-dot"></span>
@@ -961,6 +1152,9 @@
           <div class="conv-card-actions">
             <button class="btn-icon" onclick="forkConversation('${conv.id}', event)" title="复制">
               ${getIcon('copy', 15)}
+            </button>
+            <button class="btn-icon" onclick="assignStoryline('${conv.id}', event)" title="加入故事线">
+              ${getIcon('book', 15)}
             </button>
             <button class="btn-icon" onclick="exportConversation('${conv.id}', event)" title="导出">
               ${getIcon('download', 15)}
@@ -995,18 +1189,87 @@
   }
 
   // ── Create New Story Modal ───────────────────
+  // ── 起步面板（可选）：一开始就把框架定稳 ──
+  function buildPanelFieldsHtml() {
+    return Panel.FIELDS.map(f => `
+      <div class="form-group" style="margin-top:10px;">
+        <label>${f.label}</label>
+        <textarea id="panel-${f.key}" rows="${f.rows}" placeholder="${Utils.escapeHtml(f.placeholder)}" style="width:100%;font-size:13px;"></textarea>
+      </div>`).join('');
+  }
+
+  function buildCreateFormHtml() {
+    return `
+      <div class="create-form">
+        <div class="form-group">
+          <label>故事名称</label>
+          <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
+        </div>
+        <details style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px;">
+          <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);">起步面板（可选）· 一开始就把框架定稳</summary>
+          <p style="font-size:12px;color:var(--text-muted);margin:10px 0;line-height:1.6;">
+            留空则由 AI 在初始化阶段自行发挥。<br>
+            世界观 / 角色 / 开场 / 规则 会进入「故事设定」（稳定内容，可被前缀缓存）；
+            <b>文风</b>会以 @Depth 注入到最贴近「当下」的位置。
+          </p>
+          <div style="display:flex;gap:8px;margin-bottom:4px;align-items:stretch;">
+            <textarea id="panel-ai-input" rows="2" placeholder="也可以先用一句话描述你想要的故事，再点右侧让 AI 帮你把面板填好" style="flex:1;font-size:13px;"></textarea>
+            <button class="btn btn-secondary" type="button" id="panel-ai-btn" style="white-space:nowrap;" onclick="aiRewriteCreatePanel()">AI 帮我写</button>
+          </div>
+          ${buildPanelFieldsHtml()}
+        </details>
+      </div>`;
+  }
+
+  function readCreatePanel() {
+    const panel = Panel.empty();
+    for (const f of Panel.FIELDS) {
+      const el = document.getElementById(`panel-${f.key}`);
+      if (el) panel[f.key] = String(el.value || '').trim();
+    }
+    return panel;
+  }
+
+  function writeCreatePanel(panel) {
+    for (const f of Panel.FIELDS) {
+      const el = document.getElementById(`panel-${f.key}`);
+      if (el) el.value = String(panel?.[f.key] ?? '');
+    }
+  }
+
+  /** AI 改造面板：把一句自然语言描述整理成结构化面板 */
+  async function aiRewriteCreatePanel() {
+    const desc = (document.getElementById('panel-ai-input')?.value || '').trim();
+    if (!desc) { UI.showToast('先写一句描述', 'error'); return; }
+    const settings = Storage.getSettings();
+    const profileList = Object.values(Storage.getApiProfiles());
+    const apiProfileId = settings.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
+    if (!apiProfileId) { UI.showToast('请先配置 API 接口', 'error'); return; }
+
+    const btn = document.getElementById('panel-ai-btn');
+    const original = btn ? btn.textContent : '';
+    if (btn) { btn.textContent = '生成中…'; btn.disabled = true; }
+    try {
+      const { systemPrompt, messages } = Panel.buildAiRewriteMessages(desc, readCreatePanel());
+      const res = await API.sendChat({ apiProfileId, model: settings.defaultModel || '', systemPrompt, messages });
+      if (!res.success) throw new Error(res.error || '请求失败');
+      const parsed = Panel.parseAiRewrite(res.content || '');
+      if (!parsed.ok) throw new Error(parsed.error);
+      writeCreatePanel(parsed.panel);
+      UI.showToast('已生成，可自行修改', 'success');
+    } catch (e) {
+      UI.showToast('生成失败：' + e.message, 'error');
+    } finally {
+      if (btn) { btn.textContent = original; btn.disabled = false; }
+    }
+  }
+
   function showCreateModal() {
     // Public mode: simplified creation (no API profile/model selection)
     if (Config.isPublic()) {
       UI.showModal({
         title: '创建新故事',
-        content: `
-          <div class="create-form">
-            <div class="form-group">
-              <label>故事名称</label>
-              <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
-            </div>
-          </div>`,
+        content: buildCreateFormHtml(),
         buttons: [
           { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
           { text: '创建', class: 'btn-primary', onclick: 'doCreateConversation()' },
@@ -1031,13 +1294,7 @@
 
     UI.showModal({
       title: '创建新故事',
-      content: `
-        <div class="create-form">
-          <div class="form-group">
-            <label>故事名称</label>
-            <input type="text" id="create-name" value="新的故事" placeholder="为你的故事起个名字" onfocus="this.select()">
-          </div>
-        </div>`,
+      content: buildCreateFormHtml(),
       buttons: [
         { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
         { text: '创建', class: 'btn-primary', onclick: 'doCreateConversation()' },
@@ -1072,17 +1329,22 @@
 
     const settings = Storage.getSettings();
     const id = Utils.generateId('conv');
+    const panel = readCreatePanel();
     const conv = {
       id,
       name,
       phase: 'init',
       apiProfileId,
       model,
+      // 对话级预设：空 = 跟随全局预设（settings.activePresetId）
+      presetId: '',
       messages: [],
       mvu: null,
       storySetting: null,
       worldBook: null,
-      summary: { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 100 },
+      // 起步面板：空面板不写入，保持与老对话完全一致的结构
+      panel: Panel.isEmpty(panel) ? undefined : panel,
+      summary: { mergedSummaries: [], archive: [], lastMergedIdx: 0, interval: settings.summaryInterval || 80 },
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };

@@ -64,7 +64,7 @@ function getIcon(name, size = 20) {
 // Storage
 // ============================================================
 const Storage = {
-  KEYS: { SETTINGS: 'airp_settings', API_PROFILES: 'airp_apiProfiles', CONVERSATIONS: 'airp_conversations', CONV_CACHE: 'airp_conv_cache' },
+  KEYS: { SETTINGS: 'airp_settings', API_PROFILES: 'airp_apiProfiles', CONVERSATIONS: 'airp_conversations', CONV_CACHE: 'airp_conv_cache', STORYLINES: 'airp_storylines', MEMORY_LIBS: 'airp_memoryLibraries' },
 
   // ---- Native storage bridge (Android WebView) ----
   _isNative: !!(window.AndroidBridge?.saveData),
@@ -133,10 +133,12 @@ const Storage = {
   async syncFromServer() {
     // Native mode: no server to sync from, data is already in native storage
     if (this._isNative) { log('syncFromServer: native mode, skipping'); return false; }
-    const [settings, profiles, convMeta] = await Promise.all([
+    const [settings, profiles, convMeta, storylines, memoryLibraries] = await Promise.all([
       this._fetchFromServer('/api/settings'),
       this._fetchFromServer('/api/profiles'),
       this._fetchFromServer('/api/conversations?meta=1'),
+      this._fetchFromServer('/api/storylines'),
+      this._fetchFromServer('/api/memoryLibraries'),
     ]);
     let synced = false;
     if (settings && Object.keys(settings).length > 0) {
@@ -153,6 +155,17 @@ const Storage = {
     }
     if (profiles && Object.keys(profiles).length > 0) {
       this._set(this.KEYS.API_PROFILES, profiles);
+      synced = true;
+    }
+    // Storylines / memory libraries: merge by updatedAt (never drop a newer local copy)
+    for (const [key, remote] of [[this.KEYS.STORYLINES, storylines], [this.KEYS.MEMORY_LIBS, memoryLibraries]]) {
+      if (!remote || typeof remote !== 'object') continue;
+      const local = this._get(key, {}) || {};
+      const merged = { ...remote };
+      for (const [id, item] of Object.entries(local)) {
+        if (!merged[id] || (item.updatedAt || 0) > (merged[id].updatedAt || 0)) merged[id] = item;
+      }
+      this._set(key, merged);
       synced = true;
     }
     if (convMeta) {
@@ -292,7 +305,7 @@ const Storage = {
 
   // ---- Conversations ----
   // localStorage stores only metadata index; full data lives on server.
-  _META_FIELDS: ['id', 'name', 'phase', 'createdAt', 'updatedAt', 'apiProfileId', 'model', 'msgCount'],
+  _META_FIELDS: ['id', 'name', 'phase', 'createdAt', 'updatedAt', 'apiProfileId', 'model', 'msgCount', 'storylineId', 'presetId'],
   _toMeta(c) {
     const meta = {};
     for (const k of this._META_FIELDS) if (c[k] !== undefined) meta[k] = c[k];
@@ -333,6 +346,46 @@ const Storage = {
   },
   getConversationList() { return Object.values(this.getConversations()).sort((a, b) => b.updatedAt - a.updatedAt); },
 
+  // ---- Storylines（故事线容器：把多个对话归到一条线下，新对话可继承）----
+  getStorylines() { return this._get(this.KEYS.STORYLINES, {}); },
+  getStoryline(id) { return this.getStorylines()[id] || null; },
+  saveStoryline(s) {
+    const all = this.getStorylines();
+    all[s.id] = { ...s, updatedAt: Date.now() };
+    this._set(this.KEYS.STORYLINES, all);
+    this._syncToServer('/api/storylines', all);
+    return all[s.id];
+  },
+  deleteStoryline(id) {
+    const all = this.getStorylines();
+    delete all[id];
+    this._set(this.KEYS.STORYLINES, all);
+    this._syncToServer('/api/storylines', all);
+  },
+  getStorylineList() {
+    return Object.values(this.getStorylines()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  },
+
+  // ---- Memory libraries（记忆库：可跨对话复用的记忆条目集合）----
+  getMemoryLibraries() { return this._get(this.KEYS.MEMORY_LIBS, {}); },
+  getMemoryLibrary(id) { return this.getMemoryLibraries()[id] || null; },
+  saveMemoryLibrary(lib) {
+    const all = this.getMemoryLibraries();
+    all[lib.id] = { ...lib, updatedAt: Date.now() };
+    this._set(this.KEYS.MEMORY_LIBS, all);
+    this._syncToServer('/api/memoryLibraries', all);
+    return all[lib.id];
+  },
+  deleteMemoryLibrary(id) {
+    const all = this.getMemoryLibraries();
+    delete all[id];
+    this._set(this.KEYS.MEMORY_LIBS, all);
+    this._syncToServer('/api/memoryLibraries', all);
+  },
+  getMemoryLibraryList() {
+    return Object.values(this.getMemoryLibraries()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  },
+
   async exportAll() {
     if (this._isNative) {
       // Native mode: load all conversations from native storage
@@ -342,15 +395,23 @@ const Storage = {
         const conv = this._nativeGet('conv_' + id, null);
         if (conv) conversations[id] = conv;
       }
-      return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations };
+      return {
+        settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations,
+        storylines: this.getStorylines(), memoryLibraries: this.getMemoryLibraries(),
+      };
     }
     // Web mode: fetch from server
     const conversations = await this._fetchFromServer('/api/conversations') || {};
-    return { settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations };
+    return {
+      settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations,
+      storylines: this.getStorylines(), memoryLibraries: this.getMemoryLibraries(),
+    };
   },
   async importAll(d) {
     if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); if (!this._isNative) this._putToServer('/api/settings', d.settings); }
     if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); if (!this._isNative) this._putToServer('/api/profiles', d.apiProfiles); }
+    if (d.storylines) { this._set(this.KEYS.STORYLINES, d.storylines); if (!this._isNative) this._putToServer('/api/storylines', d.storylines); }
+    if (d.memoryLibraries) { this._set(this.KEYS.MEMORY_LIBS, d.memoryLibraries); if (!this._isNative) this._putToServer('/api/memoryLibraries', d.memoryLibraries); }
     if (d.conversations) {
       const index = {};
       for (const [id, conv] of Object.entries(d.conversations)) {
@@ -752,20 +813,61 @@ const API = {
     return eff ? { reasoning_effort: eff } : null;
   },
 
+  /** 预设里参与"覆盖 API 方案"的字段（只有明确给了值的才覆盖，空值表示不干预） */
+  PRESET_SAMPLER_KEYS: ['temperature', 'topP', 'topK', 'maxTokens', 'presencePenalty', 'frequencyPenalty'],
+  PRESET_THINKING_KEYS: ['thinkingMode', 'reasoningEffort', 'thinkingBudget', 'hideReasoning'],
+
+  /**
+   * 把预设里的采样 / 思考设置叠到 API 方案上。
+   * 参数优先级链：对话级预设 > 全局预设 > API 方案 > 内置默认。
+   * （对话级 / 全局级哪一级生效，由 PromptBuilder.getActivePreset 决定，这里只负责"叠加"。）
+   * 返回 { merged, sources, presetName }，sources 记录每个字段的来源，供「预览最终请求」展示。
+   */
+  _mergeProfileWithPreset(p, preset = null) {
+    const merged = { ...(p || {}) };
+    const sources = {};
+    const name = String(preset?.name || '').trim();
+    const label = name ? `预设「${name}」` : '预设';
+    if (!preset) return { merged, sources, presetName: '' };
+
+    const sampler = preset.sampler || {};
+    for (const key of this.PRESET_SAMPLER_KEYS) {
+      const value = sampler[key];
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      merged[key] = value;
+      sources[key] = label;
+    }
+
+    const thinking = preset.thinking || {};
+    for (const key of this.PRESET_THINKING_KEYS) {
+      const value = thinking[key];
+      if (value === undefined || value === null) continue;
+      if (key === 'hideReasoning') { merged[key] = !!value; sources[key] = label; continue; }
+      if (String(value).trim() === '') continue;
+      merged[key] = value;
+      sources[key] = label;
+    }
+    return { merged, sources, presetName: name };
+  },
+
   /**
    * 算出最终要注入的请求参数。
    * 供「预览最终请求」与安卓原生通道共用——provider 映射只在这一处，避免两端不同步。
+   * @param preset 当前生效的预设（可选）；给了就叠加到 API 方案之上。
    */
-  resolveRequestParams(p, model, baseMaxTokens) {
-    const sampler = this._samplerFields(p, model);
-    const cap = this._numOrNull(p?.maxTokens) || baseMaxTokens || this._maxTokensForModel(model);
+  resolveRequestParams(p, model, baseMaxTokens, preset = null) {
+    const { merged, sources } = this._mergeProfileWithPreset(p, preset);
+    const sampler = this._samplerFields(merged, model);
+    const cap = this._numOrNull(merged?.maxTokens) || baseMaxTokens || this._maxTokensForModel(model);
     return {
       sampler,
-      thinking: this._thinkingBody(p, model, cap) || null,
-      extraBody: this._parseExtraBody(p?.extraBody),
-      excludeBody: this._parsePathList(p?.excludeBody),
-      extraHeaders: this._parseExtraHeaders(p?.extraHeaders || ''),
-      excludeHeaders: this._parsePathList(p?.excludeHeaders),
+      thinking: this._thinkingBody(merged, model, cap) || null,
+      extraBody: this._parseExtraBody(merged?.extraBody),
+      excludeBody: this._parsePathList(merged?.excludeBody),
+      extraHeaders: this._parseExtraHeaders(merged?.extraHeaders || ''),
+      excludeHeaders: this._parsePathList(merged?.excludeHeaders),
+      // 元信息：仅供 UI 展示来源，不参与请求体组装
+      sources,
     };
   },
 
@@ -800,11 +902,12 @@ const API = {
   },
 
   /** 预览最终会发出的请求（Key 已脱敏） */
-  previewRequest(p, model) {
+  previewRequest(p, model, preset = null) {
     const sampleSystem = '（示例）你是一位小说作者，请续写接下来的剧情。';
     const sampleMessages = [{ role: 'user', content: '（示例）继续写下去' }];
-    const body = this._buildBody(p, model, sampleSystem, sampleMessages, true);
+    const body = this._buildBody(p, model, sampleSystem, sampleMessages, true, preset);
     const headers = this._getHeaders(p, model);
+    const { sources, presetName } = this._mergeProfileWithPreset(p, preset);
     const mask = (value) => {
       const s = String(value);
       if (s.length <= 8) return '****';
@@ -819,6 +922,8 @@ const API = {
       provider: this._detect(p, model),
       headers: safeHeaders,
       body,
+      sources,
+      presetName,
     };
   },
 
@@ -856,9 +961,9 @@ const API = {
     return 64000;
   },
 
-  _buildBody(p, model, systemPrompt, messages, stream) {
+  _buildBody(p, model, systemPrompt, messages, stream, preset = null) {
     const body = this._buildBodyCore(p, model, systemPrompt, messages, stream);
-    return this.applyRequestParams(body, this.resolveRequestParams(p, model, body?.max_tokens));
+    return this.applyRequestParams(body, this.resolveRequestParams(p, model, body?.max_tokens, preset));
   },
 
   _buildBodyCore(p, model, systemPrompt, messages, stream) {
@@ -960,7 +1065,7 @@ const API = {
     return body;
   },
 
-  async sendChat({ apiProfileId, model, systemPrompt, messages }) {
+  async sendChat({ apiProfileId, model, systemPrompt, messages, preset = null }) {
     const p = Storage.getApiProfile(apiProfileId);
     if (!p) return { success: false, error: 'API配置不存在' };
     // Server proxy mode
@@ -968,7 +1073,7 @@ const API = {
       return this._sendViaProxy({ model, systemPrompt, messages });
     }
     try {
-      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, model), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)) });
+      const res = await fetch(this._buildUrl(p, model, false), { method: 'POST', headers: this._getHeaders(p, model), body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false, preset)) });
       if (!res.ok) { const e = await res.json().catch(() => ({})); return { success: false, error: e.error?.message || `HTTP ${res.status}` }; }
       const data = await res.json();
       return { success: true, ...this._parseResponse(p, data) };
@@ -1013,7 +1118,7 @@ const API = {
    * Stream chat with AbortController, connection timeout, and idle timeout.
    * @returns {AbortController} controller - call controller.abort() to cancel
    */
-  streamChat({ apiProfileId, model, systemPrompt, messages, onChunk, onDone, onError, onStatus }) {
+  streamChat({ apiProfileId, model, systemPrompt, messages, preset = null, onChunk, onDone, onError, onStatus }) {
     const controller = new AbortController();
     const p = Storage.getApiProfile(apiProfileId);
     if (!p) { onError?.('API配置不存在', 0); return controller; }
@@ -1026,13 +1131,13 @@ const API = {
 
     // Per-profile stream toggle: if explicitly disabled, route to non-stream and fake the callbacks
     if (p.stream === false) {
-      this._nonStreamAsStream({ apiProfileId, model, systemPrompt, messages, onChunk, onDone, onError, onStatus, controller });
+      this._nonStreamAsStream({ apiProfileId, model, systemPrompt, messages, preset, onChunk, onDone, onError, onStatus, controller });
       return controller;
     }
 
     const prov = this._detect(p, model);
     const url = this._buildUrl(p, model, true);
-    const body = this._buildBody(p, model, systemPrompt, messages, true);
+    const body = this._buildBody(p, model, systemPrompt, messages, true, preset);
     log('streamChat', { provider: prov, url, systemPrompt: systemPrompt?.substring(0, 100) + '...', msgCount: messages.length });
     log('Messages:', messages.map(m => ({ role: m.role, len: m.content.length, preview: m.content.substring(0, 80) })));
 
@@ -1199,14 +1304,14 @@ const API = {
   },
 
   // When profile has stream:false, simulate streaming callbacks from one-shot response
-  async _nonStreamAsStream({ apiProfileId, model, systemPrompt, messages, onChunk, onDone, onError, onStatus, controller }) {
+  async _nonStreamAsStream({ apiProfileId, model, systemPrompt, messages, preset = null, onChunk, onDone, onError, onStatus, controller }) {
     try {
       onStatus?.('connecting');
       const p = Storage.getApiProfile(apiProfileId);
       const res = await fetch(this._buildUrl(p, model, false), {
         method: 'POST',
         headers: this._getHeaders(p),
-        body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false)),
+        body: JSON.stringify(this._buildBody(p, model, systemPrompt, messages, false, preset)),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -2377,11 +2482,18 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
   ],
 
 
-  getActivePreset(settings) {
-    if (settings?.promptPresets && settings.activePresetId) {
-      const preset = settings.promptPresets[settings.activePresetId];
-      if (preset) return preset;
-    }
+  /**
+   * 解析当前生效的预设。
+   * 优先级：对话级预设（conversation.presetId）> 全局预设（settings.activePresetId）> 代码内置。
+   * 对话级是"整体覆盖"而不是"逐字段叠加"——预设是一整包（提示词 + 采样 + 思考），
+   * 只换一半会得到谁也不认识的东西。
+   */
+  getActivePreset(settings, conversation = null) {
+    const presets = settings?.promptPresets || {};
+    const convId = conversation?.presetId;
+    if (convId && presets[convId]) return presets[convId];
+    const globalId = settings?.activePresetId;
+    if (globalId && presets[globalId]) return presets[globalId];
     // Legacy fallback
     return {
       entries: settings?.promptEntries || null,
@@ -2390,11 +2502,118 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     };
   },
 
+  /** 预设里参与"覆盖 API 方案"的字段（只有明确给了值的才覆盖，空值表示不干预） */
+  PRESET_SAMPLER_KEYS: ['temperature', 'topP', 'topK', 'maxTokens', 'presencePenalty', 'frequencyPenalty'],
+  PRESET_THINKING_KEYS: ['thinkingMode', 'reasoningEffort', 'thinkingBudget', 'hideReasoning'],
+
+  /**
+   * 把预设里的采样 / 思考设置叠到 API 方案上。
+   * 返回 { merged, sources, presetName }，sources 记录每个字段的来源，供「预览最终请求」展示。
+   */
+  _mergeProfileWithPreset(p, preset = null) {
+    const merged = { ...(p || {}) };
+    const sources = {};
+    const name = String(preset?.name || '').trim();
+    const label = name ? `预设「${name}」` : '预设';
+    if (!preset) return { merged, sources, presetName: '' };
+
+    const sampler = preset.sampler || {};
+    for (const key of this.PRESET_SAMPLER_KEYS) {
+      const value = sampler[key];
+      if (value === undefined || value === null || String(value).trim() === '') continue;
+      merged[key] = value;
+      sources[key] = label;
+    }
+
+    const thinking = preset.thinking || {};
+    for (const key of this.PRESET_THINKING_KEYS) {
+      const value = thinking[key];
+      if (value === undefined || value === null) continue;
+      if (key === 'hideReasoning') { merged[key] = !!value; sources[key] = label; continue; }
+      if (String(value).trim() === '') continue;
+      merged[key] = value;
+      sources[key] = label;
+    }
+    return { merged, sources, presetName: name };
+  },
+
+
+  /**
+   * 解析当前生效的「作者注 / 上帝指令」（conversation.writingNote）。
+   * 兼容历史字段 conversation.writingAdvice（旧版是固定塞在摘要之后的普通消息）。
+   * 返回 null 表示本轮不注入。
+   */
+  resolveWritingNote(conversation) {
+    const note = conversation?.writingNote;
+    if (note && typeof note === 'object') {
+      if (note.enabled === false) return null;
+      const text = String(note.text || '').trim();
+      if (!text) return null;
+      return {
+        text,
+        depth: Math.max(0, Math.floor(Number(note.depth) || 0)),
+        role: note.role === 'assistant' ? 'assistant' : 'user',
+        oneShot: !!note.oneShot,
+      };
+    }
+    // 历史兼容：旧字段当成「深度 1、常驻」
+    const legacy = String(conversation?.writingAdvice || '').trim();
+    if (!legacy) return null;
+    return { text: legacy, depth: 1, role: 'user', oneShot: false };
+  },
+
+  /** 汇总所有要走 @Depth 注入的内容：世界书 at_depth 条目 + 面板文风 + 骰子 + 作者注 */
+  collectAtDepthBlocks(conversation, worldBookBlocks) {
+    const blocks = [...(worldBookBlocks?.atDepth || [])];
+    const style = Panel.toStyleBlock(conversation);
+    if (style) blocks.push(style);
+    const dice = Dice.buildBlock(conversation?.pendingDice, !!conversation?.hardcoreDice);
+    if (dice) blocks.push({ depth: 1, role: 'user', content: dice });
+    const note = this.resolveWritingNote(conversation);
+    if (note) {
+      blocks.push({
+        depth: note.depth,
+        role: note.role,
+        content: '【主人的写作建议】\n' + note.text,
+      });
+    }
+    return blocks;
+  },
+
+  /**
+   * @Depth 注入：把 position='at_depth' 的条目插到距离对话末尾第 N 条的位置。
+   *   depth 1 → 紧贴最后一条消息之前（最"当下"，适合文风 / 上帝指令）
+   *   depth 2 → 倒数第二条之前
+   *   depth 0 → 追加到所有消息之后（最末尾）
+   * 语义对标 SillyTavern 的 Author's Note @Depth。
+   * 一次性重建数组而不是反复 splice，避免插入下标互相位移。
+   */
+  applyAtDepth(msgs, blocks) {
+    const items = blocks?.atDepth || [];
+    if (!items.length || !Array.isArray(msgs)) return msgs;
+    const n = msgs.length;
+    const byIndex = new Map();
+    for (const item of items) {
+      const depth = Math.max(0, Math.floor(Number(item.depth) || 0));
+      const at = depth <= 0 ? n : Math.max(0, n - depth);
+      if (!byIndex.has(at)) byIndex.set(at, []);
+      byIndex.get(at).push({ role: item.role === 'assistant' ? 'assistant' : 'user', content: item.content });
+    }
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      if (byIndex.has(i)) out.push(...byIndex.get(i));
+      if (i < n) out.push(msgs[i]);
+    }
+    return out;
+  },
+
   buildMessages(conversation, options = {}) {
     const settings = Storage.getSettings();
     const phase = conversation.phase || 'init';
-    const preset = this.getActivePreset(settings);
+    const preset = this.getActivePreset(settings, conversation);
     const worldBookBlocks = WorldBook.buildPromptBlocks(conversation, { commit: !!options.commitWorldBook });
+    // 故事设定 = 已有 storySetting（可能是 init 阶段生成的）+ 空白起步面板里填的字段
+    const storySettingText = Panel.toSettingText(conversation);
 
     if (phase === 'init') {
       // Writing-card preset: build from entries (system entries → systemPrompt, others → prepended messages)
@@ -2442,8 +2661,9 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
           if (merged.length > 0 && merged[merged.length - 1].role === m.role) merged[merged.length - 1].content += '\n\n' + m.content;
           else merged.push({ ...m });
         }
-        log('buildMessages [init/writing-card]', { systemLen: systemPrompt.length, msgCount: merged.length });
-        return { systemPrompt, messages: merged };
+        const withDepth = this.applyAtDepth(merged, { atDepth: this.collectAtDepthBlocks(conversation, worldBookBlocks) });
+        log('buildMessages [init/writing-card]', { systemLen: systemPrompt.length, msgCount: withDepth.length, atDepthCount: worldBookBlocks.atDepth?.length || 0 });
+        return { systemPrompt, messages: withDepth, preset };
       }
 
       // Default init: single initPrompt string
@@ -2459,10 +2679,12 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
         msgs.push({ role: initMessages[i].role, content: initMessages[i].content });
         if (isLatestUser && worldBookBlocks.afterInput) msgs.push({ role: 'user', content: worldBookBlocks.afterInput });
       }
-      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: msgs.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+      const withDepth = this.applyAtDepth(msgs, { atDepth: this.collectAtDepthBlocks(conversation, worldBookBlocks) });
+      log('buildMessages [init]', { systemLen: systemPrompt.length, msgCount: withDepth.length, atDepthCount: worldBookBlocks.atDepth?.length || 0, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
       return {
         systemPrompt,
-        messages: msgs,
+        messages: withDepth,
+        preset,
         activeWorldBookEntries: worldBookBlocks.active || [],
         blockedWorldBookEntries: worldBookBlocks.blocked || [],
         candidateWorldBookEntries: worldBookBlocks.candidates || [],
@@ -2615,16 +2837,13 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       if (worldBookBlocks.beforeStory) {
         msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
       }
-      if (conversation.storySetting) {
-        msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting, _cacheAnchor: true });
+      if (storySettingText) {
+        msgs.push({ role: 'user', content: '【故事设定】\n' + storySettingText, _cacheAnchor: true });
       }
       if (worldBookBlocks.afterStory) {
         msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
       }
       msgs.push(...buildSummaries(allMsgs, splitAt));
-      if (conversation.writingAdvice) {
-        msgs.push({ role: 'user', content: '【主人的写作建议】\n' + conversation.writingAdvice });
-      }
       const recent = allMsgs.slice(splitAt);
       for (let i = 0; i < recent.length; i++) {
         if (i === recent.length - 1) {
@@ -2643,10 +2862,12 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
       }
       // 不做字符串拼接合并，理由同 slot-driven 分支：交给 _buildBody 按 provider
       // 分别处理，保留每条原始消息的 block 边界，故事设定块才能独立缓存。
-      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: msgs.length, splitAt, recentCount: recent.length, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+      const withDepth = this.applyAtDepth(msgs, { atDepth: this.collectAtDepthBlocks(conversation, worldBookBlocks) });
+      log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: withDepth.length, splitAt, recentCount: recent.length, atDepthCount: worldBookBlocks.atDepth?.length || 0, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
       return {
         systemPrompt,
-        messages: msgs,
+        messages: withDepth,
+        preset,
         activeWorldBookEntries: worldBookBlocks.active || [],
         blockedWorldBookEntries: worldBookBlocks.blocked || [],
         candidateWorldBookEntries: worldBookBlocks.candidates || [],
@@ -2673,12 +2894,12 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
             if (worldBookBlocks.beforeStory) {
               msgs.push({ role: 'user', content: worldBookBlocks.beforeStory });
             }
-            if (conversation.storySetting) {
+            if (storySettingText) {
               // _cacheAnchor：标记这条是本局对话里真正稳定不变的内容，供 _buildBody
               // 精确定位打缓存标记，不能靠"永远是第一条"这种位置假设——
               // 万一 storySetting 为空，第一条会变成别的、每轮都在变的内容，
               // 缓存标记打在错的地方就会变成"每次都写、永远读不到"。
-              msgs.push({ role: 'user', content: '【故事设定】\n' + conversation.storySetting, _cacheAnchor: true });
+              msgs.push({ role: 'user', content: '【故事设定】\n' + storySettingText, _cacheAnchor: true });
             }
             if (worldBookBlocks.afterStory) {
               msgs.push({ role: 'user', content: worldBookBlocks.afterStory });
@@ -2687,9 +2908,6 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
 
           case 'summaries':
             msgs.push(...buildSummaries(allMsgs, splitAt));
-            if (conversation.writingAdvice) {
-              msgs.push({ role: 'user', content: '【主人的写作建议】\n' + conversation.writingAdvice });
-            }
             break;
 
           case 'chat_history': {
@@ -2760,10 +2978,12 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     // Claude 协议需要轮流，但那层合并交给 _buildBody 按 provider 分别处理——
     // 它会把每条原始消息保留成独立 content block 而不是拼接成一整块字符串，
     // 这样故事设定这类稳定内容才能和每轮都变的摘要分开缓存，互不连累。
-    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: msgs.length, splitAt, slotDriven: true, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
+    const withDepth = this.applyAtDepth(msgs, { atDepth: this.collectAtDepthBlocks(conversation, worldBookBlocks) });
+    log('buildMessages [rp]', { systemLen: systemPrompt.length, msgCount: withDepth.length, splitAt, slotDriven: true, atDepthCount: worldBookBlocks.atDepth?.length || 0, worldBookActiveCount: worldBookBlocks.active?.length || 0 });
     return {
       systemPrompt,
-      messages: msgs,
+      messages: withDepth,
+      preset,
       activeWorldBookEntries: worldBookBlocks.active || [],
       blockedWorldBookEntries: worldBookBlocks.blocked || [],
       candidateWorldBookEntries: worldBookBlocks.candidates || [],
@@ -2772,9 +2992,9 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     };
   },
 
-  buildSummaryGenPrompt() {
+  buildSummaryGenPrompt(conversation = null) {
     const s = Storage.getSettings();
-    const preset = this.getActivePreset(s);
+    const preset = this.getActivePreset(s, conversation);
     return preset.summaryPrompt || this.DEFAULT_SUMMARY_MERGE_PROMPT;
   },
 };
@@ -2801,6 +3021,7 @@ const WorldBook = {
     after_char: 1,
     before_input: 2,
     after_input: 3,
+    at_depth: 4,
   },
 
   LOGIC_MAP: {
@@ -2900,10 +3121,19 @@ const WorldBook = {
       beforeInput: [],
       afterInput: [],
     };
+    const atDepth = [];
 
     for (const entry of active) {
       const prompt = this._formatEntryPrompt(entry);
       if (!prompt) continue;
+      if (entry.position === 'at_depth') {
+        atDepth.push({
+          depth: Math.max(0, Math.floor(Number(entry.depth) || 0)),
+          role: entry.role === 'assistant' ? 'assistant' : 'user',
+          content: prompt,
+        });
+        continue;
+      }
       if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
       else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
       else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
@@ -2915,6 +3145,7 @@ const WorldBook = {
       afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
       beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
       afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
+      atDepth,
       active,
       blocked: active.blocked || [],
       scanSources: active.scanSources || [],
@@ -3127,7 +3358,7 @@ const WorldBook = {
       const normalized = value.trim().toLowerCase();
       if (normalized in this.POSITION_MAP) return normalized;
       if (normalized === 'before_an') return 'before_input';
-      if (normalized === 'after_an' || normalized === 'at_depth') return 'after_input';
+      if (normalized === 'after_an') return 'after_input';
     }
     return 'after_char';
   },
@@ -3166,7 +3397,7 @@ const WorldBook = {
       });
     }
     if (settings.includeStorySetting && conversation?.storySetting) {
-      sources.push({ kind: 'story', label: '故事设定', content: String(conversation.storySetting || '') });
+      sources.push({ kind: 'story', label: '故事设定', content: Panel.toSettingText(conversation) });
     }
     if (settings.includeMvuState && conversation?.mvu?.state) {
       sources.push({ kind: 'mvu', label: '状态栏', content: JSON.stringify(conversation.mvu.state, null, 2) });
@@ -3346,10 +3577,20 @@ Object.assign(WorldBook, {
       beforeInput: [],
       afterInput: [],
     };
+    // @Depth：插到距离对话末尾第 depth 条的位置（对标酒馆 Author's Note 的 @Depth）
+    const atDepth = [];
 
     for (const entry of active) {
       const prompt = this._formatEntryPrompt(entry);
       if (!prompt) continue;
+      if (entry.position === 'at_depth') {
+        atDepth.push({
+          depth: Math.max(0, Math.floor(Number(entry.depth) || 0)),
+          role: entry.role === 'assistant' ? 'assistant' : 'user',
+          content: prompt,
+        });
+        continue;
+      }
       if (entry.position === 'before_char') buckets.beforeStory.push(prompt);
       else if (entry.position === 'before_input') buckets.beforeInput.push(prompt);
       else if (entry.position === 'after_input') buckets.afterInput.push(prompt);
@@ -3361,6 +3602,7 @@ Object.assign(WorldBook, {
       afterStory: this._wrapPromptBucket('补充设定', buckets.afterStory),
       beforeInput: this._wrapPromptBucket('本轮触发条目', buckets.beforeInput),
       afterInput: this._wrapPromptBucket('输入后补充', buckets.afterInput),
+      atDepth,
       active,
       blocked: active.blocked || [],
       candidates: active.candidates || [],
@@ -3726,7 +3968,7 @@ Object.assign(WorldBook, {
       });
     }
     if (settings.includeStorySetting && conversation?.storySetting) {
-      sources.push({ kind: 'story', label: '故事设定', content: String(conversation.storySetting || '') });
+      sources.push({ kind: 'story', label: '故事设定', content: Panel.toSettingText(conversation) });
     }
     if (settings.includeMvuState && conversation?.mvu?.state) {
       sources.push({ kind: 'mvu', label: '状态栏', content: JSON.stringify(conversation.mvu.state, null, 2) });
@@ -4872,7 +5114,7 @@ const Summary = {
    */
   async generateMergeSummary(conv) {
     const settings = Storage.getSettings();
-    const preset = PromptBuilder.getActivePreset(settings);
+    const preset = PromptBuilder.getActivePreset(settings, conv);
     const sys = preset.summaryPrompt || PromptBuilder.DEFAULT_SUMMARY_MERGE_PROMPT;
 
     // 竞态防护：在收集 ab 的同一时刻定格消息数快照。合并请求飞行期间玩家可能又跑了
@@ -5026,6 +5268,538 @@ const Summary = {
     const merged = [...newAr, ...rest].map((ar, i) => ({ code: 'ar' + String(i + 1).padStart(2, '0'), content: ar.content }));
     log('Archive compaction:', archive.length, '→', merged.length);
     return merged;
+  },
+};
+
+// ============================================================
+// Memory —— 记忆占用统计 / 导出 / 粘贴回填
+//   三层摘要（ab → sm → ar）+ 世界书 + 对话历史，各自算占用，
+//   让「上下文为什么满了」变成可看的数字，而不是靠感觉。
+// ============================================================
+const Memory = {
+  /** 记忆导出格式版本号，粘贴时用于识别 */
+  EXPORT_VERSION: 1,
+
+  /**
+   * 粗略 token 估算。中日韩字符按 1 字 ≈ 1 token，其余按 4 字符 ≈ 1 token。
+   * 只用于「长度条」的量级提示，不做精确计费——真要精确必须用各家 tokenizer。
+   */
+  estimateTokens(text) {
+    const s = String(text || '');
+    if (!s) return 0;
+    let cjk = 0, other = 0;
+    for (const ch of s) {
+      if (/[\u3400-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(ch)) cjk++;
+      else other++;
+    }
+    return Math.ceil(cjk + other / 4);
+  },
+
+  _part(items) {
+    const text = (items || []).map(it => String(it?.content || '')).join('\n');
+    return { count: (items || []).length, chars: text.length, tokens: this.estimateTokens(text) };
+  },
+
+  /**
+   * 统计当前对话的记忆占用。
+   * 世界书部分用「当前会命中的条目」实时计算（只读，不写激活状态）。
+   */
+  getMemoryStats(conversation) {
+    const abstracts = Summary.getUnmergedAbstracts(conversation);
+    const recent = this._part(abstracts);
+    const merged = this._part(conversation?.summary?.mergedSummaries || []);
+    const archive = this._part(conversation?.summary?.archive || []);
+
+    const msgs = (conversation?.messages || []).filter(m => !m.hidden && String(m.content || '').trim());
+    const dialogue = this._part(msgs);
+
+    let worldBook = { count: 0, chars: 0, tokens: 0 };
+    try {
+      const blocks = WorldBook.buildPromptBlocks(conversation);
+      const active = blocks?.active || [];
+      worldBook = this._part(active);
+      const note = PromptBuilder.resolveWritingNote(conversation);
+      if (note) {
+        const noteText = '【主人的写作建议】\n' + note.text;
+        worldBook.count += 1;
+        worldBook.chars += noteText.length;
+        worldBook.tokens += this.estimateTokens(noteText);
+      }
+    } catch (e) {
+      log('getMemoryStats: world book failed', e.message);
+    }
+
+    const totalTokens = recent.tokens + merged.tokens + archive.tokens + worldBook.tokens + dialogue.tokens;
+    const totalChars = recent.chars + merged.chars + archive.chars + worldBook.chars + dialogue.chars;
+    return {
+      recent, merged, archive, worldBook, dialogue,
+      totalTokens, totalChars,
+      pendingMerge: Summary.countUnmergedAbstracts(conversation),
+      mergeInterval: conversation?.summary?.interval || Storage.getSettings().summaryInterval || 80,
+    };
+  },
+
+  /** 导出为可读、可再粘贴的文本（<smNN> / <arNN> 标签，与内部解析器同一套） */
+  exportMemory(conversation) {
+    const merged = conversation?.summary?.mergedSummaries || [];
+    const archive = conversation?.summary?.archive || [];
+    const lines = [];
+    lines.push(`# 入卷记忆导出 v${this.EXPORT_VERSION}`);
+    lines.push(`# 对话：${conversation?.name || '未命名'}`);
+    lines.push(`# 导出时间：${new Date().toISOString()}`);
+    lines.push(`# 合并摘要 ${merged.length} 条 · 往事纪要 ${archive.length} 条`);
+    lines.push('# 直接改内容后粘贴回来即可；标签名不要改。');
+    lines.push('');
+    lines.push('## 合并摘要 (sm)');
+    for (const sm of merged) lines.push(`<${sm.code}>${sm.content}</${sm.code}>`);
+    lines.push('');
+    lines.push('## 往事纪要 (archive)');
+    for (const ar of archive) lines.push(`<${ar.code}>${ar.content}</${ar.code}>`);
+    lines.push('');
+    return lines.join('\n');
+  },
+
+  /**
+   * 解析导出文本。容忍标签之间有多余空行 / 说明文字。
+   * 返回 { mergedSummaries, archive, warnings }
+   */
+  parseMemoryExport(text) {
+    const raw = String(text || '');
+    const mergedSummaries = Summary.parseMergedSummaries(raw);
+    const archive = Summary.parseArchiveEntries(raw);
+    const warnings = [];
+    if (raw.trim() && mergedSummaries.length === 0 && archive.length === 0) {
+      warnings.push('没有找到 <smNN> 或 <arNN> 标签，请确认粘贴的是导出的记忆文本。');
+    }
+    // 去重（同 code 只保留最后一条）
+    const dedupe = (list) => {
+      const map = new Map();
+      for (const it of list) map.set(it.code, it);
+      return [...map.values()];
+    };
+    return { mergedSummaries: dedupe(mergedSummaries), archive: dedupe(archive), warnings };
+  },
+
+  /** 把粘贴的内容写回对话（覆盖式）。返回 { ok, mergedCount, archiveCount, warnings } */
+  importMemory(conversation, text) {
+    if (!conversation) return { ok: false, mergedCount: 0, archiveCount: 0, warnings: ['没有打开的对话'] };
+    const { mergedSummaries, archive, warnings } = this.parseMemoryExport(text);
+    if (!mergedSummaries.length && !archive.length) {
+      return { ok: false, mergedCount: 0, archiveCount: 0, warnings };
+    }
+    conversation.summary = conversation.summary || {};
+    conversation.summary.mergedSummaries = mergedSummaries;
+    conversation.summary.archive = archive;
+    // 粘贴回来的记忆不属于"当前消息"，把 lastMergedIdx 停在当前长度，
+    // 避免下一轮把已经在记忆里的旧消息再压缩一遍。
+    conversation.summary.lastMergedIdx = (conversation.messages || []).length;
+    conversation.updatedAt = Date.now();
+    Storage.saveConversation(conversation);
+    return { ok: true, mergedCount: mergedSummaries.length, archiveCount: archive.length, warnings };
+  },
+
+  /** 一键收束：把摘要条数与"最近 N 条"目标对齐所需的信息给出来（不擅自删内容） */
+  summarizeBudget(stats) {
+    const s = stats || {};
+    return {
+      totalTokens: s.totalTokens || 0,
+      dialogueTokens: s.dialogue?.tokens || 0,
+      memoryTokens: (s.recent?.tokens || 0) + (s.merged?.tokens || 0) + (s.archive?.tokens || 0),
+      worldBookTokens: s.worldBook?.tokens || 0,
+    };
+  },
+};
+
+// ============================================================
+// Storyline —— 故事线容器
+//   一条故事线 = 一份「开局模板」（世界观 / 世界书 / 状态栏 / 预设）+ 归在它下面的多个对话。
+//   新建对话时继承模板，于是「保留面板开新对话」不用每次重配。
+// ============================================================
+const Storyline = {
+  /** 从对话里抽取开局模板（只取设定，不取消息历史） */
+  captureTemplate(conversation) {
+    if (!conversation) return null;
+    return {
+      storySetting: conversation.storySetting || null,
+      worldBook: conversation.worldBook ? JSON.parse(JSON.stringify(conversation.worldBook)) : null,
+      mvu: conversation.mvu ? JSON.parse(JSON.stringify(conversation.mvu)) : null,
+      presetId: conversation.presetId || '',
+      apiProfileId: conversation.apiProfileId || '',
+      model: conversation.model || '',
+      writingNote: conversation.writingNote ? JSON.parse(JSON.stringify(conversation.writingNote)) : null,
+      panel: conversation.panel ? JSON.parse(JSON.stringify(conversation.panel)) : null,
+    };
+  },
+
+  create({ name, description = '', conversation = null } = {}) {
+    const id = Utils.generateId('story');
+    const saved = Storage.saveStoryline({
+      id,
+      name: String(name || '新的故事线').trim() || '新的故事线',
+      description: String(description || '').trim(),
+      sourceConversationId: conversation?.id || '',
+      template: this.captureTemplate(conversation),
+      createdAt: Date.now(),
+    });
+    if (conversation) {
+      conversation.storylineId = id;
+      Storage.saveConversation(conversation);
+    }
+    return saved;
+  },
+
+  rename(id, name, description) {
+    const s = Storage.getStoryline(id);
+    if (!s) return null;
+    s.name = String(name || s.name).trim() || s.name;
+    if (description !== undefined) s.description = String(description).trim();
+    return Storage.saveStoryline(s);
+  },
+
+  /**
+   * 删除故事线本身；对话不删，只是解除归属（避免误删内容）。
+   * 注意必须 loadConversation 拿完整对话再存回——getConversation 只返回元数据索引，
+   * 直接 saveConversation 会把对话内容覆盖成索引（会丢内容）。
+   */
+  async remove(id) {
+    for (const meta of this.conversations(id)) {
+      try {
+        const full = await Storage.loadConversation(meta.id);
+        if (full && full.storylineId === id) {
+          delete full.storylineId;
+          Storage.saveConversation(full);
+        }
+      } catch (e) {
+        log('Storyline.remove: failed to detach', meta.id, e.message);
+      }
+    }
+    Storage.deleteStoryline(id);
+  },
+
+  conversations(id) {
+    return Storage.getConversationList().filter(c => c.storylineId === id);
+  },
+
+  /**
+   * 按故事线模板造一个全新的对话。
+   * 继承：世界观 / 世界书 / 状态栏 / 预设 / 作者注 / API 方案；不继承消息历史。
+   */
+  buildConversation(storyline, { name = '' } = {}) {
+    const tpl = storyline?.template || {};
+    const settings = Storage.getSettings();
+    const profiles = Storage.getApiProfiles();
+    const profileList = Object.values(profiles);
+    const apiProfileId = tpl.apiProfileId || settings.defaultApiProfileId || (profileList[0] ? profileList[0].id : '');
+    const model = tpl.model || settings.defaultModel || '';
+    const id = Utils.generateId('conv');
+    return {
+      id,
+      name: String(name || `${storyline?.name || '新'} · ${new Date().toLocaleDateString()}`).trim(),
+      phase: 'init',
+      apiProfileId,
+      model,
+      presetId: tpl.presetId || '',
+      storylineId: storyline?.id || '',
+      messages: [],
+      mvu: tpl.mvu ? JSON.parse(JSON.stringify(tpl.mvu)) : null,
+      storySetting: tpl.storySetting || null,
+      worldBook: tpl.worldBook ? JSON.parse(JSON.stringify(tpl.worldBook)) : null,
+      writingNote: tpl.writingNote ? JSON.parse(JSON.stringify(tpl.writingNote)) : undefined,
+      panel: tpl.panel ? JSON.parse(JSON.stringify(tpl.panel)) : undefined,
+      summary: { mergedSummaries: [], lastMergedIdx: 0, interval: settings.summaryInterval || 80 },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+  },
+
+  /** 把故事线模板用当前对话的内容刷新一遍（"以此对话为准"） */
+  refreshTemplate(id, conversation) {
+    const s = Storage.getStoryline(id);
+    if (!s || !conversation) return null;
+    s.template = this.captureTemplate(conversation);
+    s.sourceConversationId = conversation.id;
+    return Storage.saveStoryline(s);
+  },
+};
+
+// ============================================================
+// MemoryLibrary —— 记忆库
+//   把某个对话的记忆（合并摘要 + 往事纪要）存成一份可复用的集合，
+//   供其它对话继承——跨对话的知识延续。
+// ============================================================
+const MemoryLibrary = {
+  capture(conversation, name = '') {
+    if (!conversation) return null;
+    const merged = conversation.summary?.mergedSummaries || [];
+    const archive = conversation.summary?.archive || [];
+    if (!merged.length && !archive.length) return null;
+    const id = Utils.generateId('memlib');
+    return Storage.saveMemoryLibrary({
+      id,
+      name: String(name || `${conversation.name || '对话'}的记忆`).trim(),
+      sourceConversationId: conversation.id,
+      sourceConversationName: conversation.name || '',
+      mergedSummaries: JSON.parse(JSON.stringify(merged)),
+      archive: JSON.parse(JSON.stringify(archive)),
+      createdAt: Date.now(),
+    });
+  },
+
+  /** 把记忆库写进对话。mode='merge' 追加去重，mode='replace' 覆盖 */
+  applyTo(library, conversation, mode = 'merge') {
+    if (!library || !conversation) return { ok: false, mergedCount: 0, archiveCount: 0 };
+    conversation.summary = conversation.summary || {};
+    const dedupe = (list) => {
+      const map = new Map();
+      for (const it of list || []) if (it && it.code) map.set(it.code, it);
+      return [...map.values()];
+    };
+    const libMerged = library.mergedSummaries || [];
+    const libArchive = library.archive || [];
+
+    if (mode === 'replace') {
+      conversation.summary.mergedSummaries = dedupe(libMerged);
+      conversation.summary.archive = dedupe(libArchive);
+    } else {
+      conversation.summary.mergedSummaries = dedupe([...(conversation.summary.mergedSummaries || []), ...libMerged]);
+      conversation.summary.archive = dedupe([...(conversation.summary.archive || []), ...libArchive]);
+    }
+    conversation.updatedAt = Date.now();
+    Storage.saveConversation(conversation);
+    return {
+      ok: true,
+      mergedCount: conversation.summary.mergedSummaries.length,
+      archiveCount: conversation.summary.archive.length,
+    };
+  },
+
+  remove(id) { Storage.deleteMemoryLibrary(id); },
+};
+
+// ============================================================
+// Panel —— 空白起步面板
+//   「一开始框架就应该稳固」：新对话可以先填五个字段（世界观 / 角色 / 开场 /
+//   文风 / 规则），而不是空着让 AI 自由发挥。
+//   注入策略：世界观 + 角色 + 开场 + 规则 → 合并进【故事设定】（走缓存，稳定）；
+//             文风 → @Depth 1（最贴近"当下"，对语气影响最直接）。
+// ============================================================
+const Panel = {
+  FIELDS: [
+    { key: 'world', label: '世界观', placeholder: '时代、地点、基本规则……', rows: 3 },
+    { key: 'characters', label: '角色', placeholder: '主角 / 配角的身份、性格、与主角的关系……', rows: 4 },
+    { key: 'opening', label: '开场', placeholder: '故事从哪个场景、哪一刻开始……', rows: 3 },
+    { key: 'style', label: '文风', placeholder: '例：克制、白描、少用形容词，对话留白。', rows: 2 },
+    { key: 'rules', label: '规则 / 禁忌', placeholder: '例：不出现现代物品；主角不会主动认输。', rows: 2 },
+  ],
+
+  /** 参与【故事设定】的字段（稳定内容，走前缀缓存） */
+  SETTING_KEYS: ['world', 'characters', 'opening', 'rules'],
+
+  empty() {
+    const p = {};
+    for (const f of this.FIELDS) p[f.key] = '';
+    return p;
+  },
+
+  normalize(panel) {
+    const out = this.empty();
+    for (const f of this.FIELDS) out[f.key] = String(panel?.[f.key] ?? '').trim();
+    return out;
+  },
+
+  isEmpty(panel) {
+    const p = this.normalize(panel);
+    return this.FIELDS.every(f => !p[f.key]);
+  },
+
+  /** 面板是否真的填了东西（用于 UI 显示"已设置面板"） */
+  isConfigured(conversation) {
+    return !this.isEmpty(conversation?.panel);
+  },
+
+  /**
+   * 合并成【故事设定】的正文：已有的 storySetting（可能是 AI 生成的）+ 面板字段。
+   * 返回空串表示没有故事设定。
+   */
+  toSettingText(conversation) {
+    const parts = [];
+    const story = String(conversation?.storySetting || '').trim();
+    if (story) parts.push(story);
+    const panel = this.normalize(conversation?.panel);
+    for (const key of this.SETTING_KEYS) {
+      const value = panel[key];
+      if (!value) continue;
+      const label = this.FIELDS.find(f => f.key === key)?.label || key;
+      parts.push(`【${label}】\n${value}`);
+    }
+    return parts.join('\n\n');
+  },
+
+  /** 文风走 @Depth 注入（不塞进故事设定，因为它需要"最贴近当下"） */
+  toStyleBlock(conversation) {
+    const style = this.normalize(conversation?.panel).style;
+    if (!style) return null;
+    return { depth: 1, role: 'user', content: '【文风要求】\n' + style };
+  },
+
+  /** 给 AI 的改写指令：把一段自然语言变成结构化面板 */
+  buildAiRewriteMessages(description, current = null) {
+    const cur = current ? this.normalize(current) : null;
+    const currentText = cur && !this.isEmpty(cur)
+      ? '\n\n当前面板内容（可在此基础上修改，未提到的部分保留）：\n' + this.FIELDS
+          .filter(f => cur[f.key])
+          .map(f => `【${f.label}】${cur[f.key]}`)
+          .join('\n')
+      : '';
+    const system = [
+      '你是一个小说设定整理助手。用户会用自然语言描述他想要的故事，你要把它整理成结构化面板。',
+      '',
+      '严格输出一个 JSON 对象，不要任何解释、不要 markdown 代码块围栏。键固定为：',
+      'world（世界观：时代、地点、基本规则）',
+      'characters（角色：身份、性格、关系）',
+      'opening（开场：从哪个场景哪一刻开始）',
+      'style（文风：叙述语气、节奏、用词偏好）',
+      'rules（规则与禁忌：必须遵守或绝不能出现的东西）',
+      '',
+      '每个值都是一段可直接使用的中文文本。用户没有提到的项，给一个合理的默认值或留空字符串。',
+    ].join('\n');
+    const user = `用户的描述：\n${String(description || '').trim()}${currentText}`;
+    return { systemPrompt: system, messages: [{ role: 'user', content: user }] };
+  },
+
+  /** 从 AI 回复里解析面板。容忍 markdown 围栏和前后杂文 */
+  parseAiRewrite(text) {
+    const raw = String(text || '').trim();
+    if (!raw) return { ok: false, panel: null, error: '空回复' };
+    let jsonText = raw;
+    const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) jsonText = fence[1];
+    else {
+      const start = raw.indexOf('{');
+      const end = raw.lastIndexOf('}');
+      if (start >= 0 && end > start) jsonText = raw.slice(start, end + 1);
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (e) {
+      return { ok: false, panel: null, error: 'JSON 解析失败：' + e.message };
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, panel: null, error: '返回的不是对象' };
+    }
+    const panel = this.empty();
+    for (const f of this.FIELDS) {
+      const v = parsed[f.key];
+      if (v === undefined || v === null) continue;
+      panel[f.key] = String(Array.isArray(v) ? v.join('\n') : v).trim();
+    }
+    if (this.isEmpty(panel)) return { ok: false, panel: null, error: '没有解析到任何字段' };
+    return { ok: true, panel, error: '' };
+  },
+};
+
+// ============================================================
+// Dice —— 骰子
+//   前端摇，结果以 @Depth 注入文本（对标酒馆 STscript /roll 的做法）。
+//   硬核模式下结果不可更改、不可重摇，且会明确告诉模型"必须照此续写"。
+// ============================================================
+const Dice = {
+  DEFAULT_SPECS: ['1d20', '1d100', '1d6'],
+
+  /** 解析 NdM[+K] */
+  parse(spec) {
+    const m = String(spec || '').trim().toLowerCase().replace(/\s+/g, '').match(/^(\d*)d(\d+)([+-]\d+)?$/);
+    if (!m) return { ok: false, error: '格式应为 NdM（例如 1d20、2d6+1）' };
+    const count = m[1] === '' ? 1 : parseInt(m[1], 10);
+    const sides = parseInt(m[2], 10);
+    const modifier = m[3] ? parseInt(m[3], 10) : 0;
+    if (!Number.isFinite(count) || count < 1 || count > 100) return { ok: false, error: '骰子个数需在 1~100' };
+    if (!Number.isFinite(sides) || sides < 2 || sides > 1000000) return { ok: false, error: '面数需在 2~1000000' };
+    const modText = modifier > 0 ? '+' + modifier : (modifier < 0 ? String(modifier) : '');
+    return { ok: true, count, sides, modifier, normalized: `${count}d${sides}${modText}` };
+  },
+
+  roll(spec, rng = Math.random) {
+    const p = this.parse(spec);
+    if (!p.ok) return { ok: false, error: p.error };
+    const rolls = [];
+    for (let i = 0; i < p.count; i++) rolls.push(1 + Math.floor(rng() * p.sides));
+    const sum = rolls.reduce((a, b) => a + b, 0);
+    return {
+      ok: true,
+      spec: p.normalized,
+      count: p.count,
+      sides: p.sides,
+      modifier: p.modifier,
+      rolls,
+      sum,
+      total: sum + p.modifier,
+      at: Date.now(),
+    };
+  },
+
+  /** 单条结果的文字形式，如 `2d6+1 → 9（3 + 5 + 1）` */
+  formatRoll(roll) {
+    if (!roll?.ok) return '';
+    const modText = roll.modifier > 0 ? ' + ' + roll.modifier : (roll.modifier < 0 ? ' - ' + Math.abs(roll.modifier) : '');
+    const detail = roll.count > 1 ? `（${roll.rolls.join(' + ')}${modText}）` : '';
+    return `${roll.spec} → ${roll.total}${detail}`;
+  },
+
+  /** 组装成注入用的文本块；没有有效结果返回 null */
+  buildBlock(rolls, hardcore = false) {
+    const list = (rolls || []).filter(r => r?.ok);
+    if (!list.length) return null;
+    const lines = list.map(r => '· ' + this.formatRoll(r));
+    const note = hardcore ? '\n（硬核模式：骰子结果已经确定，不可更改。请严格按此结果续写，不要给出"重新掷"之类的选项。）' : '';
+    return '【骰子结果】\n' + lines.join('\n') + note;
+  },
+};
+
+// ============================================================
+// QuickReply —— 快捷指令栏（对标酒馆 Quick Reply）
+// ============================================================
+const QuickReply = {
+  DEFAULTS: [
+    { id: 'qr-d20', label: 'd20', type: 'dice', payload: '1d20' },
+    { id: 'qr-d100', label: 'd100', type: 'dice', payload: '1d100' },
+    { id: 'qr-d6', label: 'd6', type: 'dice', payload: '1d6' },
+    { id: 'qr-continue', label: '继续', type: 'insert', payload: '继续' },
+  ],
+
+  list() {
+    const s = Storage.getSettings();
+    if (!Array.isArray(s?.quickReplies)) return this.DEFAULTS.map(q => ({ ...q }));
+    return s.quickReplies;
+  },
+
+  save(list) {
+    const s = Storage.getSettings();
+    s.quickReplies = Array.isArray(list) ? list : [];
+    Storage.saveSettings(s);
+  },
+
+  add(item) {
+    const list = this.list();
+    list.push({
+      id: Utils.generateId('qr'),
+      label: String(item?.label || '指令').trim() || '指令',
+      type: item?.type === 'dice' ? 'dice' : 'insert',
+      payload: String(item?.payload || '').trim(),
+    });
+    this.save(list);
+    return list;
+  },
+
+  remove(id) {
+    const list = this.list().filter(q => q.id !== id);
+    this.save(list);
+    return list;
+  },
+
+  reset() {
+    this.save(this.DEFAULTS.map(q => ({ ...q })));
   },
 };
 

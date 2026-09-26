@@ -883,6 +883,39 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
+
+    /* ---- Quick Reply Bar ---- */
+    .quick-reply-bar {
+      flex-shrink: 0;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      overflow-x: auto;
+      padding: 8px 20px 0;
+      max-width: 820px;
+      margin: 0 auto;
+      width: 100%;
+      scrollbar-width: none;
+    }
+    .quick-reply-bar:empty { display: none; }
+    .quick-reply-bar::-webkit-scrollbar { display: none; }
+    .qr-chip {
+      flex: 0 0 auto;
+      font-size: 12px;
+      padding: 5px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .qr-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .qr-chip.qr-dice { border-color: var(--accent-dim); color: var(--accent); }
+    .qr-chip.qr-dice:disabled { opacity: 0.45; cursor: not-allowed; }
+    .qr-chip.qr-hardcore { background: var(--accent); color: var(--bg-primary); border-color: var(--accent); }
+    .qr-chip.qr-edit { color: var(--text-muted); }
     .input-area.disabled {
       pointer-events: none;
       opacity: 0.5;
@@ -2851,6 +2884,9 @@
       </div>
       <div class="options-fab-panel" id="optionsFabPanel"></div>
 
+      <!-- Quick Reply Bar -->
+      <div class="quick-reply-bar" id="quickReplyBar"></div>
+
       <!-- Input Area -->
       <div class="input-area" id="inputArea">
         <div class="input-wrapper">
@@ -3310,6 +3346,7 @@ async function init() {
   renderPhaseBadge();
   renderAllMessages();
   renderMvuSidebar();
+  renderQuickReplyBar();
   setupAutoGrow();
   setupScrollDetection();
   setupIOSKeyboardFix();
@@ -3449,7 +3486,7 @@ function renderMoreMenu() {
   const profileList = Object.values(profiles);
   const currentApiId = settings.defaultApiProfileId;
   const presets = settings.promptPresets || {};
-  const currentPresetId = settings.activePresetId || 'default';
+
   const isRp = conversation?.phase === 'rp';
 
   const icon = (svg) => `<svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>`;
@@ -3460,6 +3497,13 @@ function renderMoreMenu() {
   html += `<div class="topbar-menu-item" onclick="closeMoreMenu();openWorldSetting()">
     ${icon('<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>')}
     世界设定</div>`;
+  const currentStoryline = conversation?.storylineId ? Storage.getStoryline(conversation.storylineId) : null;
+  html += `<div class="topbar-menu-item" onclick="closeMoreMenu();openStorylinePicker()">
+    ${icon('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>')}
+    故事线${currentStoryline ? '：' + Utils.escapeHtml(currentStoryline.name) : '（未归属）'}</div>`;
+  html += `<div class="topbar-menu-item" onclick="closeMoreMenu();openPanelEditor()">
+    ${icon('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>')}
+    起步面板${Panel.isConfigured(conversation) ? '（已设置）' : ''}</div>`;
   html += `<div class="topbar-menu-item" onclick="closeMoreMenu();enterEditMvuMode()">
     ${icon('<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>')}
     编辑状态栏</div>`;
@@ -3488,10 +3532,15 @@ function renderMoreMenu() {
 
   html += '<div class="topbar-menu-divider"></div>';
 
-  // --- Presets ---
-  html += '<div class="topbar-menu-label">Preset</div>';
+  // --- Presets：本对话级（空 = 跟随全局）---
+  html += '<div class="topbar-menu-label">本对话预设</div>';
+  const globalPresetName = presets[settings.activePresetId]?.name || '未设置';
+  const followActive = !conversation?.presetId ? ' active' : '';
+  html += `<div class="topbar-menu-item${followActive}" onclick="switchPreset('')">
+    ${followActive ? icon('<polyline points="20 6 9 17 4 12"/>') : '<span class="menu-icon"></span>'}
+    跟随全局（${Utils.escapeHtml(globalPresetName)}）</div>`;
   for (const [id, preset] of Object.entries(presets)) {
-    const active = id === currentPresetId ? ' active' : '';
+    const active = id === conversation?.presetId ? ' active' : '';
     html += `<div class="topbar-menu-item${active}" onclick="switchPreset('${Utils.escapeHtml(id)}')">
       ${active ? icon('<polyline points="20 6 9 17 4 12"/>') : '<span class="menu-icon"></span>'}
       ${Utils.escapeHtml(preset.name || id)}</div>`;
@@ -3527,11 +3576,15 @@ function switchApi(profileId) {
 
 function switchPreset(presetId) {
   const settings = Storage.getSettings();
-  if (!settings.promptPresets?.[presetId]) return;
-  settings.activePresetId = presetId;
-  Storage.saveSettings(settings);
+  const presets = settings.promptPresets || {};
+  if (presetId && !presets[presetId]) return;
+  // 对话级预设：只影响本对话；空字符串 = 跟随全局预设
+  if (!conversation) return;
+  conversation.presetId = presetId || '';
+  Storage.saveConversation(conversation);
   closeMoreMenu();
-  UI.showToast(`预设: ${settings.promptPresets[presetId].name || presetId}`, 'success');
+  const label = presetId ? (presets[presetId].name || presetId) : '跟随全局';
+  UI.showToast(`本对话预设: ${label}`, 'success');
 }
 
 // Close menu on outside click
@@ -3797,9 +3850,24 @@ function buildWorldBookEntryEditorFields(entry) {
       <div class="form-group">
         <label>插入位置</label>
         <select onchange="updateWorldBookEntryField('position', this.value)">
-          ${['before_char', 'after_char', 'before_input', 'after_input'].map(position => `<option value="${position}" ${entry.position === position ? 'selected' : ''}>${position}</option>`).join('')}
+          ${[
+            ['before_char', '背景前置（开头）'],
+            ['after_char', '补充设定'],
+            ['before_input', '本轮触发（输入前）'],
+            ['after_input', '输入后补充'],
+            ['at_depth', '@Depth（按深度插入）'],
+          ].map(([value, label]) => `<option value="${value}" ${entry.position === value ? 'selected' : ''}>${label}</option>`).join('')}
         </select>
       </div>
+      ${entry.position === 'at_depth' ? `
+      <div class="form-group">
+        <label>注入深度</label>
+        <input type="number" min="0" step="1" value="${Number(entry.depth) || 0}" onchange="updateWorldBookEntryField('depth', this.value, 'number')">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;line-height:1.5;">
+          1 = 紧贴最后一条消息之前（最贴近「当下」，适合文风 / 上帝指令）；<br>
+          2 = 倒数第二条之前；0 = 追加到全部消息之后。
+        </div>
+      </div>` : ''}
       <div class="form-group">
         <label>主关键词</label>
         <textarea style="min-height:74px;" onchange="updateWorldBookEntryListField('keys', this.value)" placeholder="每行一个，或用逗号分隔">${Utils.escapeHtml((entry.keys || []).join('\n'))}</textarea>
@@ -4745,9 +4813,486 @@ function getAbstracts() {
   return abstracts;
 }
 
+/** 作者注 / 上帝指令：写入 conversation.writingNote（走 @Depth 注入） */
+function onWritingNoteChange() {
+  const enabled = document.getElementById('writingNoteEnabled')?.checked ?? true;
+  const text = document.getElementById('writingNoteText')?.value || '';
+  const depth = Number(document.getElementById('writingNoteDepth')?.value) || 0;
+  const oneShot = !!document.getElementById('writingNoteOneShot')?.checked;
+  conversation.writingNote = { enabled, text, depth: Math.max(0, depth), role: 'user', oneShot };
+  // 迁移到新字段，避免两套并存导致重复注入
+  if (conversation.writingAdvice) delete conversation.writingAdvice;
+  Storage.saveConversation(conversation);
+}
+
+/** 「只生效一次」的作者注：本轮结束后清空文本（由 consumeTurnState 统一处理） */
+
+/** 记忆长度条：把「上下文被谁占了」变成看得见的比例 */
+function renderMemoryBar() {
+  let stats;
+  try {
+    stats = Memory.getMemoryStats(conversation);
+  } catch (e) {
+    log('renderMemoryBar failed:', e);
+    return '';
+  }
+  const segs = [
+    { label: '对话历史', color: '#6b8fd4', value: stats.dialogue.tokens, count: stats.dialogue.count },
+    { label: '世界书 / 作者注', color: '#c9a44c', value: stats.worldBook.tokens, count: stats.worldBook.count },
+    { label: '近期摘要', color: '#7cb87a', value: stats.recent.tokens, count: stats.recent.count },
+    { label: '合并摘要', color: '#a37cc4', value: stats.merged.tokens, count: stats.merged.count },
+    { label: '往事纪要', color: '#c96a5a', value: stats.archive.tokens, count: stats.archive.count },
+  ];
+  const total = stats.totalTokens || 0;
+  const shown = segs.filter(s => s.value > 0);
+  const bar = total > 0
+    ? shown.map(s => `<div style="width:${(s.value / total * 100).toFixed(2)}%;background:${s.color};" title="${s.label} ≈ ${s.value} tokens"></div>`).join('')
+    : '<div style="width:100%;background:var(--border);"></div>';
+
+  const legend = shown.map(s => `
+    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);line-height:1.6;">
+      <span style="width:8px;height:8px;border-radius:2px;background:${s.color};flex:0 0 auto;"></span>
+      <span style="flex:1;">${s.label}</span>
+      <span>${s.count} 条 · ${s.value}t</span>
+    </div>`).join('');
+
+  const pending = stats.pendingMerge || 0;
+  const interval = stats.mergeInterval || 80;
+  const mergeHint = pending > 0
+    ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">待合并 ${pending} / ${interval} 条</div>`
+    : '';
+
+  return `
+    <div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg-secondary);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;">
+        <span style="font-size:13px;color:var(--text-secondary);">记忆占用</span>
+        <span style="font-size:11px;color:var(--text-muted);">约 ${total.toLocaleString()} tokens</span>
+      </div>
+      <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;gap:1px;">${bar}</div>
+      <div style="margin-top:8px;">${legend}</div>
+      ${mergeHint}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;font-size:12px;" onclick="exportMemoryText()">导出记忆</button>
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;font-size:12px;" onclick="openMemoryImport()">粘贴记忆</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;font-size:12px;" onclick="saveToMemoryLibrary()">存到记忆库</button>
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;font-size:12px;" onclick="openMemoryLibraryPicker()">从记忆库载入</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5;">
+        token 为量级估算（中日韩 1 字 ≈ 1，其余 4 字符 ≈ 1），不是精确计费值。
+      </div>
+    </div>`;
+}
+
+/** 导出记忆：弹出可复制的文本框 */
+function exportMemoryText() {
+  const text = Memory.exportMemory(conversation);
+  window._memoryExportText = text;
+  UI.showModal({
+    title: '导出记忆',
+    content: `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
+        复制下面的文本保存到别处；改完内容后可以用「粘贴记忆」导回来。<br>
+        标签名（<code>&lt;sm01&gt;</code> / <code>&lt;ar01&gt;</code>）不要改。
+      </div>
+      <textarea readonly rows="14" id="memoryExportArea" style="width:100%;font-family:monospace;font-size:12px;">${Utils.escapeHtml(text)}</textarea>
+    `,
+    buttons: [
+      { text: '复制', class: 'btn-primary', onclick: 'doCopyMemoryExport()' },
+      { text: '关闭', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+    ],
+  });
+}
+
+function doCopyMemoryExport() {
+  const text = window._memoryExportText || document.getElementById('memoryExportArea')?.value || '';
+  const done = () => UI.showToast('已复制到剪贴板', 'success');
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => {
+      UI.showToast(copyFallback(text) ? '已复制到剪贴板' : '复制失败，请手动选择文本', copyFallback(text) ? 'success' : 'error');
+    });
+    return;
+  }
+  UI.showToast(copyFallback(text) ? '已复制到剪贴板' : '复制失败，请手动选择文本', copyFallback(text) ? 'success' : 'error');
+}
+
+/** 粘贴记忆：解析 <smNN> / <arNN> 并覆盖写回 */
+function openMemoryImport() {
+  UI.showModal({
+    title: '粘贴记忆',
+    content: `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
+        粘贴之前导出的记忆文本，<strong>会覆盖当前对话的合并摘要与往事纪要</strong>。<br>
+        只识别 <code>&lt;smNN&gt;</code> 与 <code>&lt;arNN&gt;</code> 标签，其余文字忽略。
+      </div>
+      <textarea rows="12" id="memoryImportArea" placeholder="# 入卷记忆导出 v1&#10;&lt;sm01&gt;……&lt;/sm01&gt;" style="width:100%;font-family:monospace;font-size:12px;"></textarea>
+    `,
+    buttons: [
+      { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+      { text: '导入并覆盖', class: 'btn-primary', onclick: 'doMemoryImport()' },
+    ],
+  });
+}
+
+function doMemoryImport() {
+  const text = document.getElementById('memoryImportArea')?.value || '';
+  const result = Memory.importMemory(conversation, text);
+  if (!result.ok) {
+    UI.showToast(result.warnings?.[0] || '没有可导入的内容', 'error');
+    return;
+  }
+  UI.closeModal();
+  UI.showToast(`已导入：合并摘要 ${result.mergedCount} 条 · 往事纪要 ${result.archiveCount} 条`, 'success');
+  renderSummaryPanel();
+}
+
+/** 把当前对话的记忆存进记忆库 */
+function saveToMemoryLibrary() {
+  const defaultName = `${conversation.name || '对话'}的记忆`;
+  const name = prompt('记忆库名称:', defaultName);
+  if (name === null) return;
+  const lib = MemoryLibrary.capture(conversation, name);
+  if (!lib) { UI.showToast('当前对话还没有可存的记忆（摘要为空）', 'error'); return; }
+  UI.showToast(`已存入记忆库：${lib.name}`, 'success');
+}
+
+/** 从记忆库载入记忆到当前对话 */
+function openMemoryLibraryPicker() {
+  const libs = Storage.getMemoryLibraryList();
+  if (libs.length === 0) { UI.showToast('记忆库还是空的，先在别的对话里「存到记忆库」', 'error'); return; }
+  const rows = libs.map(lib => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${Utils.escapeHtml(lib.name)}</div>
+        <div style="font-size:11px;color:var(--text-muted);">合并摘要 ${(lib.mergedSummaries || []).length} 条 · 往事纪要 ${(lib.archive || []).length} 条${lib.sourceConversationName ? ' · 来自「' + Utils.escapeHtml(lib.sourceConversationName) + '」' : ''}</div>
+      </div>
+      <button class="btn btn-secondary" style="font-size:12px;" onclick="applyMemoryLibrary('${lib.id}','merge')">合并</button>
+      <button class="btn btn-secondary" style="font-size:12px;" onclick="applyMemoryLibrary('${lib.id}','replace')">覆盖</button>
+      <button class="btn-icon btn-danger" onclick="deleteMemoryLibrary('${lib.id}')" title="删除">${getIcon('trash', 14)}</button>
+    </div>`).join('');
+  UI.showModal({
+    title: '从记忆库载入',
+    content: `<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">
+        「合并」= 追加到当前记忆（按编号去重）；「覆盖」= 用记忆库替换当前记忆。
+      </div>${rows}`,
+    buttons: [{ text: '关闭', class: 'btn-secondary', onclick: 'UI.closeModal()' }],
+  });
+}
+
+function applyMemoryLibrary(libId, mode) {
+  const lib = Storage.getMemoryLibrary(libId);
+  if (!lib) return;
+  const r = MemoryLibrary.applyTo(lib, conversation, mode);
+  if (!r.ok) { UI.showToast('载入失败', 'error'); return; }
+  UI.closeModal();
+  UI.showToast(`已载入：合并摘要 ${r.mergedCount} 条 · 往事纪要 ${r.archiveCount} 条`, 'success');
+  renderSummaryPanel();
+}
+
+function deleteMemoryLibrary(libId) {
+  Storage.deleteMemoryLibrary(libId);
+  UI.showToast('已删除', 'success');
+  openMemoryLibraryPicker();
+}
+
+/** 把当前对话加入 / 移出故事线（chat 内） */
+function openStorylinePicker() {
+  const storylines = Storage.getStorylineList();
+  const currentId = conversation.storylineId || '';
+  const rows = storylines.map(s => {
+    const active = s.id === currentId;
+    return `<button class="btn ${active ? 'btn-primary' : 'btn-secondary'}" style="width:100%;margin-bottom:6px;justify-content:center;"
+      onclick="doChatAssignStoryline('${s.id}')">${active ? '✓ ' : ''}${Utils.escapeHtml(s.name)}</button>`;
+  }).join('');
+  UI.showModal({
+    title: '故事线',
+    content: `${rows || '<div style="font-size:12px;color:var(--text-muted);">还没有故事线。</div>'}
+      <div style="display:flex;gap:8px;margin-top:10px;">
+        <button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="createStorylineFromChat()">用本对话新建故事线</button>
+        ${currentId ? '<button class="btn btn-secondary" style="flex:1;justify-content:center;" onclick="doChatAssignStoryline(\'\')">移出</button>' : ''}
+      </div>`,
+    buttons: [{ text: '关闭', class: 'btn-secondary', onclick: 'UI.closeModal()' }],
+  });
+}
+
+function doChatAssignStoryline(storylineId) {
+  if (storylineId) conversation.storylineId = storylineId;
+  else delete conversation.storylineId;
+  Storage.saveConversation(conversation);
+  UI.closeModal();
+  UI.showToast(storylineId ? '已加入故事线' : '已移出故事线', 'success');
+}
+
+function createStorylineFromChat() {
+  const name = prompt('故事线名称:', conversation.name || '新的故事线');
+  if (!name) return;
+  Storyline.create({ name, conversation });
+  UI.closeModal();
+  UI.showToast('已创建故事线（开局模板已记录）', 'success');
+}
+
+/** 起步面板编辑（对话内） */
+function openPanelEditor() {
+  const panel = Panel.normalize(conversation.panel);
+  const fields = Panel.FIELDS.map(f => `
+    <div style="margin-bottom:10px;">
+      <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px;">${f.label}</label>
+      <textarea id="panelEdit-${f.key}" rows="${f.rows}" placeholder="${Utils.escapeHtml(f.placeholder)}" style="width:100%;font-size:13px;">${Utils.escapeHtml(panel[f.key])}</textarea>
+    </div>`).join('');
+  UI.showModal({
+    title: '起步面板',
+    content: `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+        世界观 / 角色 / 开场 / 规则 进入「故事设定」（稳定内容，可被前缀缓存）；<br>
+        <b>文风</b>以 @Depth 注入到最贴近「当下」的位置。
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;align-items:stretch;">
+        <textarea id="panelAiInput" rows="2" placeholder="用一句话描述，让 AI 帮你改写面板" style="flex:1;font-size:13px;"></textarea>
+        <button class="btn btn-secondary" type="button" id="panelAiBtn" style="white-space:nowrap;" onclick="aiRewriteChatPanel()">AI 帮我写</button>
+      </div>
+      ${fields}`,
+    buttons: [
+      { text: '取消', class: 'btn-secondary', onclick: 'UI.closeModal()' },
+      { text: '保存', class: 'btn-primary', onclick: 'saveChatPanel()' },
+    ],
+  });
+}
+
+function saveChatPanel() {
+  const panel = Panel.empty();
+  for (const f of Panel.FIELDS) {
+    const el = document.getElementById(`panelEdit-${f.key}`);
+    if (el) panel[f.key] = String(el.value || '').trim();
+  }
+  conversation.panel = Panel.isEmpty(panel) ? undefined : panel;
+  Storage.saveConversation(conversation);
+  UI.closeModal();
+  UI.showToast('面板已保存，下一轮生效', 'success');
+}
+
+function readChatPanelForm() {
+  const panel = Panel.empty();
+  for (const f of Panel.FIELDS) {
+    const el = document.getElementById(`panelEdit-${f.key}`);
+    if (el) panel[f.key] = String(el.value || '').trim();
+  }
+  return panel;
+}
+
+function writeChatPanelForm(panel) {
+  for (const f of Panel.FIELDS) {
+    const el = document.getElementById(`panelEdit-${f.key}`);
+    if (el) el.value = String(panel?.[f.key] ?? '');
+  }
+}
+
+async function aiRewriteChatPanel() {
+  const desc = (document.getElementById('panelAiInput')?.value || '').trim();
+  if (!desc) { UI.showToast('先写一句描述', 'error'); return; }
+  const settings = Storage.getSettings();
+  const apiProfileId = settings.defaultApiProfileId;
+  if (!apiProfileId) { UI.showToast('请先配置 API', 'error'); return; }
+  const btn = document.getElementById('panelAiBtn');
+  const original = btn ? btn.textContent : '';
+  if (btn) { btn.textContent = '生成中…'; btn.disabled = true; }
+  try {
+    const { systemPrompt, messages } = Panel.buildAiRewriteMessages(desc, readChatPanelForm());
+    const res = await API.sendChat({ apiProfileId, model: settings.defaultModel || '', systemPrompt, messages });
+    if (!res.success) throw new Error(res.error || '请求失败');
+    const parsed = Panel.parseAiRewrite(res.content || '');
+    if (!parsed.ok) throw new Error(parsed.error);
+    writeChatPanelForm(parsed.panel);
+    UI.showToast('已生成，可自行修改后保存', 'success');
+  } catch (e) {
+    UI.showToast('生成失败：' + e.message, 'error');
+  } finally {
+    if (btn) { btn.textContent = original; btn.disabled = false; }
+  }
+}
+
+/** 快捷指令栏：骰子 + 文本插入 + 硬核开关 */
+function renderQuickReplyBar() {
+  const bar = document.getElementById('quickReplyBar');
+  if (!bar) return;
+  const items = QuickReply.list();
+  const rolled = (conversation?.pendingDice || []).length > 0;
+  const hardcore = !!conversation?.hardcoreDice;
+
+  let html = items.map(q => {
+    if (q.type === 'dice') {
+      return `<button class="qr-chip qr-dice"${rolled ? ' disabled' : ''} onclick="rollDice('${Utils.escapeHtml(q.payload)}')"
+        title="${rolled ? '本回合已掷过' : '掷 ' + Utils.escapeHtml(q.payload)}">🎲 ${Utils.escapeHtml(q.label)}</button>`;
+    }
+    return `<button class="qr-chip" onclick="insertQuickText('${Utils.escapeHtml(q.id)}')">${Utils.escapeHtml(q.label)}</button>`;
+  }).join('');
+
+  html += `<button class="qr-chip ${hardcore ? 'qr-hardcore' : ''}" onclick="toggleHardcoreDice()"
+    title="硬核模式：骰子结果不可更改，模型必须照此续写">硬核${hardcore ? ' 开' : ''}</button>`;
+  html += `<button class="qr-chip qr-edit" onclick="openQuickReplyEditor()" title="编辑快捷指令">⚙</button>`;
+
+  if (rolled) {
+    const text = conversation.pendingDice.map(r => Utils.escapeHtml(Dice.formatRoll(r))).join(' · ');
+    html += `<span style="flex:0 0 auto;font-size:11px;color:var(--text-muted);white-space:nowrap;">${text}</span>`;
+  }
+  bar.innerHTML = html;
+}
+
+function rollDice(spec) {
+  if (!conversation) return;
+  if ((conversation.pendingDice || []).length > 0) {
+    UI.showToast('本回合已经掷过了', 'error');
+    return;
+  }
+  const r = Dice.roll(spec);
+  if (!r.ok) { UI.showToast(r.error, 'error'); return; }
+  conversation.pendingDice = [r];
+  Storage.saveConversation(conversation);
+  renderQuickReplyBar();
+  UI.showToast(Dice.formatRoll(r) + (conversation.hardcoreDice ? '（硬核）' : ''), 'success');
+}
+
+function toggleHardcoreDice() {
+  if (!conversation) return;
+  conversation.hardcoreDice = !conversation.hardcoreDice;
+  Storage.saveConversation(conversation);
+  renderQuickReplyBar();
+  UI.showToast(conversation.hardcoreDice ? '硬核模式已开启：骰子结果不可更改' : '硬核模式已关闭', 'success');
+}
+
+function insertQuickText(id) {
+  const item = QuickReply.list().find(q => q.id === id);
+  if (!item) return;
+  const ta = document.getElementById('inputTextarea');
+  if (!ta) return;
+  const text = item.payload || '';
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? ta.value.length;
+  ta.value = ta.value.slice(0, start) + text + ta.value.slice(end);
+  ta.focus();
+  const pos = start + text.length;
+  try { ta.setSelectionRange(pos, pos); } catch {}
+  ta.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function openQuickReplyEditor() {
+  const items = QuickReply.list();
+  const rows = items.map(q => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="flex:0 0 auto;font-size:11px;color:var(--text-muted);width:34px;">${q.type === 'dice' ? '骰子' : '文本'}</span>
+      <input type="text" value="${Utils.escapeHtml(q.label)}" onchange="updateQuickReply('${q.id}','label',this.value)" style="flex:1;min-width:0;font-size:13px;">
+      <input type="text" value="${Utils.escapeHtml(q.payload)}" onchange="updateQuickReply('${q.id}','payload',this.value)" style="flex:1;min-width:0;font-size:13px;font-family:monospace;">
+      <button class="btn-icon btn-danger" onclick="deleteQuickReply('${q.id}')" title="删除">${getIcon('trash', 14)}</button>
+    </div>`).join('');
+
+  UI.showModal({
+    title: '快捷指令栏',
+    content: `
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+        类型「骰子」的指令，其内容写成 <code>NdM</code>（如 1d20、2d6+1）；<br>
+        类型「文本」的指令，点一下会把内容插入输入框。
+      </div>
+      ${rows || '<div style="font-size:12px;color:var(--text-muted);">还没有指令。</div>'}
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+        <select id="qrNewType" style="flex:0 0 auto;"><option value="dice">骰子</option><option value="insert">文本</option></select>
+        <input type="text" id="qrNewLabel" placeholder="显示名，如 d20 / 继续" style="flex:1;min-width:0;font-size:13px;">
+        <input type="text" id="qrNewPayload" placeholder="内容，如 1d20 / 继续" style="flex:1;min-width:0;font-size:13px;">
+      </div>`,
+    buttons: [
+      { text: '恢复默认', class: 'btn-secondary', onclick: 'resetQuickReply()' },
+      { text: '添加', class: 'btn-secondary', onclick: 'addQuickReply()' },
+      { text: '完成', class: 'btn-primary', onclick: 'UI.closeModal();renderQuickReplyBar();' },
+    ],
+  });
+}
+
+function updateQuickReply(id, field, value) {
+  const list = QuickReply.list();
+  const item = list.find(q => q.id === id);
+  if (!item) return;
+  item[field] = String(value || '').trim();
+  QuickReply.save(list);
+  renderQuickReplyBar();
+}
+
+function deleteQuickReply(id) {
+  QuickReply.remove(id);
+  openQuickReplyEditor();
+  renderQuickReplyBar();
+}
+
+function addQuickReply() {
+  const type = document.getElementById('qrNewType')?.value || 'dice';
+  const label = (document.getElementById('qrNewLabel')?.value || '').trim();
+  const payload = (document.getElementById('qrNewPayload')?.value || '').trim();
+  if (!label || !payload) { UI.showToast('显示名和内容都要填', 'error'); return; }
+  if (type === 'dice' && !Dice.parse(payload).ok) { UI.showToast(Dice.parse(payload).error, 'error'); return; }
+  QuickReply.add({ label, type, payload });
+  openQuickReplyEditor();
+  renderQuickReplyBar();
+}
+
+function resetQuickReply() {
+  QuickReply.reset();
+  openQuickReplyEditor();
+  renderQuickReplyBar();
+}
+
+/** 回合结束：清掉一次性的注入内容（骰子结果 / 只生效一次的作者注） */
+function consumeTurnState() {
+  let changed = false;
+  if ((conversation.pendingDice || []).length > 0) {
+    conversation.pendingDice = [];
+    changed = true;
+  }
+  const note = conversation.writingNote;
+  if (note && note.oneShot && String(note.text || '').trim()) {
+    note.text = '';
+    changed = true;
+  }
+  if (!changed) return;
+  Storage.saveConversation(conversation);
+  renderQuickReplyBar();
+  if (summaryPanelOpen) renderSummaryPanel();
+}
+
 function renderSummaryPanel() {
   const container = document.getElementById('summaryContent');
   let html = '';
+
+  // ── 作者注 / 上帝指令：走 @Depth 注入，直接作用于「当下」这一轮 ──
+  const note = conversation.writingNote || {};
+  const noteEnabled = note.enabled !== false;
+  const noteText = note.text !== undefined ? note.text : (conversation.writingAdvice || '');
+  const noteDepth = Number.isFinite(Number(note.depth)) ? Number(note.depth) : 1;
+  html += `
+    <details style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;padding:10px;background:var(--bg-secondary);" ${noteText ? 'open' : ''}>
+      <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);">
+        作者注 · 上帝指令
+        <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">@Depth ${noteDepth}</span>
+      </summary>
+      <div style="margin-top:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+          <input type="checkbox" id="writingNoteEnabled" ${noteEnabled ? 'checked' : ''} onchange="onWritingNoteChange()" style="width:auto;">
+          启用（每轮注入）
+        </label>
+        <textarea id="writingNoteText" rows="4" placeholder="例：这一节多写环境描写，节奏放慢，让对话留白。" onchange="onWritingNoteChange()" style="width:100%;margin-top:8px;font-size:13px;">${Utils.escapeHtml(noteText)}</textarea>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--text-muted);">注入深度</label>
+          <input type="number" min="0" step="1" id="writingNoteDepth" value="${noteDepth}" onchange="onWritingNoteChange()" style="width:70px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer;">
+            <input type="checkbox" id="writingNoteOneShot" ${note.oneShot ? 'checked' : ''} onchange="onWritingNoteChange()" style="width:auto;">
+            只生效一次
+          </label>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5;">
+          深度 1 = 紧贴最后一条消息之前（最贴近「当下」，推荐）；0 = 追加到最末尾。
+        </div>
+      </div>
+    </details>`;
+
+  // ── 记忆长度条：上下文到底被谁占了 ──
+  html += renderMemoryBar();
 
   // 手动合并入口（网络波动错过自动合并时的兜底）
   const pendingCount = Summary.countUnmergedAbstracts(conversation);
@@ -6679,6 +7224,8 @@ function handleNativeStreamCompleted(aiMsg, state) {
     return;
   }
   applyCompletedAiResponse(aiMsg, fullText);
+  // 本轮已成功生成 → 清掉「只生效一次」的作者注
+  consumeTurnState();
   finalizeStreamCleanup();
 }
 
@@ -6779,6 +7326,7 @@ async function streamAIResponseNative(retryAttempt = 0) {
   const settings = Storage.getSettings();
   _lastBuiltPrompt = PromptBuilder.buildMessages(conversation);
   const { systemPrompt, messages } = _lastBuiltPrompt;
+  const activePreset = _lastBuiltPrompt.preset || null;
 
   const aiMsg = {
     id: Utils.generateId('msg'),
@@ -6816,7 +7364,7 @@ async function streamAIResponseNative(retryAttempt = 0) {
     systemPrompt,
     messages,
     // provider 映射在 JS 侧算好，原生侧只负责"照单执行"（避免两端映射表不同步）
-    requestParams: API.resolveRequestParams(apiProfile, model, API._maxTokensForModel(model)),
+    requestParams: API.resolveRequestParams(apiProfile, model, API._maxTokensForModel(model), activePreset),
   };
 
   try {
@@ -6856,11 +7404,13 @@ async function streamAIResponse(retryAttempt = 0, allowNativeStreaming = true) {
 
   // Build prompt BEFORE adding AI placeholder
   let systemPrompt, messages;
+  let activePreset = null;
   if (editMvuMode) {
     ({ systemPrompt, messages } = buildEditMvuPrompt());
   } else {
     _lastBuiltPrompt = PromptBuilder.buildMessages(conversation);
     ({ systemPrompt, messages } = _lastBuiltPrompt);
+    activePreset = _lastBuiltPrompt.preset || null;
   }
 
   // Create AI placeholder message
@@ -6892,6 +7442,7 @@ async function streamAIResponse(retryAttempt = 0, allowNativeStreaming = true) {
     model,
     systemPrompt,
     messages,
+    preset: activePreset,
 
     onStatus(status) {
       if (status === 'connecting') {
@@ -6941,6 +7492,8 @@ async function streamAIResponse(retryAttempt = 0, allowNativeStreaming = true) {
 
       aiMsg.content = fullText;
       aiMsg.timestamp = Date.now();
+      // 本轮已成功生成 → 清掉「只生效一次」的作者注
+      consumeTurnState();
       updateAssistantBubble(aiMsg.id, fullText, false);
 
       if (editMvuMode) {

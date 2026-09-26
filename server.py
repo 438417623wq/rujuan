@@ -520,6 +520,16 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                 self._json_response(self._get_conversations_meta_file(user_id))
             else:
                 self._json_response(self._get_all_conversations_file(user_id))
+        elif path == '/api/storylines':
+            user_id = self._auth_required()
+            if not user_id:
+                return
+            self._json_response(read_json(os.path.join(DATA_DIR, 'storylines.json'), {}))
+        elif path == '/api/memoryLibraries':
+            user_id = self._auth_required()
+            if not user_id:
+                return
+            self._json_response(read_json(os.path.join(DATA_DIR, 'memoryLibraries.json'), {}))
         elif path.startswith('/api/conversations/'):
             user_id = self._auth_required()
             if not user_id:
@@ -572,6 +582,18 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                 self._json_response({'ok': True})  # ignore
             else:
                 write_json(os.path.join(DATA_DIR, 'profiles.json'), body)
+                self._json_response({'ok': True})
+        elif path == '/api/storylines':
+            if PUBLIC_MODE:
+                self._json_response({'ok': True})  # ignore
+            else:
+                write_json(os.path.join(DATA_DIR, 'storylines.json'), body)
+                self._json_response({'ok': True})
+        elif path == '/api/memoryLibraries':
+            if PUBLIC_MODE:
+                self._json_response({'ok': True})  # ignore
+            else:
+                write_json(os.path.join(DATA_DIR, 'memoryLibraries.json'), body)
                 self._json_response({'ok': True})
         elif path.startswith('/api/conversations/'):
             conv_id = path.split('/')[-1]

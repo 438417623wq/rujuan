@@ -12,5 +12,8 @@ android/.gradle-user/
 android/.android-user/
 android/app/build/
 android/local.properties
+# 构建产物：APK 由 android/ 工程生成，不入库
+*.apk
+*.aab
 rujuan-changes.bundle
 upstream-changes.patch
