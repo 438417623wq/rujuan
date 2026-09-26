@@ -4126,15 +4126,16 @@ function exportWorldBook(format) {
  */
 function renderAiContent(rawContent) {
   if (!rawContent) return '';
+  const hideReasoning = MVU.shouldHideReasoning();
   // Extract <thinking> block as collapsible
-  const thinking = MVU.parseThinking(rawContent);
+  const thinking = hideReasoning ? null : MVU.parseThinking(rawContent);
   let thinkingHtml = '';
   if (thinking) {
     const thinkEscaped = Utils.escapeHtml(thinking).replace(/\n/g, '<br>');
     thinkingHtml = `<details class="thinking-block"><summary>思考过程</summary><div class="thinking-content">${thinkEscaped}</div></details>`;
   }
   // Extract story content with refine applied
-  const storyText = Utils.extractStoryContent(rawContent, true);
+  const storyText = Utils.extractStoryContent(hideReasoning ? MVU.stripThinking(rawContent) : rawContent, true);
   // Check if refine was applied (for indicator)
   const refineArr = MVU.parseRefine(rawContent);
   let refineHtml = '';
@@ -4314,6 +4315,8 @@ function updateAssistantBubble(msgId, content, streaming) {
   } else if (streaming) {
     // During streaming: show <thinking> as collapsible + <story> content
     // Detect thinking block (complete or partial) — supports <thinking>, <think>, <deep_thinking>
+    // 「隐藏思考内容」开启时先剥掉思考块，后面的检测自然落到"无思考块"分支
+    if (MVU.shouldHideReasoning()) content = MVU.stripThinking(content);
     let thinkOpen = content.indexOf('<thinking>');
     let thinkClose = content.indexOf('</thinking>');
     let tagLen = 10; // '<thinking>'.length
@@ -6812,6 +6815,8 @@ async function streamAIResponseNative(retryAttempt = 0) {
     model,
     systemPrompt,
     messages,
+    // provider 映射在 JS 侧算好，原生侧只负责"照单执行"（避免两端映射表不同步）
+    requestParams: API.resolveRequestParams(apiProfile, model, API._maxTokensForModel(model)),
   };
 
   try {

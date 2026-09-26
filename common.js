@@ -510,6 +510,13 @@ const API = {
       }
       if (this._isMimoProfile(p, model) && !this._hasHeader(extra, 'api-key')) h['api-key'] = p.apiKey;
     }
+    // 删除用户指定的默认头（例如换用自己的鉴权方案时去掉 Authorization）
+    for (const name of this._parsePathList(p?.excludeHeaders)) {
+      const target = String(name).toLowerCase();
+      for (const key of Object.keys(h)) {
+        if (key.toLowerCase() === target) delete h[key];
+      }
+    }
     return { ...h, ...extra };
   },
 
@@ -541,6 +548,278 @@ const API = {
   _hasHeader(headers, name) {
     const target = String(name || '').toLowerCase();
     return Object.keys(headers || {}).some(key => key.toLowerCase() === target);
+  },
+
+  // ============================================================
+  // Request parameter control
+  //   采样参数 / 思考控制 / 自定义请求体与请求头
+  // ============================================================
+
+  // 这些字段永远不允许被用户自定义覆盖或删除，否则请求结构会被破坏
+  PROTECTED_BODY_KEYS: ['messages', 'system', 'contents', 'stream'],
+
+  _numOrNull(value) {
+    if (value === '' || value === null || value === undefined) return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  },
+
+  _clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  },
+
+  /** 解析「自定义请求体」：优先 JSON（保留数字/布尔类型），退化为逐行 key: value */
+  _parseExtraBody(raw) {
+    const text = (raw || '').trim();
+    if (!text) return null;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { ...parsed };
+    } catch {}
+    const out = {};
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//')) continue;
+      const idx = trimmed.indexOf(':');
+      if (idx <= 0) continue;
+      const key = trimmed.slice(0, idx).trim();
+      if (!key) continue;
+      const rawValue = trimmed.slice(idx + 1).trim();
+      if (!rawValue) continue;
+      try { out[key] = JSON.parse(rawValue); } catch { out[key] = rawValue; }
+    }
+    return Object.keys(out).length ? out : null;
+  },
+
+  /** 解析「删除字段 / 删除请求头」列表：一行一条（也容忍逗号分隔） */
+  _parsePathList(raw) {
+    return String(raw || '')
+      .split(/\r?\n|,/)
+      .map(s => s.trim())
+      .filter(s => s && !s.startsWith('#') && !s.startsWith('//'));
+  },
+
+  /** 按点号路径删除字段，如 a.b.c */
+  _deletePath(target, path) {
+    if (!target || !path) return false;
+    const parts = String(path).split('.').map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return false;
+    let node = target;
+    for (let i = 0; i < parts.length - 1; i++) {
+      if (node === null || typeof node !== 'object') return false;
+      node = node[parts[i]];
+    }
+    if (node === null || typeof node !== 'object') return false;
+    const last = parts[parts.length - 1];
+    if (!Object.prototype.hasOwnProperty.call(node, last)) return false;
+    delete node[last];
+    return true;
+  },
+
+  /** 按点号路径写入字段，中间层不存在则创建，如 generationConfig.temperature */
+  _setPath(target, path, value) {
+    if (!target || !path) return target;
+    const parts = String(path).split('.').map(s => s.trim()).filter(Boolean);
+    if (!parts.length) return target;
+    if (parts.length === 1) { target[parts[0]] = value; return target; }
+    let node = target;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = parts[i];
+      if (node[key] === null || typeof node[key] !== 'object' || Array.isArray(node[key])) node[key] = {};
+      node = node[key];
+    }
+    node[parts[parts.length - 1]] = value;
+    return target;
+  },
+
+  /**
+   * 采样参数：留空一律不发送（保证默认行为与老版本完全一致）。
+   * 返回「点号路径 → 值」的映射，因为 Google 的采样参数藏在 generationConfig 下且用驼峰名，
+   * 而 OpenAI / Claude 是顶层下划线名。两端都用同一套路径写入。
+   */
+  _samplerFields(p, model = '') {
+    const out = {};
+    const isGoogle = this._detect(p, model) === 'google';
+    const t = this._numOrNull(p?.temperature);
+    const tp = this._numOrNull(p?.topP);
+    const tk = this._numOrNull(p?.topK);
+    const mt = this._numOrNull(p?.maxTokens);
+    const pp = this._numOrNull(p?.presencePenalty);
+    const fp = this._numOrNull(p?.frequencyPenalty);
+
+    if (isGoogle) {
+      if (t !== null) out['generationConfig.temperature'] = this._clamp(t, 0, 2);
+      if (tp !== null) out['generationConfig.topP'] = this._clamp(tp, 0, 1);
+      if (tk !== null) out['generationConfig.topK'] = Math.max(1, Math.floor(tk));
+      if (mt !== null && mt > 0) out['generationConfig.maxOutputTokens'] = Math.floor(mt);
+      if (pp !== null) out['generationConfig.presencePenalty'] = pp;
+      if (fp !== null) out['generationConfig.frequencyPenalty'] = fp;
+      return out;
+    }
+
+    if (t !== null) out.temperature = this._clamp(t, 0, 2);
+    if (tp !== null) out.top_p = this._clamp(tp, 0, 1);
+    if (tk !== null) out.top_k = Math.max(0, Math.floor(tk));
+    if (mt !== null && mt > 0) out.max_tokens = Math.floor(mt);
+    if (pp !== null) out.presence_penalty = pp;
+    if (fp !== null) out.frequency_penalty = fp;
+    return out;
+  },
+
+  _thinkingSpec(p) {
+    const mode = ['auto', 'off', 'on', 'effort', 'custom'].includes(p?.thinkingMode) ? p.thinkingMode : 'auto';
+    const effort = ['minimal', 'low', 'medium', 'high', 'max'].includes(p?.reasoningEffort) ? p.reasoningEffort : '';
+    const budgetRaw = this._numOrNull(p?.thinkingBudget);
+    const budget = budgetRaw === null ? null : Math.max(0, Math.floor(budgetRaw));
+    return { mode, effort, budget };
+  },
+
+  _claudeThinkingBudget(effort, cap) {
+    if (effort === 'minimal') return 1024;
+    const pct = { low: 0.15, medium: 0.25, high: 0.5, max: 0.95 }[effort];
+    if (!pct) return null;
+    return Math.max(1024, Math.floor(cap * pct));
+  },
+
+  /** Gemini 的 thinkingBudget 下限：Flash / Lite 可归零，Pro 系最低 128（官方硬限制） */
+  _googleBudgetFloor(model) {
+    const ml = (model || '').toLowerCase();
+    return (ml.includes('flash') || ml.includes('lite')) ? 0 : 128;
+  },
+
+  _googleThinkingBudget(effort, cap, model) {
+    const ml = (model || '').toLowerCase();
+    const isFlash = ml.includes('flash');
+    const isLite = ml.includes('lite');
+    const floor = this._googleBudgetFloor(model);
+    if (effort === 'minimal') return floor;
+    const pct = { low: 0.15, medium: 0.25, high: 0.5, max: 1 }[effort];
+    if (!pct) return null;
+    const min = isLite ? 512 : 128;
+    const ceiling = (isFlash || isLite) ? 24576 : 32768;
+    return Math.min(Math.max(min, Math.floor(cap * pct)), ceiling);
+  },
+
+  /**
+   * 思考控制 → 各家参数。
+   * ⚠ 多数后端的推理无法真正关闭，「off」只是尽力而为；关不掉时可配合「隐藏思考内容」。
+   * 返回 null 表示不发送任何思考相关参数。
+   */
+  _thinkingBody(p, model, cap) {
+    const { mode, effort, budget } = this._thinkingSpec(p);
+    if (mode === 'auto' || mode === 'custom') return null;
+
+    const prov = this._detect(p, model);
+    const ml = (model || '').toLowerCase();
+    const off = mode === 'off';
+
+    // GLM / Kimi / MiMo：官方支持 thinking.type 开关，但不支持力度
+    if (/glm|z\.ai|zai|kimi|moonshot/.test(ml) || this._isMimoProfile(p, model)) {
+      return { thinking: { type: off ? 'disabled' : 'enabled' } };
+    }
+
+    if (prov === 'claude') {
+      if (off) return { thinking: { type: 'disabled' } };
+      const b = budget ?? this._claudeThinkingBudget(effort, cap);
+      return b ? { thinking: { type: 'enabled', budget_tokens: b } } : null;
+    }
+
+    if (prov === 'google') {
+      // Gemini 3 系已改用 thinkingLevel，不再接受 thinkingBudget
+      if (/gemini-3|gemini3/.test(ml)) {
+        const lvl = { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', max: 'high' }[effort];
+        if (off) return { generationConfig: { thinkingConfig: { thinkingLevel: 'minimal' } } };
+        return lvl ? { generationConfig: { thinkingConfig: { thinkingLevel: lvl } } } : null;
+      }
+      if (off) {
+        // Pro 系关不掉思考，只能压到官方下限 128；Flash / Lite 可以归零
+        const b = budget === null
+          ? this._googleThinkingBudget('minimal', cap, model)
+          : Math.max(this._googleBudgetFloor(model), budget);
+        return { generationConfig: { thinkingConfig: { thinkingBudget: b } } };
+      }
+      const b = budget ?? this._googleThinkingBudget(effort, cap, model);
+      return b === null ? null : { generationConfig: { thinkingConfig: { thinkingBudget: b } } };
+    }
+
+    // OpenAI 兼容
+    if (off) {
+      // GPT-5.4+ 的「最低」即 none（真正禁用推理）
+      if (/gpt-5\.[4-9]|gpt-5\.\d\d|gpt-6/.test(ml)) return { reasoning_effort: 'none' };
+      return { reasoning_effort: 'minimal' };
+    }
+    const eff = { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', max: 'high' }[effort];
+    return eff ? { reasoning_effort: eff } : null;
+  },
+
+  /**
+   * 算出最终要注入的请求参数。
+   * 供「预览最终请求」与安卓原生通道共用——provider 映射只在这一处，避免两端不同步。
+   */
+  resolveRequestParams(p, model, baseMaxTokens) {
+    const sampler = this._samplerFields(p, model);
+    const cap = this._numOrNull(p?.maxTokens) || baseMaxTokens || this._maxTokensForModel(model);
+    return {
+      sampler,
+      thinking: this._thinkingBody(p, model, cap) || null,
+      extraBody: this._parseExtraBody(p?.extraBody),
+      excludeBody: this._parsePathList(p?.excludeBody),
+      extraHeaders: this._parseExtraHeaders(p?.extraHeaders || ''),
+      excludeHeaders: this._parsePathList(p?.excludeHeaders),
+    };
+  },
+
+  /** 把算好的参数落到 body 上 */
+  applyRequestParams(body, params) {
+    if (!body || !params) return body;
+    if (params.sampler) {
+      for (const [path, value] of Object.entries(params.sampler)) this._setPath(body, path, value);
+    }
+    if (params.thinking) {
+      for (const [key, value] of Object.entries(params.thinking)) {
+        if (key === 'generationConfig') {
+          body.generationConfig = { ...(body.generationConfig || {}), ...value };
+        } else if (key === 'thinking') {
+          body.thinking = { ...(body.thinking || {}), ...value };
+        } else {
+          body[key] = value;
+        }
+      }
+    }
+    const extra = params.extraBody;
+    if (extra) {
+      const safe = { ...extra };
+      for (const k of this.PROTECTED_BODY_KEYS) delete safe[k];
+      Object.assign(body, safe);
+    }
+    for (const path of (params.excludeBody || [])) {
+      if (this.PROTECTED_BODY_KEYS.includes(String(path).trim())) continue;
+      this._deletePath(body, path);
+    }
+    return body;
+  },
+
+  /** 预览最终会发出的请求（Key 已脱敏） */
+  previewRequest(p, model) {
+    const sampleSystem = '（示例）你是一位小说作者，请续写接下来的剧情。';
+    const sampleMessages = [{ role: 'user', content: '（示例）继续写下去' }];
+    const body = this._buildBody(p, model, sampleSystem, sampleMessages, true);
+    const headers = this._getHeaders(p, model);
+    const mask = (value) => {
+      const s = String(value);
+      if (s.length <= 8) return '****';
+      return s.slice(0, 4) + '****' + s.slice(-4);
+    };
+    const safeHeaders = {};
+    for (const [key, value] of Object.entries(headers)) {
+      safeHeaders[key] = /key|authorization|token|secret/i.test(key) ? mask(value) : value;
+    }
+    return {
+      url: this._buildUrl(p, model, true),
+      provider: this._detect(p, model),
+      headers: safeHeaders,
+      body,
+    };
   },
 
   _isMimoProfile(p, model = '') {
@@ -578,6 +857,11 @@ const API = {
   },
 
   _buildBody(p, model, systemPrompt, messages, stream) {
+    const body = this._buildBodyCore(p, model, systemPrompt, messages, stream);
+    return this.applyRequestParams(body, this.resolveRequestParams(p, model, body?.max_tokens));
+  },
+
+  _buildBodyCore(p, model, systemPrompt, messages, stream) {
     const prov = this._detect(p, model);
     const webSearch = !!Storage.getSettings()?.enableWebSearch;
 
@@ -3912,6 +4196,28 @@ const MVU = {
   parseThinking(text) {
     const m = text.match(/<thinking>([\s\S]*?)<\/thinking>/) || text.match(/<think>([\s\S]*?)<\/think>/) || text.match(/<deep_thinking>([\s\S]*?)<\/deep_thinking>/);
     return m ? m[1].trim() : null;
+  },
+
+  /** 去掉思考块（含流式过程中未闭合的残缺块） */
+  stripThinking(text) {
+    return String(text || '')
+      .replace(/<thinking>[\s\S]*?<\/thinking>/g, '')
+      .replace(/<deep_thinking>[\s\S]*?<\/deep_thinking>/g, '')
+      .replace(/<think>[\s\S]*?<\/think>/g, '')
+      .replace(/<thinking>[\s\S]*$/g, '')
+      .replace(/<deep_thinking>[\s\S]*$/g, '')
+      .replace(/<think>[\s\S]*$/g, '');
+  },
+
+  /** 是否隐藏思考内容（按当前 API 方案的设置） */
+  shouldHideReasoning() {
+    try {
+      const s = Storage.getSettings();
+      const p = Storage.getApiProfile(s?.defaultApiProfileId);
+      return !!p?.hideReasoning;
+    } catch (e) {
+      return false;
+    }
   },
 
   parseWritingAdvice(text) {

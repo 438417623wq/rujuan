@@ -28,8 +28,11 @@ import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -51,6 +54,10 @@ public class NativeAiStreamService extends Service {
     private static final int MAX_RETRY_ATTEMPTS = 2;
     private static final long RETRY_BASE_DELAY_MS = 1500L;
     private static final long WAKE_LOCK_TIMEOUT_MS = 30 * 60 * 1000L;
+
+    // 这些字段永远不允许被用户自定义覆盖或删除，否则请求结构会被破坏
+    private static final List<String> PROTECTED_BODY_KEYS =
+            Arrays.asList("messages", "system", "contents", "stream");
     private static volatile NativeAiStreamService activeInstance;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -229,6 +236,7 @@ public class NativeAiStreamService extends Service {
                     String provider = detectProvider(profile, model);
                     String url = buildUrl(profile, model, true);
                     JSONObject requestBody = buildBody(profile, provider, model, systemPrompt, messages, true);
+                    applyRequestParams(requestBody, payload.optJSONObject("requestParams"));
 
                     HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
                     activeConnection = connection;
@@ -625,6 +633,115 @@ public class NativeAiStreamService extends Service {
         return body;
     }
 
+    /**
+     * 把 JS 侧算好的 requestParams 落到请求体上。
+     * provider 映射（采样参数名、思考参数名）全部由 JS 负责，这里只做"照单执行"，
+     * 避免两端各维护一份映射表导致行为不一致。
+     */
+    private void applyRequestParams(JSONObject body, JSONObject params) {
+        if (body == null || params == null) return;
+
+        JSONObject sampler = params.optJSONObject("sampler");
+        if (sampler != null) {
+            // key 可能是点号路径（Google 的采样参数在 generationConfig 下）
+            for (Iterator<String> it = sampler.keys(); it.hasNext(); ) {
+                String key = it.next();
+                setPath(body, key, sampler.opt(key));
+            }
+        }
+
+        JSONObject thinking = params.optJSONObject("thinking");
+        if (thinking != null) {
+            for (Iterator<String> it = thinking.keys(); it.hasNext(); ) {
+                String key = it.next();
+                Object value = thinking.opt(key);
+                if (!(value instanceof JSONObject)) {
+                    try { body.put(key, value); } catch (JSONException ignored) {}
+                    continue;
+                }
+                JSONObject patch = (JSONObject) value;
+                JSONObject existing = body.optJSONObject(key);
+                JSONObject merged = new JSONObject();
+                if (existing != null) {
+                    // 手工复制，避免 new JSONObject(String) 抛受检异常
+                    for (Iterator<String> eit = existing.keys(); eit.hasNext(); ) {
+                        String eKey = eit.next();
+                        try { merged.put(eKey, existing.get(eKey)); } catch (JSONException ignored) {}
+                    }
+                }
+                for (Iterator<String> pit = patch.keys(); pit.hasNext(); ) {
+                    String pKey = pit.next();
+                    try { merged.put(pKey, patch.get(pKey)); } catch (JSONException ignored) {}
+                }
+                try { body.put(key, merged); } catch (JSONException ignored) {}
+            }
+        }
+
+        JSONObject extra = params.optJSONObject("extraBody");
+        if (extra != null) {
+            for (Iterator<String> it = extra.keys(); it.hasNext(); ) {
+                String key = it.next();
+                if (PROTECTED_BODY_KEYS.contains(key)) continue;
+                try { body.put(key, extra.get(key)); } catch (JSONException ignored) {}
+            }
+        }
+
+        JSONArray exclude = params.optJSONArray("excludeBody");
+        if (exclude != null) {
+            for (int i = 0; i < exclude.length(); i++) {
+                String path = exclude.optString(i, "").trim();
+                if (path.isEmpty() || PROTECTED_BODY_KEYS.contains(path)) continue;
+                deletePath(body, path);
+            }
+        }
+    }
+
+    /** 按点号路径写入字段，中间层不存在则创建，如 generationConfig.temperature */
+    private void setPath(JSONObject root, String path, Object value) {
+        if (root == null || path == null || path.isEmpty()) return;
+        String[] parts = path.split("\\.");
+        JSONObject node = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            String key = parts[i].trim();
+            if (key.isEmpty()) return;
+            JSONObject next = node.optJSONObject(key);
+            if (next == null) {
+                next = new JSONObject();
+                try { node.put(key, next); } catch (JSONException e) { return; }
+            }
+            node = next;
+        }
+        String leaf = parts[parts.length - 1].trim();
+        if (leaf.isEmpty()) return;
+        try { node.put(leaf, value); } catch (JSONException ignored) {}
+    }
+
+    /** 按点号路径删除字段，如 a.b.c */
+    private void deletePath(JSONObject root, String path) {
+        if (root == null || path == null || path.isEmpty()) return;
+        String[] parts = path.split("\\.");
+        Object node = root;
+        for (int i = 0; i < parts.length - 1; i++) {
+            if (!(node instanceof JSONObject)) return;
+            node = ((JSONObject) node).opt(parts[i].trim());
+        }
+        if (node instanceof JSONObject) {
+            ((JSONObject) node).remove(parts[parts.length - 1].trim());
+        }
+    }
+
+    /** 解析「删除字段 / 删除请求头」列表：一行一条（也容忍逗号分隔） */
+    private List<String> parsePathList(String raw) {
+        ArrayList<String> out = new ArrayList<>();
+        if (raw == null) return out;
+        for (String piece : raw.split("[\\r\\n,]")) {
+            String value = piece.trim();
+            if (value.isEmpty() || value.startsWith("#") || value.startsWith("//")) continue;
+            out.add(value);
+        }
+        return out;
+    }
+
     private String buildUrl(JSONObject profile, String model, boolean stream) {
         String baseUrl = normalizeBaseUrl(profile);
 
@@ -691,6 +808,10 @@ public class NativeAiStreamService extends Service {
             }
         }
 
+        // 删除用户指定的默认头（如换用自己的鉴权方案时去掉 Authorization），再合并自定义头
+        for (String name : parsePathList(profile.optString("excludeHeaders", ""))) {
+            headers.keySet().removeIf(key -> key.equalsIgnoreCase(name));
+        }
         headers.putAll(extraHeaders);
         return headers;
     }
