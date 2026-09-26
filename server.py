@@ -225,22 +225,56 @@ def _build_upstream_headers():
     return h
 
 
+def _cache_control_1h():
+    return {'type': 'ephemeral', 'ttl': '1h'}
+
+
+def _is_clewdr_claude_route(model):
+    if API_PROVIDER != 'openai' or 'claude' not in (model or '').lower():
+        return False
+    return urllib.parse.urlparse(_default_api_base()).path.rstrip('/').endswith('/code/v1')
+
+
+def _rejects_assistant_prefill(model):
+    m = (model or '').lower()
+    return any(name in m for name in (
+        'opus-4-6', 'opus-4-7', 'opus-4-8', 'sonnet-4-6', 'fable-5', 'mythos'
+    ))
+
+
+def _normalize_claude_message(message, model):
+    if message.get('_assistantPrefill') and _rejects_assistant_prefill(model):
+        return {
+            'role': 'user',
+            'content': '【回复起始格式要求】\n请在本次回复开头使用以下文本，然后继续完成回复：\n' + message['content'],
+        }
+    return message
+
+
 def _build_upstream_body(model, system_prompt, messages, stream):
     max_tokens = API_MAX_TOKENS
 
     if API_PROVIDER == 'claude':
         msgs = []
-        for m in messages:
+        for original in messages:
+            m = _normalize_claude_message(original, model)
             role = 'assistant' if m['role'] == 'assistant' else 'user'
+            block = {'type': 'text', 'text': m['content']}
+            if original.get('_cacheControl') or original.get('_cacheAnchor'):
+                block['cache_control'] = _cache_control_1h()
             if msgs and msgs[-1]['role'] == role:
-                msgs[-1]['content'] += '\n\n' + m['content']
+                msgs[-1]['content'].append(block)
             else:
-                msgs.append({'role': role, 'content': m['content']})
+                msgs.append({'role': role, 'content': [block]})
         if msgs and msgs[0]['role'] != 'user':
-            msgs.insert(0, {'role': 'user', 'content': '(continue)'})
+            msgs.insert(0, {'role': 'user', 'content': [{'type': 'text', 'text': '(continue)'}]})
         body = {'model': model, 'max_tokens': max_tokens, 'stream': stream, 'messages': msgs}
         if system_prompt:
-            body['system'] = system_prompt
+            body['system'] = [{
+                'type': 'text',
+                'text': system_prompt,
+                'cache_control': _cache_control_1h(),
+            }]
         return body
 
     if API_PROVIDER == 'google-ai-studio':
@@ -256,6 +290,32 @@ def _build_upstream_body(model, system_prompt, messages, stream):
         return {'contents': contents, 'generationConfig': {'maxOutputTokens': max_tokens}}
 
     # OpenAI compatible
+    if _is_clewdr_claude_route(model):
+        msgs = []
+        if system_prompt:
+            msgs.append({
+                'role': 'system',
+                'content': [{
+                    'type': 'text',
+                    'text': system_prompt,
+                    'cache_control': _cache_control_1h(),
+                }],
+            })
+        for original in messages:
+            m = _normalize_claude_message(original, model)
+            role = 'assistant' if m['role'] == 'assistant' else 'user'
+            block = {'type': 'text', 'text': m['content']}
+            if original.get('_cacheControl') or original.get('_cacheAnchor'):
+                block['cache_control'] = _cache_control_1h()
+            if msgs and msgs[-1]['role'] == role and role != 'system':
+                msgs[-1]['content'].append(block)
+            else:
+                msgs.append({'role': role, 'content': [block]})
+        body = {'model': model, 'messages': msgs, 'stream': stream}
+        if max_tokens > 0:
+            body['max_tokens'] = max_tokens
+        return body
+
     msgs = []
     if system_prompt:
         msgs.append({'role': 'system', 'content': system_prompt})
@@ -272,11 +332,14 @@ def _build_upstream_body(model, system_prompt, messages, stream):
 def _parse_non_stream_response(data):
     """Extract content and usage from non-streaming API response."""
     text = ''
-    usage = {'input': 0, 'output': 0}
+    usage = {'input': 0, 'output': 0, 'cacheRead': 0, 'cacheCreation': 0}
     if 'usage' in data:
         u = data['usage']
         usage['input'] = u.get('input_tokens') or u.get('prompt_tokens') or 0
         usage['output'] = u.get('output_tokens') or u.get('completion_tokens') or 0
+        details = u.get('prompt_tokens_details') or u.get('input_tokens_details') or {}
+        usage['cacheRead'] = u.get('cache_read_input_tokens') or details.get('cached_tokens') or 0
+        usage['cacheCreation'] = u.get('cache_creation_input_tokens') or details.get('cache_write_tokens') or 0
     elif 'usageMetadata' in data:
         u = data['usageMetadata']
         usage['input'] = u.get('promptTokenCount', 0)

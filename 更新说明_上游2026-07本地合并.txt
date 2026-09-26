@@ -1,0 +1,60 @@
+更新说明 - 上游 2026-07 更新本地合并版（v1.9.1）
+日期：2026-09-26
+
+本次基于上游 rook1ess/rujuan 合并基点 5cb89c31 之后的 7 个提交进行合并，
+上游 HEAD = 038186a（tag v1.9.1，2026-07-21），并保留当前项目已有的
+Android APK、小米 MiMo 模型兼容、世界书、故事导入导出等改动。
+
+一、合并上游新增
+1. 分代摘要记忆：超长对局中对已压缩摘要再做归档，优化长上下文 token 表现
+   （commit 7dd5d71）。
+2. 开局角色实例化（templates + instances）：角色改为模板实例化，开局角色随
+   创建确认直接进入状态栏；角色不再写进 schema（commit 923477c）。
+3. 状态栏净化与可用性修复：数值 "0/100/100" 堆叠、进度条卡死、面板自建滚动
+   导致下半部分够不着（commit 923477c）。
+4. Anthropic 缓存优化：按块重组消息以适配 Claude 显式缓存，显著降低重复输入的
+   token 消耗（commit 038186a）。
+5. 状态栏 JSON 容错增强：未转义引号、裸换行自动修复（commit 923477c）。
+
+二、合并冲突与人工取舍（chat.html 1 处、common.js 16 处）
+1. applyPatch：保留 Fork 的嵌套路径能力（resolveParent / assignKey / removeValue），
+   叠加上游的数值强转 _coerceNumeric 与旧存档 "45/100" 坏数据归一化。
+2. updateDOM：保留 Fork 的多元素匹配与 mvu-field-changed 变更高亮，
+   叠加上游的 bar/number 显示前归一化。
+3. buildMessages（RP 分支与 slot-driven 分支）：采用上游的「不合并相邻同角色消息」
+   策略，保留每条原始消息的 block 边界以便故事设定块独立缓存；
+   同时保留 Fork 的世界书元数据返回字段（activeWorldBookEntries 等）。
+4. MVU.render：保留 Fork 的 BASE_STYLE，叠加上游的宿主滚动防护 hostGuard。
+5. 默认初始化提示词：采用上游版本（引入 templates/instances 体系，角色不进 schema），
+   Fork 原先写入 schema 的 characters 字段随之废弃；normalizeMvuStructure 的
+   默认字段名保持兼容。
+6. OpenAI 流式分支：保留 Fork 的 _openAiStreamChunk（reasoning/think 包裹、
+   null 过滤、data: 与 data: 带空格两种 SSE 格式），叠加上游的 finishReason
+   与 _applyUsage 缓存计费统计；usage 统一用 _emptyUsage() 初始化。
+7. _SETTINGS_DEFAULTS：合并双方新增项（enableNotificationBar 与 enableWebSearch）。
+
+三、同步与校验
+1. 根目录 web 文件（chat.html / common.js / settings.html / sw.js / index.html /
+   login.html / manifest.json / favicon.ico）已同步到 android/app/src/main/assets/。
+2. 语法检查通过：common.js（node --check）、chat.html / index.html / settings.html /
+   login.html 内联脚本、server.py 与 debug_prompt.py（py_compile）。
+3. 上游新增成员（_coerceNumeric / _emptyUsage / _applyUsage / _isClaudeModel /
+   _normalizeClaudeMessage / _rejectsAssistantPrefill / _cacheControl1h /
+   applyInitInstances / applyMvuUpdate / parseArchiveEntries / shouldPromote 等）
+   逐个确认存在于合并结果中；Fork 侧 74 个自有成员无丢失。
+
+四、涉及文件
+1. chat.html
+2. common.js
+3. settings.html
+4. sw.js
+5. README.md
+6. server.py
+7. debug_prompt.py
+8. android/app/src/main/assets/chat.html
+9. android/app/src/main/assets/common.js
+10. android/app/src/main/assets/settings.html
+11. android/app/src/main/assets/sw.js
+
+五、待办
+1. APK 构建验证（需 Android SDK / Gradle，本次未执行）。

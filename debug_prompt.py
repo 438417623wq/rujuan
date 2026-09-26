@@ -157,12 +157,16 @@ def build_messages(conversation, preset, settings):
     # Build summaries
     def build_summaries():
         parts = []
+        archive = conversation.get('summary', {}).get('archive', [])
+        for i, ar in enumerate(archive):
+            heading = '【往事纪要】（更早的剧情档案）\n' if i == 0 else ''
+            parts.append({'role': 'user', 'content': heading + f'<{ar["code"]}>{ar["content"]}</{ar["code"]}>'})
         merged_sm = conversation.get('summary', {}).get('mergedSummaries', [])
-        if merged_sm:
-            sm_text = '\n\n'.join(f'<{sm["code"]}>{sm["content"]}</{sm["code"]}>' for sm in merged_sm)
-            parts.append({'role': 'user', 'content': '【故事总结】\n' + sm_text})
+        for i, sm in enumerate(merged_sm):
+            heading = '【故事总结】\n' if i == 0 else ''
+            parts.append({'role': 'user', 'content': heading + f'<{sm["code"]}>{sm["content"]}</{sm["code"]}>'})
         last_merged = conversation.get('summary', {}).get('lastMergedIdx', 0)
-        abstracts = []
+        abstract_count = 0
         ab_counter = 1
         for i in range(last_merged):
             if i < len(all_msgs) and all_msgs[i]['role'] == 'assistant' and all_msgs[i].get('abstract'):
@@ -173,10 +177,12 @@ def build_messages(conversation, preset, settings):
                 if m['role'] == 'assistant' and m.get('abstract'):
                     code = f'ab{ab_counter:02d}'
                     content = extract_abstract_content(m['abstract']) or m['abstract']
-                    abstracts.append(f'<{code}>{content}</{code}>')
+                    heading = '【近期摘要】\n' if abstract_count == 0 else ''
+                    parts.append({'role': 'user', 'content': heading + f'<{code}>{content}</{code}>'})
+                    abstract_count += 1
                     ab_counter += 1
-        if abstracts:
-            parts.append({'role': 'user', 'content': '【近期摘要】\n' + '\n\n'.join(abstracts)})
+        if parts:
+            parts[-1]['_cacheControl'] = True
         return parts
 
     # Check slot system
@@ -197,7 +203,7 @@ def build_messages(conversation, preset, settings):
         system_prompt = '\n\n'.join(system_parts)
         msgs = list(prefix_msgs)
         if conversation.get('storySetting'):
-            msgs.append({'role': 'user', 'content': '【故事设定】\n' + conversation['storySetting']})
+            msgs.append({'role': 'user', 'content': '【故事设定】\n' + conversation['storySetting'], '_cacheAnchor': True})
         msgs.extend(build_summaries())
         if conversation.get('writingAdvice'):
             msgs.append({'role': 'user', 'content': '【主人的写作建议】\n' + conversation['writingAdvice']})
@@ -224,7 +230,7 @@ def build_messages(conversation, preset, settings):
                 slot = e['slot']
                 if slot == 'story_setting':
                     if conversation.get('storySetting'):
-                        msgs.append({'role': 'user', 'content': '【故事设定】\n' + conversation['storySetting']})
+                        msgs.append({'role': 'user', 'content': '【故事设定】\n' + conversation['storySetting'], '_cacheAnchor': True})
                 elif slot == 'summaries':
                     msgs.extend(build_summaries())
                     if conversation.get('writingAdvice'):
@@ -255,7 +261,10 @@ def build_messages(conversation, preset, settings):
 
             if after_chat:
                 role = 'user' if e.get('role') == 'system' else e.get('role', 'system')
-                msgs.append({'role': role, 'content': c})
+                msg = {'role': role, 'content': c}
+                if role == 'assistant':
+                    msg['_assistantPrefill'] = True
+                msgs.append(msg)
             else:
                 if e.get('role') == 'system':
                     system_parts.append(c)
@@ -264,15 +273,9 @@ def build_messages(conversation, preset, settings):
 
         system_prompt = '\n\n'.join(system_parts)
 
-    # Merge adjacent same-role
-    merged = []
-    for m in msgs:
-        if merged and merged[-1]['role'] == m['role']:
-            merged[-1]['content'] += '\n\n' + m['content']
-        else:
-            merged.append(dict(m))
-
-    return {'systemPrompt': system_prompt, 'messages': merged}
+    # Runtime keeps these boundaries intact so the provider layer can turn each
+    # summary into its own Anthropic content block and move the cache breakpoint.
+    return {'systemPrompt': system_prompt, 'messages': msgs}
 
 
 def build_structure(conversation, preset, settings):
@@ -289,6 +292,7 @@ def build_structure(conversation, preset, settings):
     split_at = ai_idx[-KEEP] if len(ai_idx) >= KEEP else 0
 
     # Count summaries
+    archive = conversation.get('summary', {}).get('archive', [])
     merged_sm = conversation.get('summary', {}).get('mergedSummaries', [])
     last_merged = conversation.get('summary', {}).get('lastMergedIdx', 0)
     ab_count = sum(1 for i in range(last_merged, split_at) if i < len(all_msgs) and all_msgs[i]['role'] == 'assistant' and all_msgs[i].get('abstract'))
@@ -321,11 +325,13 @@ def build_structure(conversation, preset, settings):
             else:
                 structure.append((e.get('role','?').upper(), f'预设: {e.get("name")}', f'{len(c)} chars'))
         if story_len:
-            structure.append(('USER', '【故事设定】', f'{story_len} chars'))
+            structure.append(('USER', '【故事设定】 [CACHE]', f'{story_len} chars'))
+        if archive:
+            structure.append(('USER', '【往事纪要】', f'{len(archive)} 条 archive'))
         if merged_sm:
             structure.append(('USER', f'【故事总结】', f'{len(merged_sm)} 条 sm'))
         if ab_count:
-            structure.append(('USER', f'【近期摘要】', f'{ab_count} 条 ab'))
+            structure.append(('USER', f'【近期摘要】 [CACHE→最后一条]', f'{ab_count} 条 ab'))
         for i, m in enumerate(chat_recent):
             if m['role'] == 'assistant':
                 structure.append(('AI', f'AI 回复 (近期 {len(chat_recent)-i}/{len(chat_recent)})', f'{len(m["content"])} chars'))
@@ -343,14 +349,16 @@ def build_structure(conversation, preset, settings):
                 slot = e['slot']
                 if slot == 'story_setting':
                     if story_len:
-                        structure.append(('USER', '[SLOT] 故事设定', f'{story_len} chars'))
+                        structure.append(('USER', '[SLOT] 故事设定 [CACHE]', f'{story_len} chars'))
                     else:
                         structure.append(('—', '[SLOT] 故事设定', '(empty)'))
                 elif slot == 'summaries':
+                    if archive:
+                        structure.append(('USER', '[SLOT] 往事纪要 (archive)', f'{len(archive)} 条'))
                     if merged_sm:
                         structure.append(('USER', '[SLOT] 故事总结 (sm)', f'{len(merged_sm)} 条'))
                     if ab_count:
-                        structure.append(('USER', '[SLOT] 近期摘要 (ab)', f'{ab_count} 条'))
+                        structure.append(('USER', '[SLOT] 近期摘要 (ab) [CACHE→最后一条]', f'{ab_count} 条'))
                 elif slot == 'chat_history':
                     after_chat = True
                     ai_in_recent = sum(1 for m in chat_recent if m['role'] == 'assistant')
@@ -422,7 +430,7 @@ def main():
 
     structure = build_structure(conv, preset, settings)
 
-    print('┌─ SYSTEM PROMPT (chat_history 之前的 system 条目合并)')
+    print('┌─ SYSTEM PROMPT [CACHE] (chat_history 之前的 system 条目合并)')
     sys_entries = [s for s in structure if s[0] == 'SYS']
     for s in sys_entries:
         print(f'│  ├ {s[1]}  ({s[2]})')
@@ -440,7 +448,7 @@ def main():
     result = build_messages(conv, preset, settings)
     total_chars = len(result['systemPrompt']) + sum(len(m['content']) for m in result['messages'])
     print(f'└─ Total: ~{total_chars:,} chars (~{total_chars // 2:,} tokens)')
-    print(f'   Messages after merge: {len(result["messages"])} 条 (相邻同 role 已合并)')
+    print(f'   Internal message blocks: {len(result["messages"])} 条 (发送层再按 provider 组装)')
 
 
 if __name__ == '__main__':

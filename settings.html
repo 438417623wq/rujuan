@@ -639,7 +639,8 @@
 
     /* ── Hidden file input ────────────────────────── */
     #importFileInput,
-    #importPresetInput {
+    #importPresetInput,
+    #importWritingCardInput {
       display: none;
     }
 
@@ -798,6 +799,12 @@
           显示 Prompt Inspector
         </label>
       </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkWebSearch" onchange="onDefaultsChange('websearch')">
+          启用 Web Search <span style="font-size:11px;color:var(--text-muted);">（仅 Claude / Gemini 自动注入）</span>
+        </label>
+      </div>
     </div>
   </div>
 
@@ -884,6 +891,7 @@
     <div class="data-size-label" id="dataSizeLabel"></div>
     <input type="file" id="importFileInput" accept=".json" onchange="handleImportFile(event)">
     <input type="file" id="importPresetInput" accept=".json" onchange="handleImportPresetFile(event)">
+    <input type="file" id="importWritingCardInput" accept=".json" onchange="handleImportWritingCardFile(event)">
   </div>
 
 </div>
@@ -1082,6 +1090,12 @@
             </button>
           </div>
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="edStream" ${profile?.stream === false ? '' : 'checked'} style="width:auto;">
+            <span>启用流式响应 <span style="font-size:11px;color:var(--text-muted);">（关闭后整段返回，适合代理不支持 SSE 的情况）</span></span>
+          </label>
+        </div>
         <div class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
           <label>快速测试：拉取模型列表</label>
           <div class="input-row">
@@ -1170,12 +1184,14 @@
     const baseUrl = document.getElementById('edBaseUrl').value.trim();
     const apiKey = document.getElementById('edApiKey').value.trim();
 
+    const streamEl = document.getElementById('edStream');
     const profile = {
       id: editId || Utils.generateId('api'),
       name: name || '未命名',
       provider,
       baseUrl,
       apiKey,
+      stream: streamEl ? streamEl.checked : true,
     };
 
     Storage.saveApiProfile(profile);
@@ -1222,6 +1238,7 @@
     const notificationEl = document.getElementById('chkNotificationBar');
     if (notificationEl) notificationEl.checked = settings.enableNotificationBar !== false;
     document.getElementById('chkPromptInspector').checked = !!settings.showPromptInspector;
+    document.getElementById('chkWebSearch').checked = !!settings.enableWebSearch;
   }
 
   function renderDefaultApiSelect() {
@@ -1286,6 +1303,7 @@
     const notificationEl = document.getElementById('chkNotificationBar');
     if (notificationEl) settings.enableNotificationBar = notificationEl.checked;
     settings.showPromptInspector = document.getElementById('chkPromptInspector').checked;
+    settings.enableWebSearch = document.getElementById('chkWebSearch').checked;
     Storage.saveSettings(settings);
   }
 
@@ -1426,6 +1444,7 @@
         <button class="btn-icon" onclick="renamePreset()" title="重命名">${getIcon('edit', 14)}</button>
         <button class="btn-icon" onclick="deletePreset()" title="删除当前">${getIcon('trash', 14)}</button>
         <button class="btn-icon" onclick="triggerImportPreset()" title="导入酒馆预设"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.download}</span></button>
+        <button class="btn-icon" onclick="triggerImportWritingCard()" title="导入写卡预设（酒馆原样导入）"><span class="icon" style="width:14px;height:14px;display:inline-flex;transform:rotate(180deg);">${Icons.book || Icons.download}</span></button>
       </div>`;
   }
 
@@ -1799,7 +1818,7 @@
   // ================================================================
   function renderIntervalSelector() {
     const intervals = [20, 30, 50, 80, 100];
-    const current = settings.summaryInterval || 100;
+    const current = settings.summaryInterval || 80;
     const container = document.getElementById('intervalSelector');
 
     container.innerHTML = intervals.map(n =>
@@ -1931,6 +1950,144 @@
     document.getElementById('importPresetInput').click();
   }
 
+  function triggerImportWritingCard() {
+    document.getElementById('importWritingCardInput').click();
+  }
+
+  function handleImportWritingCardFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target.result);
+        const defaultName = file.name.replace(/\.json$/i, '');
+        importWritingCardPreset(json, defaultName);
+      } catch (err) {
+        UI.showToast('文件解析失败: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  // Writing-card preset import: original-style passthrough.
+  // Unlike importSillyTavernPreset, this does NOT inject AIRP slots,
+  // does NOT append AIRP-specific output entries, and does NOT skip any content entries.
+  // Result: a regular preset whose entries == cleaned prompt_order entries (with their original enabled flags).
+  function importWritingCardPreset(json, defaultName) {
+    if (!json.prompts || !Array.isArray(json.prompts)) {
+      UI.showToast('不是有效的酒馆预设格式（缺少 prompts 数组）', 'error');
+      return;
+    }
+
+    const lookup = {};
+    for (const p of json.prompts) {
+      if (p.identifier) lookup[p.identifier] = p;
+    }
+
+    const varMap = {};
+    for (const p of json.prompts) {
+      if (!p.content) continue;
+      const setvarRe = /\{\{setvar::([^:}]+)::([^}]*)\}\}/g;
+      let m;
+      while ((m = setvarRe.exec(p.content)) !== null) {
+        varMap[m[1]] = m[2];
+      }
+    }
+
+    let orderArr = null;
+    if (Array.isArray(json.prompt_order)) {
+      for (const po of json.prompt_order) {
+        if (po.character_id !== 100000 && Array.isArray(po.order)) {
+          orderArr = po.order;
+          break;
+        }
+      }
+      if (!orderArr) {
+        for (const po of json.prompt_order) {
+          if (Array.isArray(po.order)) {
+            orderArr = po.order;
+            break;
+          }
+        }
+      }
+    }
+    if (!orderArr) {
+      UI.showToast('预设缺少 prompt_order 排序信息', 'error');
+      return;
+    }
+
+    const entries = [];
+    for (const item of orderArr) {
+      const id = item.identifier;
+      const entry = lookup[id];
+      if (!entry) continue;
+      // Skip markers (placeholders with no actual content — worldInfoBefore/charDescription/chatHistory etc.)
+      if (entry.marker === true) continue;
+
+      const rawContent = entry.content || '';
+      const cleaned = cleanSillyTavernContent(rawContent, varMap);
+      if (!cleaned) continue;
+
+      entries.push({
+        id: id || Utils.generateId('pe'),
+        name: cleanEntryName(entry.name || id),
+        role: mapRole(entry.role),
+        enabled: !!item.enabled,
+        content: cleaned,
+      });
+    }
+
+    // Append two AIRP-compatibility entries that sandwich the source preset's "输出格式" entry:
+    // - state-bar requirements (BEFORE) inform the AI how to design the state bar during discussion
+    // - final output format (AFTER) tells the AI to emit AIRP code blocks ONLY at user confirmation
+    const stateBarEntry = {
+      id: 'airp_state_bar_req',
+      name: 'AIRP 状态栏要求',
+      role: 'system',
+      enabled: true,
+      content: PromptBuilder.INIT_PROMPT_STATE_BAR_REQUIREMENTS,
+    };
+    const outputFormatEntry = {
+      id: 'airp_final_output_format',
+      name: 'AIRP 最终输出格式',
+      role: 'system',
+      enabled: true,
+      content: PromptBuilder.INIT_PROMPT_FINAL_OUTPUT_FORMAT,
+    };
+    const sandwichIdx = entries.findIndex(e => e.name === '输出格式');
+    if (sandwichIdx >= 0) {
+      entries.splice(sandwichIdx, 0, stateBarEntry);
+      entries.splice(sandwichIdx + 2, 0, outputFormatEntry);
+    } else {
+      entries.push(stateBarEntry);
+      entries.push(outputFormatEntry);
+    }
+
+    const presetName = prompt('预设名称:', json.name || defaultName || '导入写卡预设');
+    if (!presetName || !presetName.trim()) return;
+
+    ensurePresets();
+    const id = Utils.generateId('preset');
+    settings.promptPresets[id] = {
+      name: presetName.trim(),
+      kind: 'writing-card',
+      entries,
+      initPrompt: '',
+      summaryPrompt: '',
+    };
+    settings.activePresetId = id;
+    Storage.saveSettings(settings);
+
+    renderPresetSelector();
+    renderPromptEntries();
+    renderSpecialPrompts();
+
+    const sandwichMsg = sandwichIdx >= 0 ? '（已自动夹在三明月输出格式两侧）' : '（未找到输出格式条目，AIRP 条目附在末尾）';
+    UI.showToast(`写卡预设导入成功：${entries.length} 条目 ${sandwichMsg}`, 'success');
+  }
+
   function handleImportPresetFile(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -1962,6 +2119,7 @@
       entries: json.entries,
       initPrompt: json.initPrompt || '',
       summaryPrompt: json.summaryPrompt || '',
+      ...(json.kind ? { kind: json.kind } : {}),
     };
     settings.activePresetId = id;
     Storage.saveSettings(settings);

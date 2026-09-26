@@ -31,6 +31,10 @@ self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   // Don't cache API calls or server data
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/data/')) return;
+  // 跨域请求（AI 接口等）直接放行，不经过 SW：resp.clone() 做缓存写入会把流式响应的
+  // 底层字节流分叉，导致早到的小 chunk（比如 SSE 的 ping 心跳）被攒住不及时交给页面，
+  // 长时间静默期间页面误以为真的一个字节都没收到，触发客户端的 idle timeout 误判。
+  if (url.origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then(cached => {
       // Network first for HTML and JS (code updates must be immediate)
