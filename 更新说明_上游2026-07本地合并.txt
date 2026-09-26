@@ -56,5 +56,17 @@ Android APK、小米 MiMo 模型兼容、世界书、故事导入导出等改动
 10. android/app/src/main/assets/settings.html
 11. android/app/src/main/assets/sw.js
 
-五、待办
-1. APK 构建验证（需 Android SDK / Gradle，本次未执行）。
+五、APK 构建验证（2026-09-26 已执行）
+1. 环境：JDK 17（Temurin 17.0.18）+ Android SDK（compileSdk 34 / build-tools 34.0.0）
+   + Gradle 8.10.2，AGP 8.5.2。
+2. `assembleDebug` 构建成功（BUILD SUCCESSFUL，34 个 task）。
+3. 产物路径：
+   android/app/build/outputs/apk/debug/app-debug.apk（约 7.2 MB）
+4. 签名：APK Signature Scheme v2，证书 CN=Android Debug。
+5. 包信息：com.rujuanMG.app / versionCode 1 / versionName 1.0.0 /
+   minSdk 26 / targetSdk 34 / 应用名「入卷魔改版」。
+6. 已核对 APK 内 assets/common.js、assets/chat.html、assets/settings.html
+   与根目录合并后文件逐字节一致，合并特征（hostGuard、templateInstances、
+   _coerceNumeric、parseArchiveEntries、enableWebSearch 等）均已进入包内。
+   注：构建时 `syncWebAssets` 任务会自动从根目录同步 web 文件到 assets。
+
