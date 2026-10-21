@@ -140,14 +140,62 @@ def read_json(path, default=None):
     try:
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, OSError):
         return default
 
 
+# 每个存储文件一把锁：ThreadingHTTPServer 下 settings/storylines 等是"整份覆盖"写入，
+# 并发 PUT 交错会让后写的一方丢掉先写的改动（实测表现为"改名又变回去"）。
+_write_locks = {}
+_write_locks_guard = threading.Lock()
+
+
+def _lock_for(path):
+    key = os.path.normcase(os.path.abspath(path))
+    with _write_locks_guard:
+        lock = _write_locks.get(key)
+        if lock is None:
+            lock = _write_locks[key] = threading.Lock()
+        return lock
+
+
 def write_json(path, data):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """原子写入：先写同目录临时文件，fsync 后 os.replace 覆盖目标。
+
+    旧实现直接 open(path, 'w') 截断原文件再 dump，进程被杀/磁盘满会留下半截 JSON；
+    而 read_json 把损坏当"文件不存在"，于是对话从列表和导出里静默消失。
+    """
+    directory = os.path.dirname(path) or '.'
+    os.makedirs(directory, exist_ok=True)
+    with _lock_for(path):
+        tmp = f'{path}.{os.getpid()}.{threading.get_ident()}.tmp'
+        try:
+            with open(tmp, 'w', encoding='utf-8', newline='\n') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+            except OSError:
+                pass
+            raise
+
+
+def safe_conv_id(raw):
+    """校验路径最后一段能否安全当作存档 id（防目录穿越与非法文件名）。"""
+    conv_id = urllib.parse.unquote(str(raw or '')).strip()
+    if not conv_id or conv_id in ('.', '..'):
+        return ''
+    if len(conv_id) > 200:
+        return ''
+    if any(ch in conv_id for ch in ('/', '\\', '\0', ':', '*', '?', '"', '<', '>', '|')):
+        return ''
+    if conv_id != os.path.basename(conv_id):
+        return ''
+    return conv_id
 
 
 def _user_data_dir(user_id):
@@ -574,35 +622,38 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
         if path == '/api/settings':
             if PUBLIC_MODE:
                 self._json_response({'ok': True})  # ignore in public mode
-            else:
-                write_json(os.path.join(DATA_DIR, 'settings.json'), body)
+            elif self._write_store(os.path.join(DATA_DIR, 'settings.json'), body):
                 self._json_response({'ok': True})
         elif path == '/api/profiles':
             if PUBLIC_MODE:
                 self._json_response({'ok': True})  # ignore
-            else:
-                write_json(os.path.join(DATA_DIR, 'profiles.json'), body)
+            elif self._write_store(os.path.join(DATA_DIR, 'profiles.json'), body):
                 self._json_response({'ok': True})
         elif path == '/api/storylines':
             if PUBLIC_MODE:
                 self._json_response({'ok': True})  # ignore
-            else:
-                write_json(os.path.join(DATA_DIR, 'storylines.json'), body)
+            elif self._write_store(os.path.join(DATA_DIR, 'storylines.json'), body):
                 self._json_response({'ok': True})
         elif path == '/api/memoryLibraries':
             if PUBLIC_MODE:
                 self._json_response({'ok': True})  # ignore
-            else:
-                write_json(os.path.join(DATA_DIR, 'memoryLibraries.json'), body)
+            elif self._write_store(os.path.join(DATA_DIR, 'memoryLibraries.json'), body):
                 self._json_response({'ok': True})
         elif path.startswith('/api/conversations/'):
-            conv_id = path.split('/')[-1]
+            conv_id = safe_conv_id(path.split('/')[-1])
+            if not conv_id:
+                self._json_response({'error': 'invalid conversation id'}, 400)
+                return
+            if body is None or not isinstance(body, dict):
+                self._json_response({'error': 'invalid conversation body'}, 400)
+                return
             if USE_DB:
                 _db_save_conversation(user_id, conv_id, body)
+                self._json_response({'ok': True})
             else:
                 conv_dir = self._get_conv_dir(user_id)
-                write_json(os.path.join(conv_dir, f'{conv_id}.json'), body)
-            self._json_response({'ok': True})
+                if self._write_store(os.path.join(conv_dir, f'{conv_id}.json'), body):
+                    self._json_response({'ok': True})
         else:
             self._json_response({'error': 'not found'}, 404)
 
@@ -615,7 +666,10 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if path.startswith('/api/conversations/'):
-            conv_id = path.split('/')[-1]
+            conv_id = safe_conv_id(path.split('/')[-1])
+            if not conv_id:
+                self._json_response({'error': 'invalid conversation id'}, 400)
+                return
             if USE_DB:
                 _db_delete_conversation(user_id, conv_id)
             else:
@@ -625,6 +679,9 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
                     os.remove(filepath)
                 except FileNotFoundError:
                     pass
+                except OSError as e:
+                    self._json_response({'error': f'delete failed: {e}'}, 500)
+                    return
             self._json_response({'ok': True})
         else:
             self._json_response({'error': 'not found'}, 404)
@@ -885,23 +942,57 @@ class AirpHandler(http.server.SimpleHTTPRequestHandler):
         result = {}
         if not os.path.isdir(conv_dir):
             return result
-        META_FIELDS = ('id', 'name', 'phase', 'createdAt', 'updatedAt', 'apiProfileId', 'model')
+        META_FIELDS = ('id', 'name', 'phase', 'createdAt', 'updatedAt',
+                       'apiProfileId', 'model', 'storylineId', 'presetId')
         for fname in os.listdir(conv_dir):
             if fname.endswith('.json'):
                 data = read_json(os.path.join(conv_dir, fname))
                 if data and 'id' in data:
-                    meta = {k: data.get(k) for k in META_FIELDS}
+                    # 只保留真实存在的字段：旧版直接 data.get(k) 会写入显式 null，
+                    # 前端 syncFromServer 用服务端索引整份覆盖本地，null 会把本地好值冲掉。
+                    meta = {k: data[k] for k in META_FIELDS if data.get(k) is not None}
                     meta['msgCount'] = len([m for m in data.get('messages', []) if not m.get('hidden')])
                     result[data['id']] = meta
         return result
 
     # ── JSON / body helpers ────────────────────────────────
+    MAX_BODY_BYTES = 64 * 1024 * 1024  # 64MB：长局存档可能很大，但必须有上限
+
+    def _write_store(self, path, data):
+        """写入并显式报错。返回 True 表示已落盘（调用方负责回 200）。"""
+        try:
+            write_json(path, data)
+            return True
+        except OSError as e:
+            print(f'[error] write failed {path}: {e}', file=sys.stderr, flush=True)
+            self._json_response({'error': f'write failed: {e}'}, 500)
+            return False
+
     def _read_body(self):
         try:
-            length = int(self.headers.get('Content-Length', 0))
+            raw_len = self.headers.get('Content-Length')
+            length = int(raw_len) if raw_len is not None else 0
+        except (TypeError, ValueError):
+            self._json_response({'error': 'Invalid Content-Length'}, 400)
+            return None
+        if length < 0 or length > self.MAX_BODY_BYTES:
+            self._json_response({'error': 'Invalid Content-Length'}, 413)
+            return None
+        if length == 0:
+            # 必须把声明外的剩余体排空，否则 keep-alive 上会串到下一个请求
+            self._json_response({'error': 'Empty body'}, 400)
+            return None
+        try:
             raw = self.rfile.read(length)
+        except OSError:
+            return None
+        # 客户端提前断开：不读满就解析会把半个 JSON 当合法输入
+        if len(raw) != length:
+            self._json_response({'error': 'Truncated body'}, 400)
+            return None
+        try:
             return json.loads(raw)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
             self._json_response({'error': f'Invalid JSON: {e}'}, 400)
             return None
 

@@ -1,10 +1,11 @@
-const CACHE_NAME = 'airp-v2';
+const CACHE_NAME = 'airp-v7';
 const ASSETS = [
   '/',
   '/index.html',
   '/chat.html',
   '/settings.html',
   '/common.js',
+  '/agnes.js',
   '/assets/bg.jpg',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

@@ -9,7 +9,7 @@
   <link rel="manifest" href="manifest.json">
   <title>入卷</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>📖</text></svg>">
-  <script src="common.js?v=14"></script>
+  <script src="common.js?v=17"></script>
   <style>
     body {
       overflow-y: auto;
@@ -44,12 +44,12 @@
       color: var(--text-primary);
       letter-spacing: 8px;
       margin-bottom: 6px;
-      text-shadow: 0 0 40px rgba(201, 164, 76, 0.25);
+      text-shadow: 0 0 40px rgba(214, 178, 95, 0.25);
     }
 
     .login-subtitle {
       font-family: var(--font-display);
-      font-size: 13px;
+      font-size: var(--fs-base);
       color: var(--text-muted);
       letter-spacing: 3px;
       text-transform: uppercase;
@@ -64,7 +64,7 @@
 
     .login-form input {
       text-align: center;
-      font-size: 15px;
+      font-size: var(--fs-lg);
       padding: 12px 16px;
     }
 
@@ -74,14 +74,14 @@
 
     .login-btn {
       font-family: var(--font-ui);
-      font-size: 15px;
+      font-size: var(--fs-lg);
       font-weight: 600;
       padding: 12px 24px;
       border: none;
       border-radius: var(--radius);
       cursor: pointer;
-      background: linear-gradient(135deg, var(--accent), #d4b05c);
-      color: #1a1510;
+      background: linear-gradient(135deg, var(--gradient-gold-from), var(--gradient-gold-to));
+      color: var(--ink-on-gold);
       transition: all var(--transition);
       margin-top: 8px;
     }
@@ -99,7 +99,7 @@
 
     .login-error {
       font-family: var(--font-ui);
-      font-size: 13px;
+      font-size: var(--fs-base);
       color: var(--danger);
       min-height: 20px;
       margin-top: 4px;
@@ -119,14 +119,14 @@
         padding: 32px 20px;
       }
       .login-title {
-        font-size: 36px;
+        font-size: var(--fs-3xl);
         letter-spacing: 6px;
       }
     }
 
     /* Guide overlay */
     .guide-overlay {
-      position: fixed; inset: 0; z-index: 9000;
+      position: fixed; inset: 0; z-index: var(--z-modal);
       background: rgba(0,0,0,0.7); backdrop-filter: blur(6px);
       display: none; align-items: center; justify-content: center;
       opacity: 0; transition: opacity 0.3s ease;
@@ -141,11 +141,11 @@
       padding: 20px 24px 12px; text-align: center;
     }
     .guide-header h2 {
-      font-family: var(--font-display); font-size: 22px; font-weight: 700;
+      font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 700;
       color: var(--accent); letter-spacing: 3px; margin-bottom: 4px;
     }
     .guide-header p {
-      font-size: 12px; color: var(--text-muted); letter-spacing: 1px;
+      font-size: var(--fs-sm); color: var(--text-muted); letter-spacing: 1px;
     }
     .guide-body {
       padding: 8px 24px 20px;
@@ -158,17 +158,17 @@
     .guide-num {
       flex-shrink: 0; width: 24px; height: 24px; margin-top: 1px;
       border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent);
-      color: var(--accent); font-size: 12px; font-weight: 600;
+      color: var(--accent); font-size: var(--fs-sm); font-weight: 600;
       display: flex; align-items: center; justify-content: center;
     }
     .guide-text {
-      font-size: 13.5px; line-height: 1.7; color: var(--text-secondary);
+      font-size: var(--fs-base); line-height: 1.7; color: var(--text-secondary);
     }
     .guide-text strong { color: var(--text-primary); font-weight: 600; }
     .guide-text .guide-example {
       display: block; margin-top: 6px; padding: 6px 10px;
       background: var(--bg-elevated); border-radius: var(--radius);
-      color: var(--text-muted); font-size: 12.5px; font-style: italic;
+      color: var(--text-muted); font-size: var(--fs-sm); font-style: italic;
     }
     .guide-footer {
       padding: 14px 24px; border-top: 1px solid var(--border);
@@ -181,6 +181,7 @@
 <div class="login-container">
   <div class="login-card">
     <span class="login-ornament"></span>
+    <div class="brand-seal" style="width:48px;height:48px;font-size: var(--fs-2xl);margin:0 auto 14px;background:linear-gradient(135deg,var(--seal-from),var(--seal-to));border:1px solid var(--seal-border);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-family:var(--font-serif);font-weight:900;color:var(--seal-ink);box-shadow:0 0 16px var(--seal-glow);">卷</div>
     <h1 class="login-title">入卷</h1>
     <p class="login-subtitle">AI 互动小说</p>
 
@@ -237,7 +238,7 @@
     localStorage.setItem('airp_guide_shown', '1');
     const el = document.getElementById('guideOverlay');
     el.classList.remove('visible');
-    setTimeout(() => location.href = 'index.html?v=12', 300);
+    setTimeout(() => location.href = 'index.html?v=13', 300);
   }
 </script>
 
@@ -252,7 +253,7 @@
         });
         const data = await res.json();
         if (data.ok) {
-          location.href = 'index.html?v=12';
+          location.href = 'index.html?v=13';
           return;
         }
       } catch {}
@@ -299,7 +300,7 @@
         if (!localStorage.getItem('airp_guide_shown')) {
           showGuide();
         } else {
-          location.href = 'index.html?v=12';
+          location.href = 'index.html?v=13';
         }
       } else {
         errorEl.textContent = data.error || '登录失败';

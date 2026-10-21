@@ -381,6 +381,8 @@ public class NativeAiStreamService extends Service {
             }
             stopSelf(startId);
             releaseWakeLock();
+            // 顺手清掉历史遗留的流状态文件（终态且超过保留期），避免磁盘无限增长
+            NativeAiStreamStore.pruneStaleStates(this);
         }
     }
 

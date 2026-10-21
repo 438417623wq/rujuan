@@ -1,0 +1,75 @@
+入卷 v1.3.0 更新说明 —— 双站点支持 / 网址复制 / 模型获取
+================================================================
+
+一、本次新增功能
+----------------------------------------------------------------
+1. 国内站 + 国际站「都保留」，可一键切换
+   · 设置 → 生图设置 → 新增「接入站点」卡片区，两张卡片并排：
+       - 国内站：https://api.agnes-ai.cn/v1
+       - 国际站：https://apihub.agnes-ai.cn/v1
+   · 点击卡片即切换站点，网址自动填入下方「接口地址」，当前站点带「使用中」高亮。
+   · 每张卡片会显示该站点的 Key 配置状态徽标：「已配 Key」/「未配 Key」。
+
+2. 两个网址都展示，并各带一个「复制」按钮
+   · 每张站点卡片内显示完整网址（可横向滑动查看），右侧是复制按钮。
+   · 点击复制后按钮短暂变为对勾，并弹出「已复制：<网址>」提示。
+   · 复制实现优先用 navigator.clipboard，失败自动回退到 execCommand，
+     在 WebView / 非 https 环境下也能复制成功。
+
+3. 生图模型新增「获取」按钮
+   · 「生图模型」输入框右侧新增「⟳ 获取」按钮。
+   · 点击后调用当前站点的 /models 接口，把返回的模型列表拉下来，
+     自动筛出其中的生图模型（id 含 image）填入下方下拉框。
+   · 选择下拉框中的任一模型即写回配置；切换站点时下拉框自动清空，避免误用别站模型。
+   · 未填 Key 时提示「请先填写 API Key，再获取模型列表」；
+     失败时提示具体原因（如 401 会显示接口原文）。
+
+4. 按站点分别记忆 Key 与模型（重要）
+   · 实测确认：两站账号体系独立，同一个 Key 不通用
+     （国内站的 Key 在国际站会报 401 Invalid token，反之亦然）。
+   · 因此切换站点时，会先把当前站点的 Key / 模型存入记忆，再带出目标站点的记忆值。
+     提示语区分两种情况：「已带出该站点的 API Key」/「请填写该站点的 API Key（两站账号独立）」。
+   · 存储字段：imageStationKeys / imageStationModels（形如 { "站点网址": "值" }）。
+
+5. 对话页生图面板补充站点提示
+   · 面板底部提示改为「当前站点：国际站。本会话已有 N 张配图（约 X MB），上限 16 张，超出后自动淘汰最旧的。」
+   · 让人在生成前就清楚当前用的是哪个站点，避免拿错 Key 白等。
+
+二、改动文件
+----------------------------------------------------------------
+· agnes.js      —— 新增 STATIONS 预设、stationOf(endpoint)、fetchModels({apiKey, endpoint})
+· common.js     —— _SETTINGS_DEFAULTS 新增 imageStationKeys / imageStationModels 两项默认值
+· settings.html —— 新增接入站点卡片区 CSS + HTML，新增 renderImageStations / selectImageStation /
+                   copyStationUrl / copyText / fetchImageModels / onImageModelPick，
+                   onImageGenChange 增加按站点记忆逻辑
+· chat.html     —— updateImagePanelHint 增加「当前站点」提示；agnes.js 引用版本号 v=2
+· sw.js         —— CACHE_NAME 升至 airp-v4
+· android/app/build.gradle —— versionCode 3 → 4，versionName 1.2.0 → 1.3.0
+
+三、验证结果（全部通过）
+----------------------------------------------------------------
+· 站点卡片：cards=2，names=[国内站, 国际站]，urls 正确，复制按钮 2 个，active 指向当前站点
+· 复制：copied=["https://apihub.agnes-ai.cn/v1"]，按钮出现 copied 态，toast 正确
+· 站点切换与记忆：
+    切到国际站 → key 清空、endpoint=https://apihub.agnes-ai.cn/v1、active=[false,true]
+    填国际站 Key 后 → 两卡均显示「已配 Key」
+    切回国内站 → key 带出 sk-cn-domestic-key-0001、model 带出 agnes-image-2.1-flash
+    再切到国际站 → key 带出 sk-intl-overseas-key-0002、model 带出 agnes-image-9.9-intl
+    storedKeys/storedModels 两站条目齐全
+· 模型获取：国内站返回 11 个模型，筛出 2 个生图模型（agnes-image-2.1-flash / agnes-image-2.5-flash），
+            下拉框 display=block；切换站点后下拉框清空（display=none, options=0）
+· 无效 Key：提示「获取失败：获取模型列表失败 (HTTP 401): 无效的令牌 ...」，下拉框不出现
+· 对话页面板：cfgStation=国际站、hintHasStation=true、面板文案含「当前站点：国际站」、
+              手动提示词预填「月下竹林，白衣剑客」、生图按钮 armed=true、零 JS 错误 errs:[]
+· 移动端（430px 宽）：站点卡片自动改为单列堆叠，无横向溢出
+· APK 内 5 个 web 资源与源文件 SHA-256 逐字节一致：
+    agnes.js 20520 / common.js 343710 / chat.html 398486 / settings.html 122823 / sw.js 2027
+
+四、注意事项
+----------------------------------------------------------------
+1. 国际站需要单独注册账号并申请 Key，国内站的 Key 填到国际站一定报 401，这是平台设计而非 bug。
+2. 「获取」按钮依赖 /models 接口，需要先填好当前站点的 Key；两个站点的模型列表可能不同。
+3. 站点卡片点击即切换并立即保存，无需再点保存按钮。
+4. 若从旧版本升级，已填的 imageApiKey 会被记为「当前站点」的 Key；
+   切到另一个站点时需要补填该站点的 Key，之后来回切换就会自动带出。
+5. 安装新 APK 会覆盖升级，本地会话与图片数据保留在应用私有存储中，不受影响。

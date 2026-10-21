@@ -17,3 +17,21 @@ android/local.properties
 *.aab
 rujuan-changes.bundle
 upstream-changes.patch
+
+# 本地临时/调试产物（不入库）
+.gradle/
+.gradle_home/
+.gradle_proj/
+_acl_recovery/
+_ui_backup_step3/
+*.bak_before_*
+debug.log
+settings-tab-preview.html
+ui-beautify-v3.html
+ui-redesign-preview.html
+ui-redesign-v3.html
+ui-spec-v4.html
+_ui_refactor_map.md
+_font_wiring.js
+.validate_ui.js
+.diff_preview.js

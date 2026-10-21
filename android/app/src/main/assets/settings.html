@@ -7,12 +7,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="入卷">
   <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0a0a0f">
+  <meta name="theme-color" content="#090807">
   <title>入卷 - 设置</title>
   <link rel="icon" href="favicon.ico">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <script>if('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('/sw.js');</script>
-  <script src="common.js?v=14"></script>
+  <script src="common.js?v=17"></script>
+  <script src="agnes.js?v=3"></script>
   <style>
     /* ── Page Layout ─────────────────────────────── */
     body {
@@ -35,7 +36,7 @@
       align-items: center;
       gap: 14px;
       padding: calc(24px + env(safe-area-inset-top, var(--sat, 0px))) 0 28px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--gold-border-subtle);
       margin-bottom: 24px;
     }
 
@@ -45,8 +46,8 @@
     }
 
     .header-save-btn {
-      color: var(--accent);
-      border: 1px solid var(--border);
+      color: var(--accent-bright);
+      border: 1px solid var(--gold-border-subtle);
       background: var(--bg-glass);
       flex-shrink: 0;
     }
@@ -57,17 +58,17 @@
 
     .settings-header h1 {
       font-family: var(--font-display);
-      font-size: 28px;
+      font-size: var(--fs-3xl);
       font-weight: 700;
-      color: var(--accent);
+      color: var(--accent-bright);
       flex: 1;
       letter-spacing: 2px;
     }
 
     .settings-header h1 small {
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-weight: 400;
-      color: var(--text-muted);
+      color: var(--text-faint);
       letter-spacing: 1px;
       margin-left: 8px;
     }
@@ -85,7 +86,7 @@
       background: var(--bg-glass);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid var(--border);
+      border: 1px solid var(--gold-border-subtle);
       border-radius: var(--radius-lg);
       padding: 22px;
       margin-bottom: 18px;
@@ -93,7 +94,7 @@
       overflow: hidden;
       opacity: 0;
       transform: translateY(10px);
-      transition: opacity 0.4s ease, transform 0.4s ease;
+      transition: opacity 0.4s var(--ease-silk), transform 0.4s var(--ease-silk);
     }
 
     .section.visible {
@@ -106,19 +107,20 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(ellipse at 15% 0%, rgba(201, 164, 76, 0.03), transparent 50%),
-        radial-gradient(ellipse at 85% 100%, rgba(201, 164, 76, 0.02), transparent 50%);
+        radial-gradient(ellipse at 15% 0%, rgba(214, 178, 95, 0.035), transparent 50%),
+        radial-gradient(ellipse at 85% 100%, rgba(214, 178, 95, 0.022), transparent 50%);
       pointer-events: none;
     }
 
     .section-title {
       font-family: var(--font-display);
-      font-size: 18px;
+      font-size: var(--fs-xl);
       font-weight: 600;
-      color: var(--accent);
+      letter-spacing: 0.06em;
+      color: var(--accent-bright);
       margin-bottom: 18px;
       padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--gold-border-subtle);
       display: flex;
       align-items: center;
       gap: 10px;
@@ -130,15 +132,15 @@
     }
 
     .section-desc {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: var(--fs-sm);
+      color: var(--text-faint);
       margin: -8px 0 16px;
       line-height: 1.7;
     }
 
     .section-desc code {
-      font-size: 11px;
-      color: var(--accent);
+      font-size: var(--fs-xs);
+      color: var(--accent-bright);
       background: var(--accent-dim);
       padding: 1px 5px;
       border-radius: 3px;
@@ -146,14 +148,6 @@
     }
 
     /* ── Form elements ───────────────────────────── */
-    .form-group {
-      margin-bottom: 16px;
-    }
-
-    .form-group:last-child {
-      margin-bottom: 0;
-    }
-
     .form-row {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -162,13 +156,15 @@
 
     .input-row {
       display: flex;
-      gap: 8px;
+      gap: var(--space-2);
       align-items: center;
+      flex-wrap: wrap;
     }
 
     .input-row input,
     .input-row select {
       flex: 1;
+      min-width: 110px;
     }
 
     .input-row .btn {
@@ -201,35 +197,164 @@
       background: none;
       border: none;
       border-radius: var(--radius);
-      color: var(--text-muted);
+      color: var(--text-faint);
       cursor: pointer;
-      transition: all var(--transition);
+      transition: color var(--transition-smooth), background var(--transition-smooth);
     }
 
     .password-row .btn-toggle-vis:hover {
-      color: var(--accent);
+      color: var(--accent-bright);
       background: var(--accent-dim);
     }
 
+    /* ── 接入站点卡片（国内站 / 国际站） ── */
+    .img-station-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    @media (max-width: 640px) {
+      .img-station-grid { grid-template-columns: 1fr; }
+    }
+
+    .img-station-card {
+      border: 1px solid var(--gold-border-subtle);
+      border-radius: var(--radius);
+      background: var(--bg-surface);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color var(--transition-smooth), background var(--transition-smooth), box-shadow var(--transition-smooth);
+      text-align: left;
+    }
+
+    .img-station-card:hover {
+      border-color: var(--gold-border);
+      background: var(--bg-elevated);
+    }
+
+    .img-station-card.active {
+      border-color: var(--gold-primary);
+      background: var(--accent-dim);
+      box-shadow: inset 0 0 0 1px var(--gold-border);
+    }
+
+    .img-station-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .img-station-name {
+      font-size: var(--fs-base);
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .img-station-card.active .img-station-name { color: var(--accent-bright); }
+
+    .img-station-flags {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .img-station-key {
+      font-size: var(--fs-xs);
+      padding: 1px 7px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--gold-border-subtle);
+      color: var(--text-faint);
+      white-space: nowrap;
+    }
+
+    .img-station-key.ok {
+      border-color: var(--jade-dim);
+      color: var(--jade-accent);
+    }
+
+    .img-station-badge {
+      font-size: var(--fs-xs);
+      padding: 1px 7px;
+      border-radius: var(--radius-full);
+      border: 1px solid var(--gold-border);
+      color: var(--accent-bright);
+      flex-shrink: 0;
+    }
+
+    .img-station-url {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-void);
+      border: 1px solid var(--gold-border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 5px 6px 5px 8px;
+    }
+
+    .img-station-url code {
+      flex: 1;
+      min-width: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: var(--fs-xs);
+      color: var(--text-secondary);
+      overflow-x: auto;
+      white-space: nowrap;
+      scrollbar-width: none;
+      user-select: all;
+    }
+
+    .img-station-url code::-webkit-scrollbar { display: none; }
+
+    .btn-copy {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: none;
+      border: 1px solid var(--gold-border-subtle);
+      border-radius: var(--radius-sm);
+      color: var(--text-faint);
+      cursor: pointer;
+      transition: border-color var(--transition-smooth), color var(--transition-smooth), background var(--transition-smooth);
+    }
+
+    .btn-copy:hover {
+      color: var(--accent-bright);
+      border-color: var(--gold-primary);
+      background: var(--accent-dim);
+    }
+
+    .btn-copy.copied {
+      color: var(--jade-accent);
+      border-color: var(--jade-accent);
+    }
+
     .special-textarea {
-      font-family: var(--font-ui);
-      font-size: 13px;
+      font-family: var(--font-body);
+      font-size: var(--fs-base);
       min-height: 140px;
-      line-height: 1.6;
+      line-height: 1.7;
     }
 
     /* ── API Profile Cards ───────────────────────── */
     .api-list-empty {
       text-align: center;
       padding: 28px 20px;
-      color: var(--text-muted);
-      font-size: 13px;
+      color: var(--text-faint);
+      font-size: var(--fs-base);
       font-style: italic;
     }
 
     .api-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
+      background: linear-gradient(135deg, var(--bg-elevated), var(--bg-surface));
+      border: 1px solid var(--gold-border-subtle);
       border-radius: var(--radius);
       padding: 14px 16px;
       margin-bottom: 10px;
@@ -237,18 +362,18 @@
       align-items: center;
       gap: 14px;
       cursor: pointer;
-      transition: all var(--transition);
+      transition: border-color var(--transition-smooth), transform var(--transition-smooth), box-shadow var(--transition-smooth);
     }
 
     .api-card:hover {
-      border-color: var(--border-strong);
+      border-color: var(--gold-border);
       transform: translateY(-1px);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+      box-shadow: var(--shadow-ambient);
     }
 
     .api-card.is-default {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 12px rgba(201, 164, 76, 0.08);
+      border-color: var(--gold-border);
+      box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 12px rgba(214, 178, 95, 0.08);
     }
 
     .api-card-badge {
@@ -258,7 +383,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 17px;
+      font-size: var(--fs-xl);
       font-weight: 700;
       font-family: var(--font-display);
       flex-shrink: 0;
@@ -276,7 +401,7 @@
 
     .api-card-name {
       font-weight: 500;
-      font-size: 14px;
+      font-size: var(--fs-md);
       color: var(--text-primary);
       display: flex;
       align-items: center;
@@ -284,7 +409,7 @@
     }
 
     .api-card-name .default-tag {
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 600;
       color: var(--accent);
       background: var(--accent-dim);
@@ -295,8 +420,8 @@
     }
 
     .api-card-meta {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: var(--fs-sm);
+      color: var(--text-faint);
       margin-top: 3px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -308,7 +433,7 @@
       gap: 4px;
       flex-shrink: 0;
       opacity: 0;
-      transition: opacity var(--transition);
+      transition: opacity var(--transition-smooth);
     }
 
     .api-card:hover .api-card-actions {
@@ -322,7 +447,7 @@
       gap: 10px;
       margin-bottom: 16px;
       padding-bottom: 14px;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--gold-border-subtle);
     }
 
     .preset-pills {
@@ -341,10 +466,10 @@
     /* ── Prompt Entry Cards ───────────────────────── */
     .prompt-entry {
       background: var(--bg-surface);
-      border: 1px solid var(--border);
+      border: 1px solid var(--gold-border-subtle);
       border-radius: var(--radius);
       margin-bottom: 8px;
-      transition: all var(--transition);
+      transition: border-color var(--transition-smooth), background var(--transition-smooth);
       overflow: hidden;
     }
 
@@ -362,7 +487,7 @@
     }
 
     .prompt-entry-header:hover {
-      background: rgba(201, 164, 76, 0.03);
+      background: rgba(214, 178, 95, 0.035);
     }
 
     .prompt-entry-grip {
@@ -371,9 +496,9 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--text-muted);
+      color: var(--text-faint);
       opacity: 0.35;
-      font-size: 14px;
+      font-size: var(--fs-md);
       cursor: grab;
     }
 
@@ -401,15 +526,15 @@
       align-items: center;
       justify-content: center;
       color: transparent;
-      transition: all var(--transition);
+      transition: background var(--transition-smooth), border-color var(--transition-smooth), color var(--transition-smooth);
       flex-shrink: 0;
       padding: 0;
     }
 
     .prompt-entry-toggle.is-on {
-      background: var(--accent);
-      color: #1a1510;
-      border-color: var(--accent);
+      background: var(--gold-primary);
+      color: var(--bg-void);
+      border-color: var(--gold-primary);
     }
 
     .prompt-entry-toggle .icon svg {
@@ -419,7 +544,7 @@
 
     .prompt-entry-name {
       flex: 1;
-      font-size: 13px;
+      font-size: var(--fs-base);
       font-weight: 500;
       color: var(--text-primary);
       min-width: 0;
@@ -429,32 +554,32 @@
     }
 
     .prompt-entry-role-badge {
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 600;
       padding: 2px 8px;
       border-radius: 10px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--gold-border-subtle);
       background: transparent;
       cursor: pointer;
       flex-shrink: 0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      transition: all var(--transition);
+      transition: border-color var(--transition-smooth), color var(--transition-smooth);
     }
 
     .prompt-entry-role-badge.role-system {
-      color: var(--accent);
-      border-color: rgba(201, 164, 76, 0.3);
+      color: var(--accent-bright);
+      border-color: var(--gold-border);
     }
 
     .prompt-entry-role-badge.role-user {
-      color: var(--success);
-      border-color: rgba(124, 184, 122, 0.3);
+      color: var(--jade-accent);
+      border-color: var(--jade-dim);
     }
 
     .prompt-entry-role-badge.role-assistant {
-      color: #a0a0d0;
-      border-color: rgba(160, 160, 208, 0.3);
+      color: var(--purple-accent);
+      border-color: rgba(180, 133, 212, 0.3);
     }
 
     .prompt-entry-actions {
@@ -478,29 +603,31 @@
     }
 
     .prompt-entry-body {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s ease;
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows 0.3s var(--ease-silk);
     }
 
     .prompt-entry.is-expanded .prompt-entry-body {
-      max-height: 600px;
+      grid-template-rows: 1fr;
     }
 
     .prompt-entry-body-inner {
+      overflow: hidden;
+      min-height: 0;
       padding: 4px 12px 14px;
     }
 
     .prompt-entry-body textarea {
-      font-size: 12px;
+      font-size: var(--fs-sm);
       min-height: 100px;
-      line-height: 1.65;
-      font-family: 'SF Mono', 'Fira Code', var(--font-ui), monospace;
+      line-height: 1.7;
+      font-family: 'SF Mono', 'Fira Code', monospace;
     }
 
     /* ── Slot Entry (marker) ────────────────────── */
     .prompt-entry.is-slot {
-      background: rgba(201, 164, 76, 0.04);
+      background: rgba(214, 178, 95, 0.04);
       border-style: dashed;
     }
 
@@ -509,13 +636,13 @@
     }
 
     .prompt-entry-slot-badge {
-      font-size: 10px;
+      font-size: var(--fs-xs);
       font-weight: 600;
       padding: 2px 8px;
       border-radius: 10px;
-      color: var(--text-muted);
+      color: var(--text-faint);
       background: var(--bg-elevated);
-      border: 1px solid var(--border);
+      border: 1px solid var(--gold-border-subtle);
       flex-shrink: 0;
       letter-spacing: 0.5px;
     }
@@ -529,26 +656,26 @@
 
     .interval-pill {
       padding: 7px 18px;
-      border: 1px solid var(--border);
-      border-radius: 20px;
-      font-size: 13px;
+      border: 1px solid var(--gold-border-subtle);
+      border-radius: var(--radius-full);
+      font-size: var(--fs-base);
       font-weight: 500;
       cursor: pointer;
-      transition: all var(--transition);
+      transition: border-color var(--transition-smooth), color var(--transition-smooth), background var(--transition-smooth);
       background: transparent;
-      color: var(--text-secondary);
-      font-family: var(--font-ui);
+      color: var(--text-muted);
+      font-family: var(--font-body);
     }
 
     .interval-pill:hover:not(.active) {
-      border-color: var(--border-strong);
+      border-color: var(--gold-border);
       color: var(--text-primary);
     }
 
     .interval-pill.active {
-      background: var(--accent);
-      color: #1a1510;
-      border-color: var(--accent);
+      background: linear-gradient(135deg, var(--gradient-gold-from), var(--gradient-gold-to));
+      color: var(--bg-void);
+      border-color: transparent;
       font-weight: 600;
     }
 
@@ -557,13 +684,13 @@
       background: none;
       border: none;
       cursor: pointer;
-      font-size: 11px;
-      color: var(--accent);
+      font-size: var(--fs-xs);
+      color: var(--accent-bright);
       opacity: 0.65;
       padding: 0;
       margin-left: 10px;
-      transition: opacity var(--transition);
-      font-family: var(--font-ui);
+      transition: opacity var(--transition-smooth);
+      font-family: var(--font-body);
     }
 
     .btn-inline-reset:hover {
@@ -576,15 +703,22 @@
       gap: 14px;
       align-items: flex-start;
       padding: 14px 16px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--gold-border-subtle);
       border-radius: var(--radius);
       background: var(--bg-surface);
       cursor: pointer;
+      transition: border-color var(--transition-smooth), background var(--transition-smooth);
+    }
+
+    .toggle-card:hover {
+      border-color: var(--gold-border);
+      background: var(--bg-elevated);
     }
 
     .toggle-card input[type="checkbox"] {
       margin-top: 2px;
       transform: scale(1.1);
+      accent-color: var(--gold-primary);
     }
 
     .toggle-card-main {
@@ -593,7 +727,7 @@
     }
 
     .toggle-card-title {
-      font-size: 14px;
+      font-size: var(--fs-md);
       font-weight: 600;
       color: var(--text-primary);
       display: block;
@@ -601,8 +735,8 @@
     }
 
     .toggle-card-desc {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: var(--fs-sm);
+      color: var(--text-faint);
       line-height: 1.7;
     }
 
@@ -619,20 +753,11 @@
       justify-content: center;
     }
 
-    .btn-danger {
-      background: var(--bg-elevated);
-      color: var(--danger);
-      border: 1px solid rgba(201, 106, 90, 0.3);
-    }
-
-    .btn-danger:hover {
-      border-color: var(--danger);
-      background: rgba(201, 106, 90, 0.1);
-    }
+    /* .btn-danger 收口到 common.js（--cinnabar-dim 底），此处不再重复定义 */
 
     .data-size-label {
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: var(--fs-sm);
+      color: var(--text-faint);
       margin-top: 12px;
       text-align: center;
     }
@@ -651,7 +776,7 @@
       }
 
       .settings-header h1 {
-        font-size: 22px;
+        font-size: var(--fs-2xl);
       }
 
       .settings-header h1 small {
@@ -693,6 +818,106 @@
     .btn.is-loading .icon {
       animation: spin 1s linear infinite;
     }
+
+    /* ── Tab bar ─────────────────────────────────── */
+    .tab-bar-wrap {
+      position: sticky;
+      top: 0;
+      z-index: var(--z-sticky);
+      padding: 10px 0 12px;
+      background: linear-gradient(180deg, var(--overlay-scrim-heavy) 78%, transparent);
+    }
+
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      padding: 5px;
+      background: var(--bg-glass);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--gold-border-subtle);
+      border-radius: var(--radius-full);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .tab-bar::-webkit-scrollbar { display: none; }
+
+    .tab-btn {
+      position: relative;
+      flex: 1;
+      min-width: 96px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 10px 12px;
+      border: none;
+      border-radius: var(--radius-full);
+      background: transparent;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: var(--fs-base);
+      font-weight: 500;
+      cursor: pointer;
+      transition: color var(--transition-smooth), background var(--transition-smooth), box-shadow var(--transition-smooth);
+      white-space: nowrap;
+    }
+
+    .tab-btn svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+      opacity: 0.8;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+      background: rgba(214, 178, 95, 0.06);
+    }
+
+    .tab-btn.active {
+      color: var(--bg-void);
+      font-weight: 600;
+      background: linear-gradient(135deg, var(--gradient-gold-from), var(--gradient-gold-to));
+      box-shadow: 0 2px 14px rgba(214, 178, 95, 0.35);
+    }
+
+    .tab-btn.active svg { opacity: 1; }
+
+    /* ── Tab panels ──────────────────────────────── */
+    .tab-panel { display: none; }
+
+    .tab-panel.active { display: block; animation: panelIn 0.3s var(--ease-silk); }
+
+    @keyframes panelIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .panel-intro {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 2px 0 16px;
+      padding: 0 4px;
+      font-size: var(--fs-sm);
+      color: var(--text-faint);
+      line-height: 1.6;
+    }
+
+    .panel-intro .dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--gold-primary);
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 600px) {
+      .tab-btn { min-width: 84px; font-size: var(--fs-sm); padding: 9px 10px; }
+    }
   </style>
 </head>
 <body>
@@ -701,7 +926,7 @@
 
   <!-- ── Header ──────────────────────────────── -->
   <header class="settings-header">
-    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=12'" title="返回">
+    <button class="btn-icon" id="btnBack" onclick="location.href='index.html?v=13'" title="返回">
       <!-- icon injected by JS -->
     </button>
     <div class="settings-title">
@@ -713,24 +938,20 @@
     </button>
   </header>
 
-  <!-- Section 0: Notification Settings -->
-  <div class="section" id="sectionNotification">
-    <div class="section-title" id="titleNotification">
-      <!-- icon injected --> 通知栏提示
-    </div>
-    <p class="section-desc">
-      开启后，安卓端会把 AI 生成切到原生前台服务，切后台或锁屏时也能在通知栏显示生成状态。
-    </p>
-    <label class="toggle-card" for="chkNotificationBar">
-      <input type="checkbox" id="chkNotificationBar" onchange="onDefaultsChange('notification')">
-      <span class="toggle-card-main">
-        <span class="toggle-card-title">后台生成与通知栏常驻</span>
-        <span class="toggle-card-desc">启用后，生成中会显示“软件正在后台运行/生成中”，完成、失败或取消时同步更新通知。</span>
-      </span>
-    </label>
+  <!-- ══ Tab bar ════════════════════════════════ -->
+  <div class="tab-bar-wrap">
+    <nav class="tab-bar" id="tabBar">
+      <button class="tab-btn active" data-tab="api" onclick="switchTab('api')">接口</button>
+      <button class="tab-btn" data-tab="prompt" onclick="switchTab('prompt')">预设</button>
+      <button class="tab-btn" data-tab="image" onclick="switchTab('image')">生图</button>
+      <button class="tab-btn" data-tab="general" onclick="switchTab('general')">通用</button>
+    </nav>
   </div>
 
-  <!-- ══════════════════════════════════════════ -->
+  <!-- ══ Panel 1: 接口（API 配置 + 默认设定） ══════ -->
+  <div class="tab-panel active" id="panel-api">
+    <div class="panel-intro"><span class="dot"></span>管理 API 方案与全局默认值，点击卡片切换默认方案。</div>
+
   <!-- Section 1: API Profiles                    -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionApi">
@@ -743,12 +964,21 @@
     </button>
   </div>
 
-  <!-- ══════════════════════════════════════════ -->
   <!-- Section 2: Default Settings                -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionDefaults">
     <div class="section-title" id="titleDefaults">
       <!-- icon injected --> 默认设定
+    </div>
+
+        <div class="form-group" style="margin-top:16px;">
+      <label>界面意境主题 (UI Theme)</label>
+      <select id="selTheme" onchange="if(window.Theme){ Theme.set(this.value); }">
+        <option value="obsidian">🪙 东方玄金 · 暗夜 (默认)</option>
+        <option value="jade">🍵 翡翠青竹 · 仙风</option>
+        <option value="violet">🌌 紫微星阙 · 幽邃</option>
+        <option value="parchment">📜 素宣书斋 · 护眼浅色</option>
+      </select>
     </div>
 
     <div class="form-group">
@@ -783,11 +1013,11 @@
 
     <div class="form-row" style="margin-top:16px;">
       <div class="form-group">
-        <label>回复字数 <span style="font-size:11px;color:var(--text-muted);">（对应 <code>{{articleWords}}</code>）</span></label>
+        <label>回复字数 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（对应 <code>{{articleWords}}</code>）</span></label>
         <div class="interval-selector" id="articleWordSelector"></div>
       </div>
       <div class="form-group">
-        <label>摘要字数 <span style="font-size:11px;color:var(--text-muted);">（对应 <code>{{summaryWords}}</code>）</span></label>
+        <label>摘要字数 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（对应 <code>{{summaryWords}}</code>）</span></label>
         <div class="interval-selector" id="summaryWordSelector"></div>
       </div>
     </div>
@@ -802,13 +1032,17 @@
       <div class="form-group">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
           <input type="checkbox" id="chkWebSearch" onchange="onDefaultsChange('websearch')">
-          启用 Web Search <span style="font-size:11px;color:var(--text-muted);">（仅 Claude / Gemini 自动注入）</span>
+          启用 Web Search <span style="font-size: var(--fs-xs);color:var(--text-muted);">（仅 Claude / Gemini 自动注入）</span>
         </label>
       </div>
     </div>
   </div>
 
-  <!-- ══════════════════════════════════════════ -->
+  <!-- ══ Panel 2: 预设（Prompt 预设 + 特殊 Prompt） -->
+  </div>
+  <div class="tab-panel" id="panel-prompt">
+    <div class="panel-intro"><span class="dot"></span>预设是「一整包」：条目 + 特殊 Prompt + 采样参数随预设整体切换。优先级：对话级 &gt; 全局预设 &gt; API 方案 &gt; 内置默认。</div>
+
   <!-- Section 3: Prompt Entries (RP Phase)       -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionPromptEntries">
@@ -837,7 +1071,7 @@
     </div>
 
     <details id="presetParamsBlock" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
-      <summary style="cursor:pointer;font-size:13px;color:var(--text-secondary);">
+      <summary style="cursor:pointer;font-size: var(--fs-base);color:var(--text-secondary);">
         预设参数（采样 / 思考）· 覆盖 API 方案
       </summary>
       <p class="section-desc" style="margin:10px 0;">
@@ -845,17 +1079,17 @@
         预设是「一整包」：切换预设会同时切换提示词与这里的采样 / 思考参数。<br>
         最终优先级：<strong>对话级预设 &gt; 全局预设 &gt; API 方案 &gt; 内置默认</strong>。
       </p>
-      <div class="input-row" style="gap:8px;flex-wrap:wrap;">
-        <input type="number" step="0.01" min="0" max="2" id="psTemperature" placeholder="temperature" style="flex:1;min-width:110px;">
-        <input type="number" step="0.01" min="0" max="1" id="psTopP" placeholder="top_p" style="flex:1;min-width:110px;">
-        <input type="number" step="1" min="0" id="psTopK" placeholder="top_k" style="flex:1;min-width:110px;">
-        <input type="number" step="1" min="1" id="psMaxTokens" placeholder="max_tokens" style="flex:1;min-width:110px;">
+      <div class="input-row">
+        <input type="number" step="0.01" min="0" max="2" id="psTemperature" placeholder="temperature">
+        <input type="number" step="0.01" min="0" max="1" id="psTopP" placeholder="top_p">
+        <input type="number" step="1" min="0" id="psTopK" placeholder="top_k">
+        <input type="number" step="1" min="1" id="psMaxTokens" placeholder="max_tokens">
       </div>
-      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
-        <input type="number" step="0.1" id="psPresencePenalty" placeholder="presence_penalty" style="flex:1;min-width:110px;">
-        <input type="number" step="0.1" id="psFrequencyPenalty" placeholder="frequency_penalty" style="flex:1;min-width:110px;">
+      <div class="input-row" style="margin-top:8px;">
+        <input type="number" step="0.1" id="psPresencePenalty" placeholder="presence_penalty">
+        <input type="number" step="0.1" id="psFrequencyPenalty" placeholder="frequency_penalty">
       </div>
-      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <div class="input-row" style="margin-top:8px;">
         <select id="psThinkingMode" style="flex:1;min-width:140px;">
           <option value="">思考：不覆盖</option>
           <option value="auto">自动（不发送）</option>
@@ -873,7 +1107,7 @@
           <option value="max">最高</option>
         </select>
       </div>
-      <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <div class="input-row" style="margin-top:8px;">
         <input type="number" step="1" min="0" id="psThinkingBudget" placeholder="思考预算 token（Claude / Gemini）" style="flex:1;min-width:170px;">
         <select id="psHideReasoning" style="flex:1;min-width:140px;">
           <option value="">隐藏思考内容：不覆盖</option>
@@ -889,7 +1123,6 @@
     </details>
   </div>
 
-  <!-- ══════════════════════════════════════════ -->
   <!-- Section 5: Special Prompts                 -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionSpecialPrompts">
@@ -919,7 +1152,160 @@
     </div>
   </div>
 
+  </div><!-- /panel-prompt -->
+
+  <!-- ══ Panel 3: 生图 ═══════════════════════════ -->
+  <div class="tab-panel" id="panel-image">
+    <div class="panel-intro"><span class="dot"></span>接入 Agnes 生图接口，剧情需要时 AI 自动配图。图片压缩后存于本地会话，可离线查看、随会话导出。</div>
+
+  <!-- Section 5b: Image Generation (Agnes)       -->
   <!-- ══════════════════════════════════════════ -->
+  <div class="section" id="sectionImageGen">
+    <div class="section-title" id="titleImageGen">
+      <!-- icon injected --> 生图设置
+    </div>
+    <p class="section-desc">
+      接入 Agnes 生图接口，让 AI 在剧情需要时自动配图，也可随时手动生成。图片压缩后保存在本地会话中，可离线查看、随会话导出。
+    </p>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkImageGen" onchange="onImageGenChange('toggle')">
+          启用生图功能
+        </label>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="chkImageAuto" onchange="onImageGenChange('toggle')">
+          允许 AI 自动配图
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>API Key <span style="font-size: var(--fs-xs);color:var(--text-muted);">（Agnes 平台密钥，留空则不生图）</span></label>
+      <div class="password-row">
+        <input type="password" id="inputImageKey" placeholder="sk-..." oninput="onImageGenChange()">
+        <button class="btn-toggle-vis" type="button" id="btnToggleImageKey" onclick="toggleImageKeyVis()">
+          <!-- icon injected -->
+        </button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>接入站点 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（两站账号独立计费与限流，Key 不通用）</span></label>
+      <div class="img-station-grid" id="imgStationGrid"></div>
+      <p class="section-desc" style="margin-top:8px;">
+        点击卡片切换站点，网址会自动填入下方「接口地址」。
+      </p>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>接口地址</label>
+        <input type="text" id="inputImageEndpoint" placeholder="https://api.agnes-ai.cn/v1" oninput="onImageGenChange()">
+      </div>
+      <div class="form-group">
+        <label>生图模型</label>
+        <div class="input-row">
+          <input type="text" id="inputImageModel" placeholder="agnes-image-2.1-flash" oninput="onImageGenChange()">
+          <button class="btn btn-secondary" id="btnFetchImageModels" onclick="fetchImageModels()" style="flex-shrink:0;white-space:nowrap;">
+            <!-- icon injected --> 获取
+          </button>
+        </div>
+        <select id="selImageModelPick" style="display:none;margin-top:8px;" onchange="onImageModelPick()"></select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>默认尺寸</label>
+        <select id="selImageSize" onchange="onImageGenChange()"></select>
+      </div>
+      <div class="form-group">
+        <label>默认比例 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（仅 1K–4K 生效）</span></label>
+        <select id="selImageRatio" onchange="onImageGenChange()"></select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>默认风格后缀</label>
+      <select id="selImageStyle" onchange="onImageGenChange()"></select>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label>压缩最长边 <span style="font-size: var(--fs-xs);color:var(--text-muted);">px</span></label>
+        <div class="interval-selector" id="imageMaxPxSelector"></div>
+      </div>
+      <div class="form-group">
+        <label>JPEG 质量</label>
+        <div class="interval-selector" id="imageQualitySelector"></div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>每会话图片上限</label>
+      <div class="interval-selector" id="imageMaxPerConvSelector"></div>
+    </div>
+
+    <div class="form-group">
+      <label>
+        生图指令模板
+        <button class="btn-inline-reset" onclick="resetImagePromptTemplate()">恢复默认</button>
+      </label>
+      <textarea id="taImagePromptTemplate" class="special-textarea" style="min-height:200px;"
+                oninput="onImageGenChange()"></textarea>
+      <p class="section-desc" style="margin-top:8px;">
+        这段指令会追加到系统提示词末尾，告诉 AI 何时、以什么格式请求配图。留空则使用内置默认模板。
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label>生图提示词（手动）</label>
+      <textarea id="taImageManualPrompt" class="special-textarea" style="min-height:90px;"
+                placeholder="在此写下画面描述，保存后会自动填入对话页的生图面板"
+                oninput="onImageGenChange()"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>连通性自检</label>
+      <div class="input-row">
+        <button class="btn btn-secondary" id="btnTestImage" onclick="testImageConnection()" style="flex:1;justify-content:center;">
+          <!-- icon injected --> 测试生图接口
+        </button>
+        <button class="btn btn-secondary" onclick="openImagePanelFromSettings()" style="flex:1;justify-content:center;">
+          <!-- icon injected --> 去对话页生成
+        </button>
+      </div>
+      <p class="section-desc" id="imageTestResult" style="margin-top:8px;display:none;"></p>
+    </div>
+  </div>
+
+  </div><!-- /panel-image -->
+
+  <!-- ══ Panel 4: 通用（通知 + 数据管理） ═════════ -->
+  <div class="tab-panel" id="panel-general">
+    <div class="panel-intro"><span class="dot"></span>应用行为与本地数据维护。</div>
+
+  <!-- Section 0: Notification Settings -->
+  <div class="section" id="sectionNotification">
+    <div class="section-title" id="titleNotification">
+      <!-- icon injected --> 通知栏提示
+    </div>
+    <p class="section-desc">
+      开启后，安卓端会把 AI 生成切到原生前台服务，切后台或锁屏时也能在通知栏显示生成状态。
+    </p>
+    <label class="toggle-card" for="chkNotificationBar">
+      <input type="checkbox" id="chkNotificationBar" onchange="onDefaultsChange('notification')">
+      <span class="toggle-card-main">
+        <span class="toggle-card-title">后台生成与通知栏常驻</span>
+        <span class="toggle-card-desc">启用后，生成中会显示“软件正在后台运行/生成中”，完成、失败或取消时同步更新通知。</span>
+      </span>
+    </label>
+  </div>
+
   <!-- Section 6: Data Management                 -->
   <!-- ══════════════════════════════════════════ -->
   <div class="section" id="sectionData">
@@ -946,6 +1332,8 @@
     <input type="file" id="importWritingCardInput" accept=".json" onchange="handleImportWritingCardFile(event)">
   </div>
 
+  </div><!-- /panel-general -->
+
 </div>
 
 <script>
@@ -966,7 +1354,39 @@
     await Storage.syncFromServer();
     injectIcons();
     loadAllSections();
+    initTabs();
     animateSections();
+  }
+
+  // ================================================================
+  // Tabs
+  // ================================================================
+  function initTabs() {
+    const saved = null; // 可扩展：记住上次所在 Tab
+    if (saved && document.getElementById('panel-' + saved)) {
+      switchTab(saved);
+    }
+  }
+
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === name);
+    });
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.classList.remove('active');
+    });
+    const panel = document.getElementById('panel-' + name);
+    if (panel) {
+      // 强制重启动画面板入场动画
+      void panel.offsetWidth;
+      panel.classList.add('active');
+      panel.querySelectorAll('.section').forEach(s => {
+        s.classList.remove('visible');
+        void s.offsetWidth;
+        s.classList.add('visible');
+      });
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function injectIcons() {
@@ -981,6 +1401,7 @@
       titleDefaults: 'edit',
       titlePromptEntries: 'menu',  // Prompt 预设
       titleSpecialPrompts: 'edit',
+      titleImageGen: 'image',
       titleData: 'download',
     };
     for (const [id, iconName] of Object.entries(titleIcons)) {
@@ -1009,6 +1430,7 @@
     renderPresetSelector();
     renderPromptEntries();
     renderSpecialPrompts();
+    renderImageSettings();
     renderIntervalSelector();
     renderArticleWordSelector();
     renderSummaryWordSelector();
@@ -1016,7 +1438,7 @@
   }
 
   function animateSections() {
-    const sections = document.querySelectorAll('.section');
+    const sections = document.querySelectorAll('.tab-panel.active .section');
     sections.forEach((section, i) => {
       setTimeout(() => section.classList.add('visible'), 60 + i * 80);
     });
@@ -1133,7 +1555,7 @@
           </select>
         </div>
         <div class="form-group">
-          <label>Base URL <span style="font-size:11px;color:var(--text-muted);">(留空使用默认)</span></label>
+          <label>Base URL <span style="font-size: var(--fs-xs);color:var(--text-muted);">(留空使用默认)</span></label>
           <input type="text" id="edBaseUrl" value="${Utils.escapeHtml(profile?.baseUrl || '')}" placeholder="${Utils.escapeHtml(urlPlaceholder)}">
         </div>
         <div class="form-group">
@@ -1148,31 +1570,31 @@
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
             <input type="checkbox" id="edStream" ${profile?.stream === false ? '' : 'checked'} style="width:auto;">
-            <span>启用流式响应 <span style="font-size:11px;color:var(--text-muted);">（关闭后整段返回，适合代理不支持 SSE 的情况）</span></span>
+            <span>启用流式响应 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（关闭后整段返回，适合代理不支持 SSE 的情况）</span></span>
           </label>
         </div>
         <details class="form-group" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
           <summary style="cursor:pointer;font-weight:600;">高级参数 · 采样 / 思考 / 请求体与请求头</summary>
 
           <div style="margin-top:12px;">
-            <label style="font-size:12px;color:var(--text-muted);">采样参数（留空则不发送，交给服务端默认）</label>
-            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">
-              <input type="number" step="0.01" min="0" max="2" id="edTemperature" value="${esc(profile?.temperature)}" placeholder="temperature" style="flex:1;min-width:110px;">
-              <input type="number" step="0.01" min="0" max="1" id="edTopP" value="${esc(profile?.topP)}" placeholder="top_p" style="flex:1;min-width:110px;">
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);">采样参数（留空则不发送，交给服务端默认）</label>
+            <div class="input-row" style="margin-top:6px;">
+              <input type="number" step="0.01" min="0" max="2" id="edTemperature" value="${esc(profile?.temperature)}" placeholder="temperature">
+              <input type="number" step="0.01" min="0" max="1" id="edTopP" value="${esc(profile?.topP)}" placeholder="top_p">
             </div>
-            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">
-              <input type="number" step="1" min="0" id="edTopK" value="${esc(profile?.topK)}" placeholder="top_k" style="flex:1;min-width:110px;">
-              <input type="number" step="1" min="1" id="edMaxTokens" value="${esc(profile?.maxTokens)}" placeholder="max_tokens" style="flex:1;min-width:110px;">
+            <div class="input-row" style="margin-top:6px;">
+              <input type="number" step="1" min="0" id="edTopK" value="${esc(profile?.topK)}" placeholder="top_k">
+              <input type="number" step="1" min="1" id="edMaxTokens" value="${esc(profile?.maxTokens)}" placeholder="max_tokens">
             </div>
-            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">
-              <input type="number" step="0.1" id="edPresencePenalty" value="${esc(profile?.presencePenalty)}" placeholder="presence_penalty" style="flex:1;min-width:110px;">
-              <input type="number" step="0.1" id="edFrequencyPenalty" value="${esc(profile?.frequencyPenalty)}" placeholder="frequency_penalty" style="flex:1;min-width:110px;">
+            <div class="input-row" style="margin-top:6px;">
+              <input type="number" step="0.1" id="edPresencePenalty" value="${esc(profile?.presencePenalty)}" placeholder="presence_penalty">
+              <input type="number" step="0.1" id="edFrequencyPenalty" value="${esc(profile?.frequencyPenalty)}" placeholder="frequency_penalty">
             </div>
           </div>
 
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--text-muted);">思考（推理）</label>
-            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);">思考（推理）</label>
+            <div class="input-row" style="margin-top:6px;">
               <select id="edThinkingMode" style="flex:1;min-width:130px;">
                 <option value="auto" ${thinkingMode === 'auto' ? 'selected' : ''}>自动（不发送）</option>
                 <option value="off" ${thinkingMode === 'off' ? 'selected' : ''}>关闭（尽力而为）</option>
@@ -1180,7 +1602,7 @@
                 <option value="effort" ${thinkingMode === 'effort' ? 'selected' : ''}>指定力度</option>
                 <option value="custom" ${thinkingMode === 'custom' ? 'selected' : ''}>自定义（自己写 body）</option>
               </select>
-              <select id="edReasoningEffort" style="flex:1;min-width:110px;">
+              <select id="edReasoningEffort">
                 <option value="" ${!reasoningEffort ? 'selected' : ''}>力度：默认</option>
                 <option value="minimal" ${reasoningEffort === 'minimal' ? 'selected' : ''}>最低</option>
                 <option value="low" ${reasoningEffort === 'low' ? 'selected' : ''}>低</option>
@@ -1189,30 +1611,30 @@
                 <option value="max" ${reasoningEffort === 'max' ? 'selected' : ''}>最高</option>
               </select>
             </div>
-            <div class="input-row" style="gap:8px;flex-wrap:wrap;margin-top:6px;">
+            <div class="input-row" style="margin-top:6px;">
               <input type="number" step="1" min="0" id="edThinkingBudget" value="${esc(profile?.thinkingBudget)}" placeholder="思考预算 token（Claude / Gemini，留空自动）" style="flex:1;min-width:200px;">
             </div>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px;">
               <input type="checkbox" id="edHideReasoning" ${profile?.hideReasoning ? 'checked' : ''} style="width:auto;">
-              <span>隐藏思考内容 <span style="font-size:11px;color:var(--text-muted);">（即使后端强行思考，也不在正文里显示）</span></span>
+              <span>隐藏思考内容 <span style="font-size: var(--fs-xs);color:var(--text-muted);">（即使后端强行思考，也不在正文里显示）</span></span>
             </label>
-            <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.5;">
+            <div style="font-size: var(--fs-xs);color:var(--text-muted);margin-top:6px;line-height:1.5;">
               ⓘ 多数后端的推理无法真正关闭，「关闭」只是尽力而为（Claude / Gemini Flash·Lite / GLM / Kimi / GPT-5.4+ 等可真正禁用）；关不掉时请勾选上面的隐藏。
             </div>
           </div>
 
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--text-muted);">自定义请求体（JSON，或每行 <code>key: value</code>）— 最后合并，覆盖一切</label>
-            <textarea id="edExtraBody" rows="3" placeholder='{"enable_thinking": false}' style="width:100%;margin-top:6px;font-family:monospace;font-size:12px;">${esc(profile?.extraBody)}</textarea>
-            <label style="font-size:12px;color:var(--text-muted);margin-top:8px;display:block;">从请求体中删除字段（一行一条，如 thinking）</label>
-            <textarea id="edExcludeBody" rows="2" placeholder="thinking" style="width:100%;margin-top:6px;font-family:monospace;font-size:12px;">${esc(profile?.excludeBody)}</textarea>
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);">自定义请求体（JSON，或每行 <code>key: value</code>）— 最后合并，覆盖一切</label>
+            <textarea id="edExtraBody" rows="3" placeholder='{"enable_thinking": false}' style="width:100%;margin-top:6px;font-family:monospace;font-size: var(--fs-sm);">${esc(profile?.extraBody)}</textarea>
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);margin-top:8px;display:block;">从请求体中删除字段（一行一条，如 thinking）</label>
+            <textarea id="edExcludeBody" rows="2" placeholder="thinking" style="width:100%;margin-top:6px;font-family:monospace;font-size: var(--fs-sm);">${esc(profile?.excludeBody)}</textarea>
           </div>
 
           <div style="margin-top:14px;">
-            <label style="font-size:12px;color:var(--text-muted);">自定义请求头（每行 <code>Name: Value</code>，或 JSON）</label>
-            <textarea id="edExtraHeaders" rows="3" placeholder="X-Custom: 1" style="width:100%;margin-top:6px;font-family:monospace;font-size:12px;">${esc(profile?.extraHeaders)}</textarea>
-            <label style="font-size:12px;color:var(--text-muted);margin-top:8px;display:block;">删除请求头（一行一条，如 Authorization）</label>
-            <textarea id="edExcludeHeaders" rows="2" placeholder="Authorization" style="width:100%;margin-top:6px;font-family:monospace;font-size:12px;">${esc(profile?.excludeHeaders)}</textarea>
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);">自定义请求头（每行 <code>Name: Value</code>，或 JSON）</label>
+            <textarea id="edExtraHeaders" rows="3" placeholder="X-Custom: 1" style="width:100%;margin-top:6px;font-family:monospace;font-size: var(--fs-sm);">${esc(profile?.extraHeaders)}</textarea>
+            <label style="font-size: var(--fs-sm);color:var(--text-muted);margin-top:8px;display:block;">删除请求头（一行一条，如 Authorization）</label>
+            <textarea id="edExcludeHeaders" rows="2" placeholder="Authorization" style="width:100%;margin-top:6px;font-family:monospace;font-size: var(--fs-sm);">${esc(profile?.excludeHeaders)}</textarea>
           </div>
 
           <div style="margin-top:14px;">
@@ -1346,8 +1768,8 @@
   function showRequestPreview(preview, model) {
     const block = (title, value) => `
       <div style="margin-bottom:12px;">
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:4px;">${title}</div>
-        <pre style="margin:0;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;">${Utils.escapeHtml(value)}</pre>
+        <div style="font-size: var(--fs-sm);color:var(--text-muted);margin-bottom:4px;">${title}</div>
+        <pre style="margin:0;padding:10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;font-size: var(--fs-sm);line-height:1.5;white-space:pre-wrap;word-break:break-all;max-height:220px;overflow:auto;">${Utils.escapeHtml(value)}</pre>
       </div>`;
 
     // 参数来源：让"我改了但没生效"变成一眼可见
@@ -1364,7 +1786,7 @@
       </div>`);
     }
     const sourceBlock = sourceRows.length
-      ? `<div style="margin-bottom:12px;padding:10px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.7;">
+      ? `<div style="margin-bottom:12px;padding:10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;font-size: var(--fs-sm);line-height:1.7;">
            <div style="color:var(--text-muted);margin-bottom:6px;">参数来源（预设覆盖了 API 方案的这些字段）</div>
            ${sourceRows.join('')}
          </div>`
@@ -1377,7 +1799,7 @@
     UI.showModal({
       title: '最终请求预览',
       content: `
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">
+        <div style="font-size: var(--fs-sm);color:var(--text-muted);margin-bottom:10px;line-height:1.5;">
           模型：<strong>${Utils.escapeHtml(model)}</strong> · 协议：<strong>${Utils.escapeHtml(preview.provider)}</strong><br>
           ${presetNote}这里是实际会发出的内容（密钥已脱敏）。若某项没生效，先看这里。
         </div>
@@ -1895,7 +2317,7 @@
               <div class="form-group" style="margin-bottom:10px;">
                 <label>条目名称</label>
                 <input type="text" value="${Utils.escapeHtml(entry.name || '')}" placeholder="名称"
-                       onchange="updateEntryName(${i}, this.value)" style="font-size:13px;">
+                       onchange="updateEntryName(${i}, this.value)" style="font-size: var(--fs-base);">
               </div>
               <div class="form-group">
                 <label>内容</label>
@@ -1976,7 +2398,10 @@
     // Scroll to new entry
     setTimeout(() => {
       const el = document.querySelector(`.prompt-entry[data-idx="${promptEntries.length - 1}"]`);
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('visible');
+      }
     }, 50);
   }
 
@@ -2096,6 +2521,274 @@
   }
 
   // ================================================================
+  // Section 5b: Image Generation (Agnes)
+  // ================================================================
+  const IMG_MAXPX_OPTS = [512, 640, 768, 1024];
+  const IMG_QUALITY_OPTS = [0.6, 0.72, 0.85, 0.92];
+  const IMG_MAXPERCONV_OPTS = [8, 16, 24, 40];
+
+  function renderImageSettings() {
+    document.getElementById('chkImageGen').checked = settings.enableImageGen !== false;
+    document.getElementById('chkImageAuto').checked = settings.imageAutoTrigger !== false;
+
+    document.getElementById('inputImageKey').value = settings.imageApiKey || '';
+    document.getElementById('inputImageEndpoint').value = settings.imageEndpoint || AgnesAPI.DEFAULT_ENDPOINT;
+    document.getElementById('inputImageModel').value = settings.imageModel || AgnesAPI.DEFAULT_MODEL;
+
+    renderImageStations();
+
+    const sizeSel = document.getElementById('selImageSize');
+    sizeSel.innerHTML = AgnesAPI.SIZES.map(s =>
+      `<option value="${s}" ${s === (settings.imageSize || '1K') ? 'selected' : ''}>${s}</option>`
+    ).join('');
+
+    const ratioSel = document.getElementById('selImageRatio');
+    ratioSel.innerHTML = AgnesAPI.RATIOS.map(r =>
+      `<option value="${r}" ${r === (settings.imageRatio || '16:9') ? 'selected' : ''}>${r}</option>`
+    ).join('');
+
+    const styleSel = document.getElementById('selImageStyle');
+    styleSel.innerHTML = '<option value="">不使用风格后缀</option>' +
+      AgnesPrompt.STYLE_PRESETS.map(p =>
+        `<option value="${Utils.escapeHtml(p.value)}" ${p.value === (settings.imageStyle || '') ? 'selected' : ''}>${Utils.escapeHtml(p.label)}</option>`
+      ).join('');
+
+    const tplEl = document.getElementById('taImagePromptTemplate');
+    tplEl.value = settings.imagePromptTemplate || '';
+    tplEl.placeholder = AgnesPrompt.DEFAULT_INSTRUCTION;
+
+    document.getElementById('taImageManualPrompt').value = settings.imageManualPrompt || '';
+
+    renderPillSelector('imageMaxPxSelector', IMG_MAXPX_OPTS, settings.imageMaxPx || 768, 'selectImageMaxPx', v => v + 'px');
+    renderPillSelector('imageQualitySelector', IMG_QUALITY_OPTS, settings.imageQuality || 0.72, 'selectImageQuality');
+    renderPillSelector('imageMaxPerConvSelector', IMG_MAXPERCONV_OPTS, settings.imageMaxPerConv || 16, 'selectImageMaxPerConv', v => v + ' 张');
+
+    const visBtn = document.getElementById('btnToggleImageKey');
+    if (visBtn) visBtn.innerHTML = getIcon('eye', 18);
+
+    const testBtn = document.getElementById('btnTestImage');
+    if (testBtn) testBtn.innerHTML = getIcon('sparkle', 16) + ' 测试生图接口';
+
+    const fetchBtn = document.getElementById('btnFetchImageModels');
+    if (fetchBtn) fetchBtn.innerHTML = getIcon('refresh', 16) + ' 获取';
+  }
+
+  // ── 接入站点：国内站 / 国际站（都保留，可切换，网址可复制） ──
+  function renderImageStations() {
+    const grid = document.getElementById('imgStationGrid');
+    if (!grid) return;
+    const cur = (settings.imageEndpoint || AgnesAPI.DEFAULT_ENDPOINT).replace(/\/+$/, '');
+    const keys = settings.imageStationKeys || {};
+    // 当前站点以输入框实时值为准（可能尚未 blur 保存）
+    const liveKey = (document.getElementById('inputImageKey') || {}).value;
+    grid.innerHTML = AgnesAPI.STATIONS.map((st, i) => {
+      const active = cur === st.url || cur.startsWith(st.url);
+      const hasKey = !!((active ? (liveKey || '') : (keys[st.url] || '')).trim());
+      return `
+        <div class="img-station-card ${active ? 'active' : ''}" onclick="selectImageStation(${i})">
+          <div class="img-station-head">
+            <span class="img-station-name">${Utils.escapeHtml(st.label)}</span>
+            <span class="img-station-flags">
+              ${hasKey ? '<span class="img-station-key ok">已配 Key</span>' : '<span class="img-station-key">未配 Key</span>'}
+              ${active ? '<span class="img-station-badge">使用中</span>' : ''}
+            </span>
+          </div>
+          <div class="img-station-url">
+            <code title="${Utils.escapeHtml(st.url)}">${Utils.escapeHtml(st.url)}</code>
+            <button class="btn-copy" type="button" title="复制网址"
+                    onclick="event.stopPropagation();copyStationUrl(${i}, this)">${getIcon('copy', 14)}</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  function selectImageStation(idx) {
+    const st = AgnesAPI.STATIONS[idx];
+    if (!st) return;
+    const cur = (document.getElementById('inputImageEndpoint').value || '').trim().replace(/\/+$/, '');
+    // 先把当前站点的 Key / 模型存进记忆，再切到目标站点并带出其记忆值
+    const keys = Object.assign({}, settings.imageStationKeys || {});
+    const models = Object.assign({}, settings.imageStationModels || {});
+    if (cur && cur !== st.url) {
+      const curKey = document.getElementById('inputImageKey').value.trim();
+      const curModel = document.getElementById('inputImageModel').value.trim();
+      if (curKey) keys[cur] = curKey;
+      if (curModel) models[cur] = curModel;
+    }
+    settings.imageStationKeys = keys;
+    settings.imageStationModels = models;
+
+    document.getElementById('inputImageEndpoint').value = st.url;
+    document.getElementById('inputImageKey').value = keys[st.url] || '';
+    document.getElementById('inputImageModel').value = models[st.url] || AgnesAPI.DEFAULT_MODEL;
+    document.getElementById('selImageModelPick').style.display = 'none';
+    document.getElementById('selImageModelPick').innerHTML = '';
+
+    onImageGenChange('station');
+    renderImageStations();
+
+    const hasKey = !!keys[st.url];
+    UI.showToast(
+      hasKey ? ('已切换到' + st.label + '，已带出该站点的 API Key')
+             : ('已切换到' + st.label + '，请填写该站点的 API Key（两站账号独立）'),
+      hasKey ? 'success' : 'info'
+    );
+  }
+
+  async function copyStationUrl(idx, btn) {
+    const st = AgnesAPI.STATIONS[idx];
+    if (!st) return;
+    const ok = await copyText(st.url);
+    if (ok) {
+      const old = btn.innerHTML;
+      btn.classList.add('copied');
+      btn.innerHTML = getIcon('check', 14);
+      setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = old; }, 1400);
+      UI.showToast('已复制：' + st.url, 'success');
+    } else {
+      UI.showToast('复制失败，请手动选择网址复制', 'error');
+    }
+  }
+
+  /** 复制文本：优先 Clipboard API，失败回退 execCommand（WebView / 非 https 场景） */
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) { /* 落到回退分支 */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  }
+
+  // ── 生图模型：从 /models 拉取 ──
+  async function fetchImageModels() {
+    const btn = document.getElementById('btnFetchImageModels');
+    const key = document.getElementById('inputImageKey').value.trim();
+    const endpoint = document.getElementById('inputImageEndpoint').value.trim() || AgnesAPI.DEFAULT_ENDPOINT;
+    if (!key) { UI.showToast('请先填写 API Key，再获取模型列表', 'error'); return; }
+
+    const old = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '获取中…';
+    try {
+      const res = await AgnesAPI.fetchModels({ apiKey: key, endpoint });
+      const pick = document.getElementById('selImageModelPick');
+      pick.innerHTML = res.imageModels.map(id =>
+        `<option value="${Utils.escapeHtml(id)}" ${id === document.getElementById('inputImageModel').value ? 'selected' : ''}>${Utils.escapeHtml(id)}</option>`
+      ).join('');
+      pick.style.display = 'block';
+      UI.showToast(`${res.station}返回 ${res.models.length} 个模型，其中生图模型 ${res.imageModels.length} 个（${res.ms} ms）`, 'success');
+    } catch (e) {
+      UI.showToast('获取失败：' + ((e && e.message) || e), 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = old;
+    }
+  }
+
+  function onImageModelPick() {
+    const v = document.getElementById('selImageModelPick').value;
+    if (!v) return;
+    document.getElementById('inputImageModel').value = v;
+    onImageGenChange('model');
+    UI.showToast('已选用模型：' + v, 'success');
+  }
+
+  function renderPillSelector(containerId, options, current, fnName, fmt) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = options.map(v =>
+      `<button class="interval-pill ${v === current ? 'active' : ''}" onclick="${fnName}(${v})">${fmt ? fmt(v) : v}</button>`
+    ).join('');
+  }
+
+  function selectImageMaxPx(v) { settings.imageMaxPx = v; Storage.saveSettings(settings); renderImageSettings(); }
+  function selectImageQuality(v) { settings.imageQuality = v; Storage.saveSettings(settings); renderImageSettings(); }
+  function selectImageMaxPerConv(v) { settings.imageMaxPerConv = v; Storage.saveSettings(settings); renderImageSettings(); }
+
+  function onImageGenChange(source) {
+    settings.enableImageGen = document.getElementById('chkImageGen').checked;
+    settings.imageAutoTrigger = document.getElementById('chkImageAuto').checked;
+    settings.imageApiKey = document.getElementById('inputImageKey').value.trim();
+    settings.imageEndpoint = document.getElementById('inputImageEndpoint').value.trim() || AgnesAPI.DEFAULT_ENDPOINT;
+    settings.imageModel = document.getElementById('inputImageModel').value.trim() || AgnesAPI.DEFAULT_MODEL;
+    settings.imageSize = document.getElementById('selImageSize').value;
+    settings.imageRatio = document.getElementById('selImageRatio').value;
+    settings.imageStyle = document.getElementById('selImageStyle').value;
+    settings.imagePromptTemplate = document.getElementById('taImagePromptTemplate').value;
+    settings.imageManualPrompt = document.getElementById('taImageManualPrompt').value;
+
+    // 按站点记忆 Key / 模型（两站账号独立，切换时自动带出）
+    const ep = settings.imageEndpoint.replace(/\/+$/, '');
+    const keys = Object.assign({}, settings.imageStationKeys || {});
+    const models = Object.assign({}, settings.imageStationModels || {});
+    if (settings.imageApiKey) keys[ep] = settings.imageApiKey; else delete keys[ep];
+    models[ep] = settings.imageModel;
+    settings.imageStationKeys = keys;
+    settings.imageStationModels = models;
+
+    Storage.saveSettings(settings);
+  }
+
+  function resetImagePromptTemplate() {
+    const el = document.getElementById('taImagePromptTemplate');
+    el.value = AgnesPrompt.DEFAULT_INSTRUCTION;
+    settings.imagePromptTemplate = el.value;
+    Storage.saveSettings(settings);
+    UI.showToast('已恢复默认生图指令', 'success');
+  }
+
+  function toggleImageKeyVis() {
+    const input = document.getElementById('inputImageKey');
+    const btn = document.getElementById('btnToggleImageKey');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.innerHTML = getIcon(show ? 'eyeOff' : 'eye', 18);
+  }
+
+  async function testImageConnection() {
+    const btn = document.getElementById('btnTestImage');
+    const out = document.getElementById('imageTestResult');
+    const key = document.getElementById('inputImageKey').value.trim();
+    out.style.display = 'block';
+    if (!key) {
+      out.style.color = 'var(--danger)';
+      out.textContent = '请先填写 API Key。';
+      return;
+    }
+    btn.disabled = true;
+    out.style.color = 'var(--text-muted)';
+    out.textContent = '正在测试，通常需要 10–30 秒…';
+    try {
+      const res = await AgnesAPI.test(key);
+      out.style.color = 'var(--success)';
+      out.textContent = `连通正常：${res.ms} ms，返回 ${AgnesImage.approxBytes(AgnesImage.toDataUrl(res.b64))} 字节图片。`;
+    } catch (e) {
+      out.style.color = 'var(--danger)';
+      out.textContent = '测试失败：' + (e && e.message ? e.message : e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function openImagePanelFromSettings() {
+    onImageGenChange();
+    UI.showToast('生图设置已保存，请在对话页点左下角图片按钮生成', 'info');
+  }
+
+  // ================================================================
   // Section 2 supplement: Interval Selector
   // ================================================================
   function renderIntervalSelector() {
@@ -2178,8 +2871,17 @@
 
   async function exportAllData() {
     const data = await Storage.exportAll();
+    if (data && data.ok === false) {
+      UI.showToast(data.error || '导出失败', 'error');
+      return;
+    }
+    const missing = data && data._missing ? data._missing.length : 0;
     const json = JSON.stringify(data, null, 2);
     Utils.downloadFile(json, `airp-backup-${new Date().toISOString().slice(0, 16).replace(':', '')}.json`);
+    if (missing > 0) {
+      UI.showToast(`数据已导出，但有 ${missing} 个对话读取失败，备份可能不完整`, 'error');
+      return;
+    }
     UI.showToast('数据已导出', 'success');
   }
 
@@ -2200,9 +2902,16 @@
           message: '导入将覆盖当前所有数据，确定继续吗？建议先导出备份。',
           onConfirm: async () => {
             UI.showToast('正在导入...', 'info');
-            await Storage.importAll(data);
-            UI.showToast('数据已导入', 'success');
-            setTimeout(() => location.reload(), 300);
+            const res = await Storage.importAll(data);
+            if (res && res.ok) {
+              UI.showToast(`数据已导入（${res.conversations} 个故事）`, 'success');
+              // importAll 现在会等待服务器确认写入，再刷新就不会取消在途请求
+              setTimeout(() => location.reload(), 800);
+            } else {
+              const detail = res && res.error ? res.error : '没有可导入的数据';
+              const failed = res && res.failed ? `，${res.failed} 个条目写入失败` : '';
+              UI.showToast(`导入未完成：${detail}${failed}`, 'error');
+            }
           },
         });
       } catch {
@@ -2345,6 +3054,21 @@
     } else {
       entries.push(stateBarEntry);
       entries.push(outputFormatEntry);
+    }
+
+    // 逐层记忆（ab→sm→ar）依赖模型每轮在正文末尾输出 <details>摘要块</details>。
+    // 写卡预设自身通常没有这条格式要求，导入后 RP 阶段就永远抓不到摘要——
+    // 表现为"面板里能看到摘要、正式玩却没有记忆"。这里自动补一条摘要格式条目。
+    const hasAbstractReq = entries.some(e =>
+      e.id === 'abstract_req' || /摘要格式|Abstract/i.test(e.name || ''));
+    if (!hasAbstractReq) {
+      entries.push({
+        id: 'abstract_req',
+        name: '摘要格式',
+        role: 'user',
+        enabled: true,
+        content: PromptBuilder.MINIMAL_PRESET_ENTRIES.find(e => e.id === 'abstract_req')?.content || '',
+      });
     }
 
     const presetName = prompt('预设名称:', json.name || defaultName || '导入写卡预设');
@@ -2633,6 +3357,13 @@
   // ================================================================
   // Boot
   // ================================================================
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      const curTheme = (window.Theme && window.Theme.get()) || 'obsidian';
+      const sel = document.getElementById('selTheme');
+      if (sel) sel.value = curTheme;
+    } catch {}
+  });
   document.addEventListener('DOMContentLoaded', init);
 </script>
 

@@ -1,0 +1,260 @@
+导入 / 导出 / 数据迁移 —— bug 修复说明
+=========================================
+
+本次只修「数据进出」相关的确定性缺陷，未改动任何功能语义、UI 布局或提示词。
+每条都先写可复现的探针脚本验证过，再动代码。
+
+
+一、先说结论：没有发现「目录穿越」漏洞（排除一个误报）
+--------------------------------------------------------
+
+审计时一度怀疑 server.py 的
+    conv_id = path.split('/')[-1]        # 598 行
+可以用 /api/conversations/../../data/settings 覆盖 settings.json。
+
+实测证伪：`split('/')[-1]` 只取最后一段，`..` 段在取段时就已被丢弃，
+所以它落到 data/conversations/settings.json，逃不出对话目录。
+
+不过顺着这条线发现了一个真问题：**id 完全没有校验**。
+传 `a:b`（Windows 非法文件名）之类会让写入静默失败，前端却显示成功。
+→ 新增 safe_conv_id()，拒绝 / \ : * ? " < > | 、空、`..`、超长，
+  并做 unquote 后再校验（防 %2e%2e%2f 这类编码绕过）。PUT/DELETE 都过这道闸，
+  非法 id 直接回 400 而不是假装成功。
+
+
+二、真正会造成「存档消失」的三个 bug
+--------------------------------------------------------
+
+【1】server.py：写文件不是原子的 —— 崩溃即半截 JSON，然后被当成「文件不存在」
+     位置：write_json()（原 147-150 行）
+     旧代码 open(path, 'w') 就地截断再 dump。进程被杀/磁盘满 → 留下半截 JSON。
+     而 read_json 把 JSONDecodeError 当「文件不存在」返回 None，
+     于是 _get_all_conversations_file / _get_conversations_meta_file 直接跳过该文件：
+     对话从列表里消失、也从 exportAll 里消失，全程零报错。
+     实测确认：截断后 read_json 返回 None（不是抛错）。
+     修法：写同目录临时文件 → flush → os.fsync → os.replace 原子替换；
+           失败时清理临时文件并向上抛，由调用方回 500。
+
+【2】common.js：syncFromServer 的「一次性迁移」会把本地唯一副本抹掉
+     位置：原 182-196 行
+     旧逻辑：本地有 messages 但 (lc.updatedAt||0) > (sm.updatedAt||0) 不成立时
+     **不 push**，紧接着第 194 行用服务端那份「只有元数据」的索引整份覆盖本地索引
+     —— 本地那份带 messages 的唯一副本就此永久消失。
+     实测确认：本地 updatedAt=0 / 服务端无条目 或 updatedAt=null 时，正文被丢弃。
+     修法：
+       · 服务端索引缺的对话，用本地备份补回索引，不再被覆盖掉；
+       · 本地完整正文另存 airp_conv_localbackup_<id> 作为兜底副本；
+       · loadConversation 增加该副本的恢复分支，服务器上读不到时自动恢复并回推；
+       · 服务端返回非对象（异常响应）时直接忽略，不再拿它覆盖本地。
+
+【3】server.py：?meta=1 的字段表和前端不一致，且会写入显式 null
+     位置：_get_conversations_meta_file（原 888 行）
+     服务端 META_FIELDS 只有 7 个字段，前端 _META_FIELDS 有 9 个
+     —— 少了 storylineId / presetId。
+     而前端 syncFromServer 是用服务端索引**整份覆盖**本地的，
+     于是每次同步都丢掉故事线归属和对话级预设（表现为「分组没了 / 换了预设又变回去」）。
+     另外旧代码 data.get(k) 会写入显式 null，null 同样会冲掉本地好值。
+     修法：字段表补齐到 9 个；只保留 data[k] is not None 的键。
+
+
+三、导出会产出「空备份」却提示成功
+--------------------------------------------------------
+
+【4】common.js：exportAll 在服务器不可用时静默返回空备份
+     位置：原 413 行 `await this._fetchFromServer(...) || {}`
+     _fetchFromServer 任何非 200（服务器挂了、401）都返回 null，
+     `|| {}` 把它变成空对象 —— 导出一个「看起来完全正常」的空备份并提示「数据已导出」。
+     用户拿它去恢复 = 把现有数据全清。这是本次最危险的一条。
+     修法：拿不到数据就返回 { ok:false, error }，UI 据此中止导出并报错，不写文件。
+     native 模式下索引里读不出正文的对话也会统计进 _missing 并提示。
+
+【5】common.js：importAll 的数组形态会把索引键写成 "0"/"1"
+     位置：原 443 行
+     备份里 conversations 若是数组，Object.entries() 得到的是下标键，
+     索引里 id 全变成 "0"/"1"，对话列表点开即「会话不存在」。
+     修法：统一规整成 { id: conv }（数组用 conv.id，缺失才回退 generated id），
+           并在 key 与 conv.id 不一致时以 conv.id 为准。
+
+【6】common.js：importAll 先登记索引、后写正文
+     位置：原 452 行 index[id] = _toMeta(conv) 在写入之前
+     正文写失败时索引已经登记 → 列表里出现一个打不开的幽灵对话。
+     修法：先写正文，成功了才登记索引。
+
+【7】common.js：importAll 的服务器写入是 fire-and-forget
+     位置：原 _putToServer 不 await、也不检查 res.ok；settings.html 600ms 后 reload
+     结果：提示「导入成功」时请求还在路上，reload 直接把它取消 —— 服务器其实没收到。
+     修法：_putToServer 返回布尔并检查 res.ok；importAll 用 Promise.all 等全部结果，
+           有失败则如实返回 ok:false + 失败条数；settings.html 的 reload 延到 800ms。
+
+
+四、并发与健壮性
+--------------------------------------------------------
+
+【8】server.py：除 users.json 外没有任何写锁，但用的是 ThreadingHTTPServer
+     settings / storylines / memoryLibraries 都是「整份覆盖」PUT，
+     并发交错会丢更新（表现为「改名又变回去」「删掉的记忆库又出现」）。
+     修法：write_json 内按文件路径加锁（_lock_for），同文件写入串行化。
+
+【9】server.py：_read_body 不校验 Content-Length
+     旧代码 int(...) 接受超大/负数，read(-1) 读到 EOF；0 长度不排空，
+     keep-alive 上会串到下一个请求。
+     修法：上限 64MB、拒绝负数、读不满即视为客户端断开并回 400、
+           捕获 UnicodeDecodeError。
+
+【10】server.py：所有 write_json 调用点都没有 try/except
+     OSError 会变成未处理的 500 / 连接被丢弃，前端只看到「保存失败」无从排查。
+     修法：新增 _write_store()，失败写日志并回 500 JSON。
+
+
+五、Android 侧（Java）
+--------------------------------------------------------
+
+【11】AndroidBridge.saveData 就地截断，非原子
+     磁盘满/被 LMK 杀 → 半截 JSON；loadData 解析失败返回 null，
+     _nativeGet 吞掉异常 →「会话不存在」，长篇存档直接毁掉。
+     修法：写 .tmp → flush → getFD().sync() → renameTo；rename 失败退回原地拷贝并同步。
+
+【12】流状态文件在正文落盘之前就被删掉（高危数据丢失）
+     chat.html handleNativeStreamCompleted 旧顺序：
+       clearNativeStreamState()  ← 先删唯一的持久副本
+       ...
+       applyCompletedAiResponse() ← 这里才写进 conv_<id>
+     这中间被 OOM 杀掉，整段 AI 回复彻底消失，而且 clearState 连
+     last_session_id 指针一起清了，resumeNativeStreamIfNeeded 再也找不到它。
+     修法：把 clearNativeStreamState 移到 handleStreamStopped /
+           applyCompletedAiResponse 之后；cancelled 分支同样处理。
+     NativeAiStreamStore.clearState 的 editor.apply() 改 commit()，
+     保证指针移除和文件删除的顺序是持久的。
+
+【13】NativeAiStreamStore.writeState 吞掉 IOException 却照样推进指针
+     指针指向一个根本没写成功的文件 → 恢复时读到 null。
+     修法：写失败就不动指针并记日志；同时改为原子写（tmp + rename）。
+
+【14】流状态文件从不清理，磁盘无限增长
+     每次生成留一个 nstream-*.json；JS 没回调到就永远留着 ——
+     等于每轮回复在磁盘上存两份，长期使用撑满存储（而存储满正是保存失败/存档损坏的根因）。
+     修法：新增 pruneStaleStates()，清理 .tmp 和「终态且超过 3 天」的状态文件，
+           保留 active/last 两个指针指向的；在 runStream 的 finally 里调用。
+
+【15】AndroidBridge 保存/读取/删除失败时无声无息
+     修法：三处都加 Log.w（含 key 名），便于事后定位是哪个键写不进去。
+
+
+六、验证（全部实跑，非推断）
+--------------------------------------------------------
+
+· 全仓冲突标记 0；node --check common.js 通过
+· index/settings/chat/login 内联脚本逐个用 vm.Script 试编译，0 失败
+· python -m py_compile server.py debug_prompt.py 通过
+· Java：用真实 Android SDK（android-34）+ 从 AAR 抽出的 androidx classes.jar
+  完整编译四个源文件，exit 0（另用一个 R.java 桩解决资源引用）
+· 起真实服务器（AIRP_DATA_DIR 指向临时目录）跑端到端：
+  - GET /api/conversations → 导出，字段全保留
+  - ?meta=1 → storylineId / presetId 均在，且无 null
+  - 回写 PUT → 与导出内容**逐字段完全相同**
+  - 连续 30 次覆盖写 → 文件始终是合法 JSON，无残留 .tmp
+  - 非法 id（..%2f..%2fsettings、a:b）→ 400，且未生成任何越界文件
+  - 原子性：注入写失败后，原文件内容完好、临时文件已清理
+  - 并发：20 线程 × 20 次覆盖同一文件 → 结果仍是合法 JSON
+· 前端单元回归：
+  - exportAll 服务器不可用 → ok:false（不再产出空备份）
+  - importAll 数组形态 → 索引键为 convA/convB（不再是 0/1）
+  - importAll 服务器 500 → ok:false + 失败计数
+  - importAll 本地存储异常 → ok:false
+  - 世界书 AIRP / SillyTavern 双向 round-trip：position/depth/role/keys/sticky/
+    cooldown/delay/group 全部保留
+  - 记忆导出→导入 round-trip：sm/ar 条数、code、内容全部一致；
+    含 <sm02> 字样的正文不会被误解析；无标签的输入被拒绝并给出提示
+    （12/12 通过）
+
+· android/app/src/main/assets/ 下 5 个 web 文件已 cp 同步并逐文件 SHA256 核对
+  （common.js / chat.html / index.html / settings.html / login.html 全部 MATCH）
+
+
+六点五、附带修复：故事线板块缺删除按钮
+--------------------------------------------------------
+
+问题：故事线分组右上角只有「新建副本」和「重命名」两个按钮，没有删除入口。
+排查结果：**删除的处理函数早就写好了，只是没人调用** ——
+  index.html  removeStoryline(id, event)          （原 1194 行，逻辑完整）
+  common.js   Storyline.remove(id)                （原 5641 行，逻辑正确）
+两端都在，缺的只是一个 button。
+
+为什么之前没暴露：这批"故事线分组"的 UI 是工作区里未提交的在建改动，
+renderStorylineGroup 只渲染了 plus / edit 两个按钮，删除漏接了。
+
+修法（index.html，renderStorylineGroup）：
+· 补上删除按钮，用 trash 图标 + btn-danger 危险态，
+  title 写明「删除故事线（线下对话保留）」，与确认弹窗的措辞一致；
+· 顺带把同样写好却没入口的 refreshStorylineTemplate（用当前对话重存开局模板）
+  也接了出来，现在 4 个按钮：新建副本 / 重存模板 / 重命名 / 删除。
+
+CSS 补丁（必须补，否则删除键没有红色提示）：
+  .btn-icon.btn-danger 那套悬停样式原来是 `.conv-card-actions .btn-icon...`，
+  作用域不含分组头部，所以照抄了一份 `.conv-group-actions` 版本
+  （含 hover 金色、danger hover 红色、图标 15px）。
+
+安全性确认（Storyline.remove 本身的注释就写明了）：
+· 只解除归属，**不删对话**——内部用 await loadConversation(meta.id) 取完整对话再存回，
+  而不是用 getConversation()（那只返回元数据索引，直接存回会把正文覆盖成索引、丢内容）；
+· 删除后调 loadConversations()，它会重读故事线并重新分组，
+  于是该线下的对话自动落到「未归属故事线」一组，不用再单独调 renderStorylines()。
+
+验证：
+· index.html 内联脚本 vm.Script 试编译通过
+· 用页面里真实的 renderStorylineGroup 源码 + 真实 common.js 渲染了一次，
+  11 项断言全通过：分组结构、删除按钮存在、danger 类名、
+  提示文案含"线下对话保留"、trash SVG 已渲染、
+  新建/重存/重命名三个旧按钮未回归、模板/无模板两种文案都正确、
+  副本子卡片正常嵌套
+
+
+七、遗留（本次未做，供你决定）
+--------------------------------------------------------
+
+1. AndroidManifest 是 allowBackup="true" 且备份规则没排除 filesDir/airp-data
+   和 WebView 的 DOM storage —— 明文对话会进用户的云备份。
+   这是隐私取舍而非缺陷，需要你拍板是否关掉。
+2. saveToDownloads 用的是 MediaStore.Downloads（API 29+），
+   而 minSdk 是 26，API 26-28 设备上走不通且没有回退实现。
+3. saveFile 返回 void 且只弹 Toast，JS 的 downloadFile 无法感知保存成败；
+   重复导出会静默堆出 "name (1).json"。
+4. fetchModels 在 JS bridge 线程上同步做最长 ~50s 的网络 IO，
+   紧随其后的存储调用会被串行堵住。
+5. index.html 里「故事线分组」那批 CSS/JS 改动是本次会话之前就存在于工作区的
+   未提交内容，我没有动它，也没打包进本次修复。
+
+
+八、打包记录
+--------------------------------------------------------
+
+产物：仓库根目录 `入卷-debug.apk`（替换了原来 9/27 那份 7,643,471 字节的旧包）
+   10,229,435 字节（9.76 MB），构建于 2026-09-28 12:11
+   SHA256: 55E57B12FF7B0A64B33D722A15DA32AD3A9CE24BD513D1D072A055B46043A6F1
+   旧包已备份到 .workbuddy-ai/tmp/入卷-debug.OLD.apk
+
+构建方式（走本地缓存，不联网下载 Gradle）：
+· gradlew 默认要下载 gradle-8.10.2-bin.zip，实测超时（网络不通）；
+  而本机已有完整的 gradle-8.10.2-all，且版本与 wrapper 声明的完全一致，
+  于是直接调用它：--offline
+· JAVA_HOME = Android Studio 自带 JBR 21.0.8
+· 注意：app/build.gradle 里注册了 syncWebAssets（从仓库根 Copy 到 assets/）
+  并挂在所有 merge*Assets 之前，所以打包时 web 资源是自动同步的，
+  不依赖手动 cp —— 但手动 cp 仍按项目约定做了，两边一致。
+
+验证：
+· BUILD SUCCESSFUL，34 个 task（9 executed / 25 up-to-date），exit 0
+  唯一输出是 NativeAiStreamService.java 的 deprecation 提示（改动前就有）
+· apksigner verify → SIGNATURE VALID（v2 方案，Android debug 证书）
+· 签名证书 SHA-256 439b8296590079ff0b12121bffd6b4af19a93569cb3fb80ff02caebf2f93dd10
+  与旧包**完全一致**，versionCode 同为 1 →
+  可直接覆盖安装升级，**不需要卸载、不会清数据**
+· zip 结构完好，447 个 entry
+· 逐项确认 APK 内 assets 与仓库根逐字节相同：
+  common.js 322540 / index.html 61721 / settings.html 101029 /
+  chat.html 336664 / login.html 9888  全部 MATCH
+· 在 APK 内实际检索代码，10 项修复全部命中（非仅看文件大小）：
+  exportAll 中止空备份 / importAll 数组规整 / 先写正文后登记索引 /
+  syncFromServer 本地兜底副本 / loadConversation 恢复分支 /
+  _putToServer 检查 res.ok / 故事线删除按钮 + danger 态 +
+  重存模板按钮 + conv-group-actions 危险态样式

@@ -72,15 +72,42 @@ public class AndroidBridge {
         File target = getStorageFile(key);
         File parent = target.getParentFile();
         if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            Log.w(TAG, "saveData: cannot create storage dir " + parent);
             return false;
         }
 
-        try (FileOutputStream stream = new FileOutputStream(target, false)) {
+        // 原子写入：旧实现直接 FileOutputStream(target, false) 就地截断，
+        // 磁盘满/进程被杀会留下半截 JSON，而加载端把解析失败当"文件不存在"，
+        // 于是用户的长篇存档直接变成"会话不存在"。先写临时文件、fsync、再 rename。
+        File tmp = new File(parent, target.getName() + ".tmp");
+        try (FileOutputStream stream = new FileOutputStream(tmp, false)) {
             stream.write(value.getBytes(StandardCharsets.UTF_8));
-            return true;
+            stream.flush();
+            stream.getFD().sync();
         } catch (IOException e) {
+            Log.w(TAG, "saveData: write failed for key=" + key, e);
+            //noinspection ResultOfMethodCallIgnored
+            tmp.delete();
             return false;
         }
+
+        if (!tmp.renameTo(target)) {
+            // rename 失败（目标被占用等）时退回原地拷贝，保证数据仍然落地
+            try (FileOutputStream stream = new FileOutputStream(target, false)) {
+                stream.write(value.getBytes(StandardCharsets.UTF_8));
+                stream.flush();
+                stream.getFD().sync();
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+                return true;
+            } catch (IOException e) {
+                Log.w(TAG, "saveData: fallback write failed for key=" + key, e);
+                //noinspection ResultOfMethodCallIgnored
+                tmp.delete();
+                return false;
+            }
+        }
+        return true;
     }
 
     @JavascriptInterface
@@ -93,6 +120,7 @@ public class AndroidBridge {
         try {
             return new String(java.nio.file.Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8);
         } catch (IOException e) {
+            Log.w(TAG, "loadData: read failed for key=" + key, e);
             return null;
         }
     }
@@ -100,7 +128,14 @@ public class AndroidBridge {
     @JavascriptInterface
     public boolean deleteData(String key) {
         File target = getStorageFile(key);
-        return !target.exists() || target.delete();
+        if (!target.exists()) {
+            return true;
+        }
+        boolean deleted = target.delete();
+        if (!deleted) {
+            Log.w(TAG, "deleteData: could not delete key=" + key);
+        }
+        return deleted;
     }
 
     @JavascriptInterface

@@ -55,6 +55,8 @@ const Icons = {
   arrowDown: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>`,
   rewind: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 19 2 12 11 5 11 19"/><polygon points="22 19 13 12 22 5 22 19"/></svg>`,
   retry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+  image: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>`,
+  sparkle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>`,
 };
 function getIcon(name, size = 20) {
   return `<span class="icon" style="width:${size}px;height:${size}px;display:inline-flex;">${Icons[name] || ''}</span>`;
@@ -169,6 +171,11 @@ const Storage = {
       synced = true;
     }
     if (convMeta) {
+      // 服务端返回 null/非对象（异常响应）时不能拿它整份覆盖本地索引，否则本地对话全丢
+      if (typeof convMeta !== 'object' || Array.isArray(convMeta)) {
+        log('syncFromServer: unexpected conversation meta shape, ignoring');
+        return synced;
+      }
       // Reconcile 1: active conversation cache
       const cached = this._get(this.KEYS.CONV_CACHE, null);
       if (cached && cached.id && cached.messages) {
@@ -180,18 +187,37 @@ const Storage = {
         }
       }
       // Reconcile 2: old-format localStorage (one-time migration)
+      // 关键：旧版在"服务端没有该对话"或"服务端 updatedAt 为 0/null"时会跳过 push，
+      // 却在下面用服务端索引整份覆盖本地——本地那份带 messages 的唯一副本就这么没了。
+      // 现在无论比较结果如何，本地有正文而服务端没有/更旧，都必须先保住本地。
       const oldLocal = this._get(this.KEYS.CONVERSATIONS, {});
+      const localBackups = {};
       for (const [id, lc] of Object.entries(oldLocal)) {
-        if (!lc.messages || !lc.messages.length) continue; // metadata-only, skip
+        if (!lc || !lc.messages || !lc.messages.length) continue; // metadata-only, skip
+        localBackups[id] = lc;
         const sm = convMeta[id];
-        if (!sm || (lc.updatedAt || 0) > (sm.updatedAt || 0)) {
+        const localTime = lc.updatedAt || 0;
+        const serverTime = sm?.updatedAt || 0;
+        if (!sm || localTime > serverTime) {
           log('Reconcile: migrating old local data to server:', id, 'msgs:', lc.messages.length);
           this._syncToServer(`/api/conversations/${id}`, lc);
           convMeta[id] = this._toMeta(lc);
         }
       }
+      // 服务端索引里缺的对话，用本地备份补齐（不能被覆盖掉）
+      for (const [id, lc] of Object.entries(localBackups)) {
+        if (!convMeta[id]) {
+          log('Reconcile: restoring local-only conversation into index:', id);
+          convMeta[id] = this._toMeta(lc);
+        }
+      }
       // Store lightweight metadata index
       this._set(this.KEYS.CONVERSATIONS, convMeta);
+      // 本地那份完整正文在服务端确认落盘前，另存成一个本地兜底副本，
+      // 这样即使 push 失败也不会有任何一次同步把用户唯一的正文弄丢。
+      for (const [id, lc] of Object.entries(localBackups)) {
+        this._set('airp_conv_localbackup_' + id, lc);
+      }
       synced = true;
     }
     if (synced) log('Synced from server');
@@ -251,10 +277,21 @@ const Storage = {
     if (imported && imported.id) {
       log('loadConversation: using import cache for', id);
       this._set(this.KEYS.CONV_CACHE, imported);
-      this._putToServer(`/api/conversations/${id}`, imported).then(() => {
-        Storage._remove(importKey);
+      this._putToServer(`/api/conversations/${id}`, imported).then((ok) => {
+        if (ok !== false) Storage._remove(importKey);
       });
       return imported;
+    }
+    // 同步时留下的本地兜底副本：服务器上没有、但本地还有完整正文
+    const backupKey = 'airp_conv_localbackup_' + id;
+    const localBackup = this._get(backupKey, null);
+    if (localBackup && localBackup.id) {
+      log('loadConversation: recovering from local backup for', id);
+      this._set(this.KEYS.CONV_CACHE, localBackup);
+      this._putToServer(`/api/conversations/${id}`, localBackup).then((ok) => {
+        if (ok !== false) Storage._remove(backupKey);
+      });
+      return localBackup;
     }
     return null;
   },
@@ -268,6 +305,23 @@ const Storage = {
     promptInit: '', promptSummaryGen: '', promptEntries: null,
     promptPresets: null, activePresetId: 'default',
     optionsFabSendMode: 'send',
+    // ---- 生图（Agnes）----
+    enableImageGen: true,        // 总开关
+    imageAutoTrigger: true,      // 是否允许 AI 自动配图
+    imageApiKey: '',             // 留空由用户自行填写
+    imageEndpoint: 'https://api.agnes-ai.cn/v1',
+    imageModel: 'agnes-image-2.1-flash',
+    imageSize: '1K',
+    imageRatio: '16:9',
+    imageStyle: '',              // 全局风格后缀
+    imageMaxPx: 768,             // 本地压缩最长边
+    imageQuality: 0.72,          // 本地压缩 JPEG 质量
+    imageMaxPerConv: 16,         // 单条消息最多保留图片数
+    imagePromptTemplate: '',     // 空 = 用 AgnesPrompt.DEFAULT_INSTRUCTION
+    imageManualPrompt: '',       // 手动生图面板的预填提示词
+    // 双站点账号独立：按 endpoint 记住各自的 Key / 模型，切换站点时自动带出
+    imageStationKeys: {},        // { 'https://api.agnes-ai.cn/v1': 'sk-...' }
+    imageStationModels: {},      // { 'https://api.agnes-ai.cn/v1': 'agnes-image-2.5-flash' }
   },
   getSettings() {
     const saved = this._get(this.KEYS.SETTINGS, null);
@@ -323,13 +377,22 @@ const Storage = {
     // 2. Update metadata index
     const index = this.getConversations();
     index[c.id] = this._toMeta(c);
-    this._set(this.KEYS.CONVERSATIONS, index);
+    const indexOk = this._set(this.KEYS.CONVERSATIONS, index);
     // 3. Native mode: save full conversation to native storage; otherwise push to server
+    let bodyOk = true;
     if (this._isNative) {
-      this._nativeSet('conv_' + c.id, c);
+      bodyOk = this._nativeSet('conv_' + c.id, c) !== false;
     } else {
       this._syncToServer(`/api/conversations/${c.id}`, c);
     }
+    // 持久化失败必须可见：旧版吞掉返回值，存档"看起来成功"其实没落盘，
+    // 删除后也无法找回（用户实测"存了又删，导出里没有"）。
+    const ok = indexOk !== false && bodyOk;
+    if (!ok) {
+      log('saveConversation: PERSIST FAILED for', c.id);
+      try { UI?.showToast('保存失败：本地存储写入异常，请检查存储权限/空间', 'error'); } catch {}
+    }
+    return ok;
   },
   deleteConversation(id) {
     // Clear cache if it's the deleted conversation
@@ -391,48 +454,150 @@ const Storage = {
       // Native mode: load all conversations from native storage
       const index = this.getConversations();
       const conversations = {};
+      const missing = [];
       for (const id of Object.keys(index)) {
         const conv = this._nativeGet('conv_' + id, null);
         if (conv) conversations[id] = conv;
+        else missing.push(id);
+      }
+      // 索引里有、正文读不出来 = 存档损坏或丢失，不能当"导出成功"糊弄过去
+      if (missing.length) {
+        log('exportAll: conversations in index but unreadable:', missing);
       }
       return {
         settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations,
         storylines: this.getStorylines(), memoryLibraries: this.getMemoryLibraries(),
+        _missing: missing,
       };
     }
     // Web mode: fetch from server
-    const conversations = await this._fetchFromServer('/api/conversations') || {};
+    // 旧版 `await fetch() || {}`：服务器挂了/401 时返回空对象，导出一个"看起来正常"的
+    // 空备份并提示"数据已导出"，用户拿它去恢复等于把数据全清。必须显式失败。
+    const conv = await this._fetchFromServer('/api/conversations');
+    if (conv === null || typeof conv !== 'object') {
+      return {
+        ok: false,
+        error: '无法从服务器读取对话数据（服务器未响应或未授权），已中止导出以免生成空备份',
+      };
+    }
     return {
-      settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations,
+      ok: true,
+      settings: this.getSettings(), apiProfiles: this.getApiProfiles(), conversations: conv,
       storylines: this.getStorylines(), memoryLibraries: this.getMemoryLibraries(),
     };
   },
+  /**
+   * 导入全部数据。
+   * 返回 { ok, conversations, failed, settings, profiles, storylines, memoryLibraries }
+   * ——旧版没有返回值，调用方无条件提示"导入成功"，即使一条都没写进去也报成功。
+   */
   async importAll(d) {
-    if (d.settings) { this._set(this.KEYS.SETTINGS, d.settings); if (!this._isNative) this._putToServer('/api/settings', d.settings); }
-    if (d.apiProfiles) { this._set(this.KEYS.API_PROFILES, d.apiProfiles); if (!this._isNative) this._putToServer('/api/profiles', d.apiProfiles); }
-    if (d.storylines) { this._set(this.KEYS.STORYLINES, d.storylines); if (!this._isNative) this._putToServer('/api/storylines', d.storylines); }
-    if (d.memoryLibraries) { this._set(this.KEYS.MEMORY_LIBS, d.memoryLibraries); if (!this._isNative) this._putToServer('/api/memoryLibraries', d.memoryLibraries); }
-    if (d.conversations) {
-      const index = {};
-      for (const [id, conv] of Object.entries(d.conversations)) {
-        index[id] = this._toMeta(conv);
-        if (this._isNative) {
-          this._nativeSet('conv_' + id, conv);
-        } else {
-          this._set('airp_conv_import_' + id, conv);
-          this._putToServer(`/api/conversations/${id}`, conv);
+    if (!d || typeof d !== 'object') return { ok: false, conversations: 0, failed: 0, error: '数据格式无效' };
+    const result = { ok: true, conversations: 0, failed: 0, error: '' };
+
+    const writeKey = (key, val) => {
+      const r = this._set(key, val);
+      if (r === false) { result.ok = false; result.error = '本地存储写入失败'; }
+      return r !== false;
+    };
+
+    // 备份文件里 conversations 可能是对象（{id: conv}）也可能是数组。
+    // 旧版直接 Object.entries()：数组会得到 ["0", conv] 这样的下标键，
+    // 索引里存的 id 全变成 "0"/"1"，对话列表打开即"会话不存在"。这里统一成对象。
+    const normalizeConvMap = (raw) => {
+      const map = {};
+      if (Array.isArray(raw)) {
+        let auto = 0;
+        for (const conv of raw) {
+          if (!conv || typeof conv !== 'object') continue;
+          const id = conv.id || conv.conversationId || ('imported_' + (auto++));
+          map[String(id)] = conv;
         }
+        return map;
       }
-      this._set(this.KEYS.CONVERSATIONS, index);
+      return raw;
+    };
+
+    // 服务器写入必须等结果：旧版 fire-and-forget，settings.html 还会在 600ms 后
+    // reload，把在途请求直接取消——于是"导入成功"提示发出去了，服务器其实没收到。
+    const serverPuts = [];
+    const queueServerWrite = (endpoint, val) => {
+      if (this._isNative) return;
+      serverPuts.push(this._putToServer(endpoint, val));
+    };
+
+    if (d.settings && typeof d.settings === 'object') {
+      writeKey(this.KEYS.SETTINGS, d.settings);
+      queueServerWrite('/api/settings', d.settings);
     }
+    if (d.apiProfiles && typeof d.apiProfiles === 'object') {
+      writeKey(this.KEYS.API_PROFILES, d.apiProfiles);
+      queueServerWrite('/api/profiles', d.apiProfiles);
+    }
+    if (d.storylines && typeof d.storylines === 'object') {
+      writeKey(this.KEYS.STORYLINES, d.storylines);
+      queueServerWrite('/api/storylines', d.storylines);
+    }
+    if (d.memoryLibraries && typeof d.memoryLibraries === 'object') {
+      writeKey(this.KEYS.MEMORY_LIBS, d.memoryLibraries);
+      queueServerWrite('/api/memoryLibraries', d.memoryLibraries);
+    }
+
+    if (d.conversations && typeof d.conversations === 'object') {
+      const convMap = normalizeConvMap(d.conversations);
+      const index = {};
+      for (const [id, conv] of Object.entries(convMap)) {
+        if (!conv || typeof conv !== 'object' || !Array.isArray(conv.messages)) {
+          // 索引里没有 messages 的条目不是完整存档，直接跳过并计入失败
+          log('importAll: skipping invalid conversation', id);
+          result.failed++;
+          continue;
+        }
+        const convId = String(conv.id || id);
+        if (convId !== id) {
+          log('importAll: key/id mismatch, using', convId, 'for', id);
+          conv.id = convId;
+        }
+        // 先写正文，成功了再登记索引：旧版先登记后写入，写失败时列表里会出现
+        // 一个打不开的幽灵对话。
+        if (this._isNative) {
+          if (this._nativeSet('conv_' + convId, conv) === false) {
+            result.failed++;
+            continue;
+          }
+        } else {
+          this._set('airp_conv_import_' + convId, conv);
+          serverPuts.push(this._putToServer(`/api/conversations/${convId}`, conv));
+        }
+        index[convId] = this._toMeta(conv);
+        result.conversations++;
+      }
+      if (!writeKey(this.KEYS.CONVERSATIONS, index)) result.ok = false;
+    }
+    if (serverPuts.length) {
+      const written = await Promise.all(serverPuts);
+      const failedWrites = written.filter(ok => ok === false).length;
+      if (failedWrites > 0) {
+        result.ok = false;
+        result.failed += failedWrites;
+        result.error = result.error || `有 ${failedWrites} 项写入服务器失败`;
+      }
+    }
+    if (result.failed > 0) result.ok = false;
+    return result;
   },
   async _putToServer(endpoint, data) {
     try {
-      await fetch(this._apiBase + endpoint, {
+      const res = await fetch(this._apiBase + endpoint, {
         method: 'PUT', headers: { 'Content-Type': 'application/json', ...this._authHeaders() },
         body: JSON.stringify(data),
       });
-    } catch (e) { log('Import sync failed:', endpoint, e.message); }
+      if (!res.ok) {
+        log('Import sync rejected:', endpoint, res.status);
+        return false;
+      }
+      return true;
+    } catch (e) { log('Import sync failed:', endpoint, e.message); return false; }
   },
 
   clearAll() {
@@ -1874,6 +2039,7 @@ instances（开局角色实例化）——【必须声明】：
 - 【数量控制】开局实例共 1-5 个，视题材而定，宁精勿滥。完整模板只留给核心角色——与主角有深度联系、主角会主动接触并愿意长期结交的人物；次要登场人物用简化模板。跑龙套的不要开档案、不要进 instances——留给 RP 阶段 addFromTemplate 随剧情自然添加
 - values 必须给出与 story_setting 一致的初始值（档案简述/好感度/关系/态度/心理/位置等），不要留空——实例创建后这些值就是角色的开局状态
 - id 用小写英文（如 "lin"、"vera"），实例化后字段名自动变为 id_字段名（如 lin_affection），RP 阶段用 replace/delta 正常更新
+- name 是状态栏上显示的角色名，【必须】用故事原文的中文姓名（如 "林清雪"）——id 是给字段路径用的机器标识，绝不显示给用户；缺 name 或把 id 当 name 会导致界面显示拼音
 
 状态栏 HTML/CSS 要求：
 - 宿主环境：你的 HTML 会被嵌入一个 360px 宽、**自带滚动**的侧栏容器中。根元素【严禁】设置 height/max-height/overflow——不要自建滚动容器，否则会出现双层滚动、底部大片空白、下方的角色 Tab 滚不到点不到。内容自然向下流式排布即可，长了宿主自己会滚
@@ -2046,6 +2212,7 @@ instances（开局角色实例化）——【必须声明】：
 - 【数量控制】开局实例共 1-5 个，视题材而定，宁精勿滥。完整模板只留给核心角色——与主角有深度联系、主角会主动接触并愿意长期结交的人物；次要登场人物用简化模板。跑龙套的不要开档案、不要进 instances——留给 RP 阶段 addFromTemplate 随剧情自然添加
 - values 必须给出与 story_setting 一致的初始值（档案简述/好感度/关系/态度/心理/位置等），不要留空——实例创建后这些值就是角色的开局状态
 - id 用小写英文（如 "lin"、"vera"），实例化后字段名自动变为 id_字段名（如 lin_affection），RP 阶段用 replace/delta 正常更新
+- name 是状态栏上显示的角色名，【必须】用故事原文的中文姓名（如 "林清雪"）——id 是给字段路径用的机器标识，绝不显示给用户；缺 name 或把 id 当 name 会导致界面显示拼音
 
 状态栏 HTML/CSS 要求：
 - 宿主环境：你的 HTML 会被嵌入一个 360px 宽、**自带滚动**的侧栏容器中。根元素【严禁】设置 height/max-height/overflow——不要自建滚动容器，否则会出现双层滚动、底部大片空白、下方的角色 Tab 滚不到点不到。内容自然向下流式排布即可，长了宿主自己会滚
@@ -2341,7 +2508,9 @@ Output template (must preserve tags exactly, placed before abstract):
    - Growth/milestones (skill acquisition, level up, relationship stage transitions)
 2. Check each field's rule to determine if an update is needed — update if the trigger condition described in the rule is met, skip otherwise
 3. Characters not in the current scene: If significant time has passed this turn, reasonably extrapolate their state changes
-4. Do not output mvu code block if nothing changed
+4. Omission rule (strict): output the mvu code block whenever ANY change is observable this turn. Omission is allowed ONLY when the turn contains literally no events — no time passage, no movement, no dialogue outcome, no numeric/emotional/relationship drift. When in doubt, OUTPUT the block; silently skipping an update the story implies is a bug, not caution.
+4b. Character display names (strict): every character entry MUST carry a "name" field holding the character's Chinese name exactly as written in the story (e.g. "林清雪"). The "id" is an ASCII machine key for field paths only and must NEVER be shown in the UI — a missing or id-valued "name" renders pinyin on the status bar, which is a bug. When adding a character via addFromTemplate, always pass the Chinese name in the "name" argument.
+5. Format (strict): the fence tag must be exactly \`json:mvu\`, and the body must be valid JSON — double quotes only, no comments, no trailing commas, no ellipsis placeholders. Emit exactly ONE block even if the update is long.
 
 \`\`\`json:mvu
 {
@@ -2450,7 +2619,9 @@ Output template (must preserve tags exactly, placed before abstract):
    - Growth/milestones (skill acquisition, level up, relationship stage transitions)
 2. Check each field's rule to determine if an update is needed — update if the trigger condition described in the rule is met, skip otherwise
 3. Characters not in the current scene: If significant time has passed this turn, reasonably extrapolate their state changes
-4. Do not output mvu code block if nothing changed
+4. Omission rule (strict): output the mvu code block whenever ANY change is observable this turn. Omission is allowed ONLY when the turn contains literally no events — no time passage, no movement, no dialogue outcome, no numeric/emotional/relationship drift. When in doubt, OUTPUT the block; silently skipping an update the story implies is a bug, not caution.
+4b. Character display names (strict): every character entry MUST carry a "name" field holding the character's Chinese name exactly as written in the story (e.g. "林清雪"). The "id" is an ASCII machine key for field paths only and must NEVER be shown in the UI — a missing or id-valued "name" renders pinyin on the status bar, which is a bug. When adding a character via addFromTemplate, always pass the Chinese name in the "name" argument.
+5. Format (strict): the fence tag must be exactly \`json:mvu\`, and the body must be valid JSON — double quotes only, no comments, no trailing commas, no ellipsis placeholders. Emit exactly ONE block even if the update is long.
 
 \`\`\`json:mvu
 {
@@ -2694,7 +2865,23 @@ For task and character growth, prefer add to /main_quests/-, /side_quests/-, and
     }
 
     // RP phase
-    const entries = preset.entries || this.MINIMAL_PRESET_ENTRIES;
+    let entries = preset.entries || this.MINIMAL_PRESET_ENTRIES;
+    // 记忆安全网：逐层摘要（ab→sm→ar）依赖模型每轮输出 <details>摘要块</details>。
+    // 若当前预设没有任何"摘要格式"类条目（导入的写卡预设常缺），RP 阶段将永远抓不到摘要，
+    // 用户的体感就是"记忆没生效"。这里兜底补一条，保证记忆系统始终有输入。
+    if (Array.isArray(entries) && entries.length > 0) {
+      const hasAbstractReq = entries.some(e =>
+        e && e.enabled !== false &&
+        (e.id === 'abstract_req' || /摘要格式|Abstract/i.test(e.name || '') ||
+         /<details>\s*<summary>/i.test(e.content || '')));
+      if (!hasAbstractReq) {
+        const fallback = this.MINIMAL_PRESET_ENTRIES.find(e => e.id === 'abstract_req');
+        if (fallback) {
+          log('buildMessages [rp]: preset lacks abstract spec — injecting fallback abstract_req');
+          entries = [...entries, { ...fallback }];
+        }
+      }
+    }
     let schemaDesc = '';
     if (conversation.mvu?.schema) {
       schemaDesc = '【状态栏字段】\n（bar/number 字段更新时 value 必须是纯数字，如 45——严禁写 "45/100" 这类字符串，上限由系统管理）\n（时间字段每轮必须随剧情推进更新，精确到分钟；心理/态度/关系类 text 字段始终保持一句话短句，更新即整句替换，不要堆积长段）\n';
@@ -4153,85 +4340,227 @@ const MVU = {
       --mvu-panel: rgba(255,255,255,0.025);
       --mvu-card: rgba(255,255,255,0.04);
       --mvu-accent: var(--accent);
-      --mvu-accent-2: #67c7b4;
-      --mvu-warn: #e8bf5a;
+      --mvu-accent-2: #78c091;
+      --mvu-warn: #f3d484;
       --mvu-text: var(--text-primary);
       --mvu-muted: var(--text-muted);
-      --mvu-border: rgba(201,164,76,0.18);
+      --mvu-border: rgba(214,178,95,0.18);
       --mvu-radius: 8px;
       --mvu-shadow: none;
       --mvu-texture: none;
+      /* B2 扩充令牌：语义色 + 间距节奏 + 动效时长，供主题与 AI 自定义 CSS 覆写 */
+      --mvu-good: #78c091;
+      --mvu-danger: #d46556;
+      --mvu-info: #6d91ba;
+      --mvu-track: rgba(255,255,255,0.08);
+      --mvu-hairline: rgba(255,255,255,0.06);
+      --mvu-gap-xs: 4px;
+      --mvu-gap-sm: 6px;
+      --mvu-gap-md: 10px;
+      --mvu-gap-lg: 14px;
+      --mvu-pad-field: 7px;
+      --mvu-dur-fast: 0.18s;
+      --mvu-dur-base: 0.32s;
+      --mvu-dur-slow: 1.4s;
+      --mvu-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+      --mvu-label-col: 82px;
+      --mvu-font-num: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      /* v2.5「东方玄金·沉浸画卷」对齐令牌：把方案的设计系统映射为 --mvu-* 私有令牌。
+         既有组件与新增预留类一律只引用这一层（并带 fallback），
+         这样整体换肤 / AI 覆写只需改令牌，不必碰任何选择器。 */
+      --mvu-bg-void: var(--bg-void, #090807);
+      --mvu-bg-surface: var(--bg-surface, #1a1610);
+      --mvu-bg-elevated: var(--bg-elevated, #241f17);
+      --mvu-bg-highlight: var(--bg-highlight, #2e271e);
+      --mvu-gold: var(--gold-primary, #d6b25f);
+      --mvu-gold-bright: var(--gold-bright, #f3d484);
+      --mvu-gold-dim: var(--gold-dim, rgba(214,178,95,0.14));
+      --mvu-gold-glow: var(--gold-glow, rgba(214,178,95,0.28));
+      --mvu-gold-border: var(--gold-border, rgba(214,178,95,0.22));
+      --mvu-gold-border-subtle: var(--gold-border-subtle, rgba(214,178,95,0.08));
+      --mvu-jade: var(--jade-accent, #78c091);
+      --mvu-jade-dim: var(--jade-dim, rgba(120,192,145,0.15));
+      --mvu-jade-border: rgba(120,192,145,0.3);
+      --mvu-cinnabar: var(--cinnabar-red, #d46556);
+      --mvu-cinnabar-dim: var(--cinnabar-dim, rgba(212,101,86,0.15));
+      --mvu-cinnabar-border: rgba(212,101,86,0.3);
+      --mvu-ink-blue: var(--ink-blue, #6d91ba);
+      --mvu-radius-sm: var(--radius-sm, 8px);
+      --mvu-radius-md: var(--radius-md, 12px);
+      --mvu-radius-full: var(--radius-full, 9999px);
+      --mvu-font-serif: var(--font-serif, 'Noto Serif SC', serif);
+      --mvu-dur-bar: 0.6s;
+      --mvu-ease-silk: cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: 14px; }
-    .mvu-panel, .mvu-section { border: 1px solid var(--mvu-border, rgba(201,164,76,0.16)); background: var(--mvu-panel, rgba(255,255,255,0.025)); border-radius: var(--mvu-radius, 8px); box-shadow: var(--mvu-shadow, none); padding: 12px; margin-bottom: 10px; }
-    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--mvu-accent, var(--accent)); font-weight: 700; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
+    .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: var(--fs-md); }
+    .mvu-panel, .mvu-section { border: 1px solid var(--mvu-border, rgba(214,178,95,0.16)); background: var(--mvu-panel, rgba(255,255,255,0.025)); border-radius: var(--mvu-radius, 8px); box-shadow: var(--mvu-shadow, none); padding: 12px; margin-bottom: 10px; }
+    details.mvu-section > summary { cursor: pointer; list-style: none; color: var(--mvu-accent, var(--accent)); font-weight: 700; font-size: var(--fs-base); display: flex; justify-content: space-between; gap: 8px; align-items: center; margin: -2px 0 8px; }
     details.mvu-section > summary::-webkit-details-marker { display: none; }
-    details.mvu-section > summary small { color: var(--mvu-muted, var(--text-muted)); font-size: 10px; font-weight: 500; }
+    details.mvu-section > summary small { color: var(--mvu-muted, var(--text-muted)); font-size: var(--fs-xs); font-weight: 500; }
     .mvu-managed-body { display: grid; gap: 2px; }
     .mvu-managed-field { border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); padding-left: 6px; padding-right: 6px; background: color-mix(in srgb, var(--mvu-card, rgba(255,255,255,0.04)), transparent 28%); }
-    .mvu-section-title, .mvu-title { color: var(--mvu-accent, var(--accent)); font-weight: 600; font-size: 13px; margin-bottom: 8px; letter-spacing: 0; }
-    .mvu-field { display: grid; grid-template-columns: minmax(82px, 0.42fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mvu-section-title, .mvu-title { color: var(--mvu-accent, var(--accent)); font-weight: 600; font-size: var(--fs-base); margin-bottom: 8px; letter-spacing: 0; }
+    .mvu-field { display: grid; grid-template-columns: minmax(var(--mvu-label-col, 82px), 0.42fr) minmax(0, 1fr); gap: 8px; align-items: start; padding: var(--mvu-pad-field, 7px) 0; border-bottom: 1px solid var(--mvu-hairline, rgba(255,255,255,0.06)); }
     .mvu-field:last-child { border-bottom: 0; }
-    .mvu-label { color: var(--mvu-muted, var(--text-muted)); font-size: 12px; line-height: 1.5; }
-    .mvu-value, [data-field] { color: var(--mvu-text, var(--text-primary)); font-size: 13px; line-height: 1.55; word-break: break-word; }
-    .mvu-bar-track { height: 8px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,0.08); margin-top: 4px; }
-    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: inherit; background: linear-gradient(90deg, var(--mvu-accent, var(--accent)), var(--mvu-accent-2, #e1bd64)); transition: width 0.35s ease; }
-    .mvu-list-item { padding: 6px 8px; border-radius: max(6px, calc(var(--mvu-radius, 8px) - 2px)); background: var(--mvu-card, rgba(255,255,255,0.04)); border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(201,164,76,0.18)), transparent 35%); margin-bottom: 5px; font-size: 12px; line-height: 1.45; color: var(--mvu-text, var(--text-primary)); }
+    .mvu-label { color: var(--mvu-muted, var(--text-muted)); font-size: var(--fs-sm); line-height: 1.5; }
+    .mvu-value, [data-field] { color: var(--mvu-text, var(--text-primary)); font-size: var(--fs-base); line-height: 1.55; word-break: break-word; }
+    /* v2.5 对齐：数值条 = 方案的气血/灵力槽（高度 7px、全圆角、0.6s 丝滑宽度过渡） */
+    .mvu-bar-track { height: 7px; overflow: hidden; border-radius: var(--mvu-radius-full, 9999px); background: var(--mvu-track, rgba(255,255,255,0.08)); margin-top: 4px; position: relative; }
+    .mvu-bar-fill, [data-field-bar] { display: block; height: 100%; min-width: 2px; border-radius: var(--mvu-radius-full, 9999px); background: linear-gradient(90deg, var(--mvu-accent, var(--accent)), var(--mvu-accent-2, #e1bd64)); transition: width var(--mvu-dur-bar, 0.6s) var(--mvu-ease-silk, cubic-bezier(0.16,1,0.3,1)), background var(--mvu-dur-base, 0.32s) var(--mvu-ease, ease); }
+    /* v2.5 新增：槽位标签行（左标签 / 右数值），供 data-field-bar 的标签排版复用 */
+    .mvu-gauge-label-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: var(--fs-sm); margin-bottom: 4px; }
+    .mvu-gauge-label-row .mvu-gauge-value, .mvu-gauge-value { font-family: var(--mvu-font-num, monospace); font-variant-numeric: tabular-nums; color: var(--mvu-muted, var(--text-muted)); font-size: var(--fs-sm); }
+    /* v2.5 新增：槽位容器（方案 .mvu-stat-gauge）与语义色条（方案 .gauge-hp/.gauge-mp/.gauge-favor）。
+       命名为 .mvu-bar-hp/.mvu-bar-mp/.mvu-bar-favor，与既有 .mvu-bar-low/.mvu-bar-mid 同族，
+       便于状态栏 AI 直接写在 data-field-bar 元素上（本系统只切 width，不改 class，故色相需显式声明）。 */
+    .mvu-stat-gauge { margin-bottom: 12px; }
+    .mvu-bar-fill.mvu-bar-hp, [data-field-bar].mvu-bar-hp { background: linear-gradient(90deg, #d46556, #f38b7d); }
+    .mvu-bar-fill.mvu-bar-mp, [data-field-bar].mvu-bar-mp { background: linear-gradient(90deg, #6d91ba, #90b8e6); }
+    .mvu-bar-fill.mvu-bar-favor, [data-field-bar].mvu-bar-favor { background: linear-gradient(90deg, var(--mvu-gold, #d6b25f), var(--mvu-gold-bright, #f3d484)); }
+    /* v2.5 新增：状态栏头部卡（方案 .mvu-header-pill）—— 角色横幅 + 核心数值的外壳 */
+    .mvu-header-pill { background: var(--mvu-bg-surface, #1a1610); border: 1px solid var(--mvu-gold-border, rgba(214,178,95,0.22)); border-radius: var(--mvu-radius-md, 12px); padding: 16px; margin-bottom: 16px; }
+    /* B1: 进度条低值警示 —— 数值偏低时条体转为警示色并轻微呼吸 */
+    .mvu-bar-fill.mvu-bar-low, [data-field-bar].mvu-bar-low { background: linear-gradient(90deg, var(--mvu-danger, #d46556), var(--mvu-warn, #f3d484)); animation: mvuBarBreathe 2.6s ease-in-out infinite; }
+    .mvu-bar-fill.mvu-bar-mid, [data-field-bar].mvu-bar-mid { background: linear-gradient(90deg, var(--mvu-warn, #f3d484), var(--mvu-accent-2, #e1bd64)); }
+    @keyframes mvuBarBreathe { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.28); } }
+    /* B1: 数值变化徽标 —— delta 应用后在字段旁浮出 +N / -N */
+    .mvu-field { position: relative; }
+    .mvu-delta-badge { position: absolute; right: 0; top: 2px; pointer-events: none; font-family: var(--mvu-font-num, monospace); font-size: var(--fs-xs); font-weight: 700; line-height: 1.4; padding: 2px 7px; border-radius: 6px; border: 1px solid transparent; opacity: 0; animation: mvuDeltaFloat 1.9s var(--mvu-ease, ease) forwards; }
+    /* v2.5 对齐：up 走青玉系、down 走朱砂系（与方案 .delta-plus / 语义色一致） */
+    .mvu-delta-badge.up { color: var(--mvu-jade, #78c091); border-color: var(--mvu-jade-border, rgba(120,192,145,0.3)); background: var(--mvu-jade-dim, rgba(120,192,145,0.15)); }
+    .mvu-delta-badge.down { color: var(--mvu-cinnabar, #d46556); border-color: var(--mvu-cinnabar-border, rgba(212,101,86,0.3)); background: var(--mvu-cinnabar-dim, rgba(212,101,86,0.15)); }
+    @keyframes mvuDeltaFloat { 0% { opacity: 0; transform: translateY(5px); } 14% { opacity: 1; transform: translateY(0); } 72% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(-7px); } }
+    /* v2.5 新增（当前无 DOM 生成点，为后续 Delta Feed 预留）：
+       本轮回合状态变更横幅 + 差值气泡组，视觉照方案 .mvu-delta-feed / .delta-chips / .delta-pill 抄写并加 --mvu- 前缀 */
+    .mvu-delta-feed { background: linear-gradient(135deg, rgba(120,192,145,0.08), rgba(26,22,16,0.7)); border: 1px solid var(--mvu-jade-border, rgba(120,192,145,0.3)); border-radius: var(--mvu-radius-sm, 8px); padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: var(--fs-sm); }
+    .mvu-delta-feed > strong, .mvu-delta-feed-title { color: var(--mvu-gold-bright, #f3d484); font-weight: 700; }
+    .mvu-delta-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .mvu-delta-pill { font-size: var(--fs-xs); line-height: 1.4; padding: 2px 7px; border-radius: 6px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+    .mvu-delta-plus { background: var(--mvu-jade-dim, rgba(120,192,145,0.15)); color: var(--mvu-jade, #78c091); border-color: var(--mvu-jade-border, rgba(120,192,145,0.3)); }
+    .mvu-delta-gold { background: var(--mvu-gold-dim, rgba(214,178,95,0.14)); color: var(--mvu-gold-bright, #f3d484); border-color: var(--mvu-gold-border, rgba(214,178,95,0.22)); }
+    .mvu-delta-minus { background: var(--mvu-cinnabar-dim, rgba(212,101,86,0.15)); color: var(--mvu-cinnabar, #d46556); border-color: var(--mvu-cinnabar-border, rgba(212,101,86,0.3)); }
+    /* B1: 数值滚动动画的载体 */
+    .mvu-num-roll { font-family: var(--mvu-font-num, monospace); font-variant-numeric: tabular-nums; }
+    .mvu-num-roll.rolling { color: var(--mvu-accent, var(--accent)); }
+    /* B2: 流式更新中的 shimmer（状态栏正在被写入时的过渡态） */
+    .mvu-root.mvu-streaming .mvu-field-changed,
+    .mvu-root.mvu-streaming .mvu-data-field.mvu-field-changed { animation: mvuShimmer 1.25s linear infinite; }
+    @keyframes mvuShimmer { 0% { background-position: -180% 0; } 100% { background-position: 180% 0; } }
+    .mvu-root.mvu-streaming .mvu-field-changed {
+      background-image: linear-gradient(100deg, transparent 28%, color-mix(in srgb, var(--mvu-accent, var(--accent)), transparent 86%) 50%, transparent 72%);
+      background-size: 220% 100%; background-repeat: no-repeat;
+    }
+    /* v2.5 对齐：列表行改用方案的卡片语言（surface 底 + 极淡金边 + 圆角） */
+    .mvu-list-item { padding: 7px 10px; border-radius: var(--mvu-radius-sm, 8px); background: var(--mvu-bg-elevated, var(--mvu-card, rgba(255,255,255,0.04))); border: 1px solid var(--mvu-gold-border-subtle, rgba(214,178,95,0.08)); margin-bottom: 5px; font-size: var(--fs-sm); line-height: 1.45; color: var(--mvu-text, var(--text-primary)); transition: border-color var(--mvu-dur-fast, 0.18s) var(--mvu-ease-silk, ease), background var(--mvu-dur-fast, 0.18s) var(--mvu-ease-silk, ease); }
+    .mvu-list-item:hover { border-color: var(--mvu-gold-border, rgba(214,178,95,0.22)); background: var(--mvu-bg-highlight, var(--mvu-card, rgba(255,255,255,0.04))); }
+    /* v2.5 新增（当前无 DOM 生成点，为后续角色横幅预留）：
+       照方案 .mvu-char-banner / .mvu-avatar-ring / .mvu-char-info / .mvu-char-role-badge 抄写 */
+    .mvu-char-banner { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .mvu-avatar-ring { width: 52px; height: 52px; flex: 0 0 auto; border-radius: 50%; border: 2px solid var(--mvu-gold, #d6b25f); background: var(--mvu-bg-elevated, #241f17); display: flex; align-items: center; justify-content: center; font-family: var(--mvu-font-serif, serif); font-size: var(--fs-2xl); color: var(--mvu-gold-bright, #f3d484); box-shadow: 0 0 16px var(--mvu-gold-glow, rgba(214,178,95,0.28)); }
+    .mvu-char-info { min-width: 0; }
+    .mvu-char-info h3 { font-family: var(--mvu-font-serif, serif); font-size: var(--fs-xl); color: var(--mvu-text, var(--text-main)); display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 0; }
+    .mvu-char-role-badge { font-size: var(--fs-xs); line-height: 1.4; background: var(--mvu-gold-dim, rgba(214,178,95,0.14)); color: var(--mvu-gold-bright, #f3d484); padding: 1px 8px; border-radius: 12px; border: 1px solid var(--mvu-gold-border-subtle, rgba(214,178,95,0.08)); white-space: nowrap; }
+    /* v2.5 对齐：角色卡沿用方案的角色横幅语言（金色描边、衬线名号、玉色徽章） */
     .mvu-character-grid { display: grid; gap: 8px; }
-    .mvu-character-card { display: grid; gap: 7px; min-height: 104px; max-height: 150px; overflow: hidden; padding: 10px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.18)); border-radius: var(--mvu-radius, 8px); background: var(--mvu-card, rgba(255,255,255,0.04)); background-image: var(--mvu-texture, none); box-shadow: var(--mvu-shadow, none); cursor: pointer; position: relative; }
+    .mvu-character-card { display: grid; gap: 7px; min-height: 104px; max-height: 150px; overflow: hidden; padding: 10px; border: 1px solid var(--mvu-gold-border-subtle, var(--mvu-border, rgba(214,178,95,0.18))); border-radius: var(--mvu-radius-md, var(--mvu-radius, 8px)); background: var(--mvu-bg-surface, var(--mvu-card, rgba(255,255,255,0.04))); background-image: var(--mvu-texture, none); box-shadow: var(--mvu-shadow, none); cursor: pointer; position: relative; transition: border-color var(--mvu-dur-fast, 0.18s) var(--mvu-ease-silk, ease), background var(--mvu-dur-fast, 0.18s) var(--mvu-ease-silk, ease); }
+    .mvu-character-card:hover { border-color: var(--mvu-gold-border, rgba(214,178,95,0.22)); background: var(--mvu-bg-highlight, var(--mvu-card, rgba(255,255,255,0.04))); }
     .mvu-character-card::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 22px; pointer-events: none; background: linear-gradient(180deg, rgba(20,18,13,0), rgba(20,18,13,0.92)); opacity: 0.86; }
     .mvu-character-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; }
-    .mvu-character-name { color: var(--mvu-accent, var(--accent)); font-size: 14px; font-weight: 800; line-height: 1.3; min-width: 0; word-break: break-word; }
-    .mvu-character-role { max-width: 92px; color: var(--mvu-muted, var(--text-muted)); font-size: 11px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mvu-character-name { color: var(--mvu-text, var(--text-main)); font-family: var(--mvu-font-serif, serif); font-size: var(--fs-lg); font-weight: 800; line-height: 1.3; min-width: 0; word-break: break-word; }
+    .mvu-character-role { max-width: 108px; color: var(--mvu-gold-bright, var(--mvu-accent, var(--accent))); font-size: var(--fs-xs); line-height: 1.4; background: var(--mvu-gold-dim, rgba(214,178,95,0.14)); border: 1px solid var(--mvu-gold-border-subtle, rgba(214,178,95,0.08)); border-radius: 12px; padding: 1px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .mvu-character-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-    .mvu-character-chip { max-width: 100%; color: var(--mvu-text, var(--text-secondary)); font-size: 11px; line-height: 1.25; border: 1px solid color-mix(in srgb, var(--mvu-border, rgba(255,255,255,0.08)), transparent 25%); border-radius: 999px; padding: 2px 7px; background: color-mix(in srgb, var(--mvu-panel, rgba(0,0,0,0.12)), transparent 18%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mvu-character-desc { color: var(--mvu-text, var(--text-primary)); font-size: 12px; line-height: 1.5; opacity: 0.92; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-    .mvu-character-more { color: var(--mvu-accent, var(--accent)); font-size: 11px; font-weight: 700; opacity: 0.82; }
-    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--mvu-border, rgba(201,164,76,0.22)); color: var(--mvu-text, var(--text-secondary)); background: var(--mvu-card, rgba(255,255,255,0.03)); font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
-    .mvu-tab.active { color: var(--mvu-bg, #1a1510); background: var(--mvu-accent, var(--accent)); border-color: var(--mvu-accent, var(--accent)); }
+    .mvu-character-chip { max-width: 100%; color: var(--mvu-text, var(--text-secondary)); font-size: var(--fs-xs); line-height: 1.25; border: 1px solid var(--mvu-gold-border-subtle, color-mix(in srgb, var(--mvu-border, rgba(255,255,255,0.08)), transparent 25%)); border-radius: var(--mvu-radius-full, 999px); padding: 2px 7px; background: color-mix(in srgb, var(--mvu-panel, rgba(0,0,0,0.12)), transparent 18%); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mvu-character-desc { color: var(--mvu-text, var(--text-primary)); font-size: var(--fs-sm); line-height: 1.5; opacity: 0.92; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+    .mvu-character-more { color: var(--mvu-gold-bright, var(--mvu-accent, var(--accent))); font-size: var(--fs-xs); font-weight: 700; opacity: 0.82; }
+    /* v2.5 新增（当前无 DOM 生成点，为后续分区卡 / 物品格预留）：
+       照方案 .mvu-section-card / .inventory-grid / .inventory-slot / .slot-icon / .slot-qty 抄写。
+       产品里物品是列表行而非网格，故这里只备样式，不改任何渲染逻辑。 */
+    .mvu-section-card { background: var(--mvu-bg-surface, #1a1610); border: 1px solid var(--mvu-gold-border-subtle, rgba(214,178,95,0.08)); border-radius: var(--mvu-radius-md, 12px); padding: 14px; margin-bottom: 14px; }
+    .mvu-section-card h4 { font-family: var(--mvu-font-serif, serif); font-size: var(--fs-md); font-weight: 700; color: var(--mvu-gold-bright, #f3d484); margin: 0 0 10px; display: flex; align-items: center; gap: 6px; }
+    .mvu-inventory-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .mvu-inventory-slot { min-height: 62px; aspect-ratio: 1; background: var(--mvu-bg-elevated, #241f17); border: 1px solid var(--mvu-hairline, rgba(255,255,255,0.06)); border-radius: var(--mvu-radius-sm, 8px); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: var(--fs-xs); line-height: 1.3; color: var(--text-secondary, #c8bea9); cursor: pointer; transition: border-color var(--mvu-dur-base, 0.3s) var(--mvu-ease-silk, ease), background var(--mvu-dur-base, 0.3s) var(--mvu-ease-silk, ease); position: relative; text-align: center; padding: 4px; overflow: hidden; }
+    .mvu-inventory-slot:hover { border-color: var(--mvu-gold, #d6b25f); background: var(--mvu-bg-highlight, #2e271e); }
+    .mvu-slot-icon { font-size: var(--fs-xl); margin-bottom: 2px; }
+    .mvu-slot-qty { position: absolute; bottom: 2px; right: 4px; font-size: var(--fs-xs); color: var(--mvu-gold-bright, #f3d484); }
+    /* v2.5 新增：窄屏下物品格降为 3 列，避免文案被压碎 */
+    @media (max-width: 460px) { .mvu-inventory-grid { grid-template-columns: repeat(3, 1fr); } }
+    .mvu-tab { display: inline-flex; align-items: center; justify-content: center; min-height: 28px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--mvu-border, rgba(214,178,95,0.22)); color: var(--mvu-text, var(--text-secondary)); background: var(--mvu-card, rgba(255,255,255,0.03)); font-size: var(--fs-sm); cursor: pointer; white-space: nowrap; transition: all 0.18s ease; }
+    .mvu-tab.active { color: var(--ink-on-gold); background: var(--mvu-accent, var(--accent)); border-color: var(--mvu-accent, var(--accent)); }
     .mvu-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 10px; }
     .mvu-field-changed { animation: mvuPulseChanged 1.4s ease; }
-    @keyframes mvuPulseChanged { 0% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: rgba(201,164,76,0.0); } 18% { box-shadow: 0 0 0 2px rgba(201,164,76,0.28); background-color: rgba(201,164,76,0.12); } 100% { box-shadow: 0 0 0 0 rgba(201,164,76,0.0); background-color: transparent; } }
+    @keyframes mvuPulseChanged { 0% { box-shadow: 0 0 0 0 rgba(214,178,95,0.0); background-color: rgba(214,178,95,0.0); } 18% { box-shadow: 0 0 0 2px rgba(214,178,95,0.28); background-color: rgba(214,178,95,0.12); } 100% { box-shadow: 0 0 0 0 rgba(214,178,95,0.0); background-color: transparent; } }
     .mvu-data-view { display: flex; flex-direction: column; gap: 10px; }
-    .mvu-data-group { border: 1px solid rgba(201,164,76,0.16); border-radius: 8px; background: rgba(255,255,255,0.025); overflow: hidden; }
-    .mvu-data-group summary { cursor: pointer; list-style: none; padding: 10px 12px; color: var(--accent); font-size: 13px; font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .mvu-data-group { border: 1px solid rgba(214,178,95,0.16); border-radius: 8px; background: rgba(255,255,255,0.025); overflow: hidden; }
+    .mvu-data-group summary { cursor: pointer; list-style: none; padding: 10px 12px; color: var(--accent); font-size: var(--fs-base); font-weight: 600; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .mvu-data-group summary::-webkit-details-marker { display: none; }
     .mvu-data-fields { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
     .mvu-data-field { display: grid; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.06); }
     .mvu-data-field:last-child { border-bottom: 0; padding-bottom: 0; }
     .mvu-data-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-    .mvu-data-label { color: var(--text-secondary); font-size: 12px; font-weight: 600; }
-    .mvu-data-key { color: var(--text-muted); font-size: 11px; font-family: monospace; }
-    .mvu-data-input, .mvu-data-textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.18); color: var(--text-primary); padding: 8px 9px; font-size: 12px; }
+    .mvu-data-label { color: var(--text-secondary); font-size: var(--fs-sm); font-weight: 600; }
+    .mvu-data-key { color: var(--text-muted); font-size: var(--fs-xs); font-family: monospace; }
+    .mvu-data-input, .mvu-data-textarea { width: 100%; border: 1px solid var(--border); border-radius: 6px; background: rgba(0,0,0,0.18); color: var(--text-primary); padding: 8px 9px; font-size: var(--fs-sm); }
     .mvu-data-textarea { min-height: 68px; resize: vertical; line-height: 1.45; }
     .mvu-data-range-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px; gap: 8px; align-items: center; }
     .mvu-data-list { display: flex; flex-direction: column; gap: 6px; }
     .mvu-data-list-row { display: grid; grid-template-columns: minmax(0, 1fr) 30px; gap: 6px; align-items: center; }
     .mvu-data-mini-btn { height: 30px; border-radius: 6px; border: 1px solid var(--border); background: rgba(255,255,255,0.04); color: var(--text-secondary); cursor: pointer; }
     .mvu-data-mini-btn:hover { color: var(--accent); border-color: var(--accent); }
-    .mvu-data-empty { color: var(--text-muted); text-align: center; font-size: 12px; padding: 24px 8px; }
+    .mvu-data-empty { color: var(--text-muted); text-align: center; font-size: var(--fs-sm); padding: 24px 8px; }
     .mvu-changes-view { display: flex; flex-direction: column; gap: 10px; }
-    .mvu-changes-summary { border: 1px solid rgba(201,164,76,0.18); border-radius: 8px; background: rgba(201,164,76,0.07); padding: 12px; display: grid; gap: 3px; }
-    .mvu-changes-summary strong { color: var(--accent); font-size: 14px; }
-    .mvu-changes-summary span { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
-    .mvu-change-card { border: 1px solid rgba(201,164,76,0.16); border-radius: 8px; background: rgba(255,255,255,0.028); padding: 11px; display: grid; gap: 9px; }
+    .mvu-changes-summary { border: 1px solid rgba(214,178,95,0.18); border-radius: 8px; background: rgba(214,178,95,0.07); padding: 12px; display: grid; gap: 3px; }
+    .mvu-changes-summary strong { color: var(--accent); font-size: var(--fs-md); }
+    .mvu-changes-summary span { color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.45; }
+    .mvu-change-card { border: 1px solid rgba(214,178,95,0.16); border-radius: 8px; background: rgba(255,255,255,0.028); padding: 11px; display: grid; gap: 9px; }
     .mvu-change-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .mvu-change-title { min-width: 0; display: grid; gap: 2px; }
-    .mvu-change-label { color: var(--text-primary); font-size: 13px; font-weight: 700; word-break: break-word; }
-    .mvu-change-key { color: var(--text-muted); font-size: 10px; font-family: monospace; word-break: break-all; }
-    .mvu-change-delta { flex: 0 0 auto; max-width: 90px; border: 1px solid rgba(201,164,76,0.24); border-radius: 999px; background: rgba(201,164,76,0.11); color: var(--accent); font-size: 11px; font-weight: 700; line-height: 1.25; padding: 3px 8px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mvu-change-label { color: var(--text-primary); font-size: var(--fs-base); font-weight: 700; word-break: break-word; }
+    .mvu-change-key { color: var(--text-muted); font-size: var(--fs-xs); font-family: monospace; word-break: break-all; }
+    .mvu-change-delta { flex: 0 0 auto; max-width: 90px; border: 1px solid rgba(214,178,95,0.24); border-radius: 999px; background: rgba(214,178,95,0.11); color: var(--accent); font-size: var(--fs-xs); font-weight: 700; line-height: 1.25; padding: 3px 8px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .mvu-change-meta { display: flex; flex-wrap: wrap; gap: 5px; }
-    .mvu-change-tag { border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: 10px; line-height: 1.2; padding: 3px 7px; }
+    .mvu-change-tag { border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; background: rgba(255,255,255,0.04); color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.2; padding: 3px 7px; }
     .mvu-change-compare { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
     .mvu-change-side { border-radius: 7px; background: rgba(0,0,0,0.16); padding: 8px; display: grid; gap: 4px; min-width: 0; }
-    .mvu-change-side b { color: var(--text-muted); font-size: 10px; font-weight: 600; }
-    .mvu-change-side p { margin: 0; color: var(--text-secondary); font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 84px; overflow: auto; }
+    .mvu-change-side b { color: var(--text-muted); font-size: var(--fs-xs); font-weight: 600; }
+    .mvu-change-side p { margin: 0; color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.45; white-space: pre-wrap; word-break: break-word; max-height: 84px; overflow: auto; }
     .mvu-change-side.after p { color: var(--text-primary); }
-    .mvu-change-empty { border: 1px dashed rgba(201,164,76,0.2); border-radius: 8px; padding: 28px 14px; text-align: center; color: var(--text-muted); font-size: 12px; line-height: 1.6; background: rgba(255,255,255,0.02); }
+    .mvu-change-empty { border: 1px dashed rgba(214,178,95,0.2); border-radius: 8px; padding: 28px 14px; text-align: center; color: var(--text-muted); font-size: var(--fs-sm); line-height: 1.6; background: rgba(255,255,255,0.02); }
+    /* B2/A2: 状态栏更新诊断横幅（无更新 / 解析失败 / 未命中字段） */
+    .mvu-diagnostic { display: grid; gap: 8px; padding: 10px 11px; border-radius: 8px; border: 1px solid var(--mvu-border, rgba(214,178,95,0.18)); background: color-mix(in srgb, var(--mvu-warn, #f3d484), transparent 92%); }
+    .mvu-diagnostic.error { border-color: color-mix(in srgb, var(--mvu-danger, #d46556), transparent 58%); background: color-mix(in srgb, var(--mvu-danger, #d46556), transparent 91%); }
+    .mvu-diagnostic.warn { border-color: color-mix(in srgb, var(--mvu-warn, #f3d484), transparent 58%); background: color-mix(in srgb, var(--mvu-warn, #f3d484), transparent 93%); }
+    .mvu-diagnostic-body { display: grid; gap: 3px; min-width: 0; }
+    .mvu-diagnostic-body strong { font-size: var(--fs-sm); font-weight: 700; color: var(--mvu-text, var(--text-primary)); }
+    .mvu-diagnostic.error .mvu-diagnostic-body strong { color: var(--mvu-danger, #d46556); }
+    .mvu-diagnostic.warn .mvu-diagnostic-body strong { color: var(--mvu-warn, #f3d484); }
+    .mvu-diagnostic-body span { font-size: var(--fs-xs); line-height: 1.5; color: var(--mvu-muted, var(--text-muted)); word-break: break-word; }
+    .mvu-diagnostic-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+    .mvu-diagnostic-btn { border: 1px solid color-mix(in srgb, var(--mvu-accent, var(--accent)), transparent 55%); border-radius: 6px; background: color-mix(in srgb, var(--mvu-accent, var(--accent)), transparent 88%); color: var(--mvu-accent, var(--accent)); font-size: var(--fs-xs); font-weight: 600; padding: 4px 10px; cursor: pointer; transition: all var(--mvu-dur-fast, 0.18s) var(--mvu-ease, ease); }
+    .mvu-diagnostic-btn:hover { background: color-mix(in srgb, var(--mvu-accent, var(--accent)), transparent 78%); }
+    .mvu-diagnostic-btn.ghost { border-color: var(--mvu-hairline, rgba(255,255,255,0.1)); background: transparent; color: var(--mvu-muted, var(--text-muted)); }
+    .mvu-diagnostic-btn.ghost:hover { color: var(--mvu-text, var(--text-primary)); border-color: color-mix(in srgb, var(--mvu-muted, #7a6f5e), transparent 40%); }
+    /* B3: 窄屏下字段改单列，避免标签列挤压数值 */
+    @media (max-width: 460px) {
+      .mvu-root { --mvu-label-col: 64px; }
+      .mvu-field { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+      .mvu-field .mvu-label { font-size: var(--fs-xs); opacity: 0.88; }
+      .mvu-delta-badge { top: 0; }
+    }
+    /* B3: 减少动效偏好 */
+    /* [data-theme] 三套副主题与 .pill-item/.bag-slot 已迁入 injectStyles()：
+       主题令牌须在任何页面即时生效（设置页切换即变），不再依赖状态栏渲染时注入。 */
+        @media (prefers-reduced-motion: reduce) {
+      .mvu-field-changed, .mvu-bar-fill.mvu-bar-low, .mvu-delta-badge, .mvu-root.mvu-streaming .mvu-field-changed { animation: none !important; }
+      .mvu-bar-fill, [data-field-bar] { transition: none; }
+    }
   `,
   parseStorySetting(text) {
-    const m = text.match(/```text:story_setting\s*\n([\s\S]*?)\n```/);
-    return m ? m[1].trim() : null;
+    // 与状态栏同一套宽松围栏提取：容忍大小写/空格/未闭合/多块
+    const blocks = this._extractFencedBlocks(text, 'story_setting');
+    for (const body of blocks) {
+      if (body) return body;
+    }
+    return null;
   },
 
   /**
@@ -4239,10 +4568,11 @@ const MVU = {
    * Format: ```json:story_setting_patch [{ "op": "append"|"replace"|"delete", "section": "标题", "content": "..." }]
    */
   parseStorySettingPatch(text) {
-    const m = text.match(/```json:story_setting_patch\s*\n([\s\S]*?)\n```/);
-    if (!m) return null;
-    const arr = this._tryParseJson(m[1].trim());
-    return Array.isArray(arr) ? arr : null;
+    for (const body of this._extractFencedBlocks(text, 'story_setting_patch')) {
+      const arr = this._tryParseJson(body);
+      if (Array.isArray(arr)) return arr;
+    }
+    return null;
   },
 
   /**
@@ -4295,17 +4625,84 @@ const MVU = {
   },
 
   /**
-   * Try to repair common AI JSON errors (unescaped quotes in string values).
+   * 宽松代码围栏提取器。
+   *
+   * 历史实现用字面量 /```json:mvu\s*\n([\s\S]*?)\n```/ —— 只要 AI 的写法与约定有
+   * 任何偏差就静默失配，整轮状态栏更新丢失，表现为「状态栏不随正文更新」：
+   *   ```mvu 简写 / ```JSON:mvu 大小写 / ```json : mvu 空格 / 语言标签后有说明文字
+   *   / 代码块未闭合（流式中断、max_tokens 截断）/ 同一回复里出现多个块
+   * 这里统一按「语言标签宽松匹配 + 允许未闭合」提取，返回全部块正文。
+   *
+   * @param {string} text   AI 原始回复
+   * @param {string} lang   语言标签，如 'mvu' / 'mvu_init' / 'mvu_update'
+   * @returns {string[]}    每个块的正文（已 trim）
+   */
+  _extractFencedBlocks(text, lang) {
+    if (!text) return [];
+    // 语言前缀可选且不限 json（也接受 text: / 任意 lang:），大小写不敏感，标签后允许说明文字；
+    // mvu\b 不会命中 mvu_init / mvu_update（下划线属单词字符）。
+    const re = new RegExp(
+      '```[ \\t]*(?:[A-Za-z_]+[ \\t]*:[ \\t]*)?' + lang + '\\b[^\\n]*\\r?\\n([\\s\\S]*?)(?:\\r?\\n?```|$)',
+      'gi'
+    );
+    const blocks = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      const body = (m[1] || '').trim();
+      if (body) blocks.push(body);
+      if (m.index === re.lastIndex) re.lastIndex++; // 防御零宽匹配死循环
+    }
+    return blocks;
+  },
+
+  /**
+   * 尝试从文本中截取第一个平衡括号子串（AI 常在 JSON 前后夹带解释文字）。
+   */
+  _sliceBalancedJson(raw) {
+    const text = String(raw || '');
+    const start = text.search(/[{[]/);
+    if (start < 0) return null;
+    const open = text[start];
+    const close = open === '{' ? '}' : ']';
+    let depth = 0, inStr = false, esc = false;
+    for (let i = start; i < text.length; i++) {
+      const c = text[i];
+      if (esc) { esc = false; continue; }
+      if (c === '\\') { esc = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+      if (c === open) depth++;
+      else if (c === close) { depth--; if (depth === 0) return text.slice(start, i + 1); }
+    }
+    return null; // 未闭合
+  },
+
+  /**
+   * Try to repair common AI JSON errors.
+   * 修复梯度（逐级尝试，任一级成功即返回）：
+   *   1. 原样解析
+   *   2. 转义字符串值内的裸引号 / 裸换行（历史实现）
+   *   3. 去尾逗号
+   *   4. 中文智能引号 → ASCII 双引号
+   *   5. 从首个 { / [ 截取平衡括号子串后再走 2~4
    * Returns parsed object or null.
    */
   _tryParseJson(raw) {
-    try { return JSON.parse(raw); } catch (e) { /* try repair */ }
-    // Repair: escape double quotes / bare newlines that appear inside string values
-    // (bare newlines are common when AI writes multi-line content in patch strings)
-    try {
+    if (raw === null || raw === undefined) return null;
+    const text = String(raw).trim();
+    if (!text) return null;
+
+    const direct = (s) => { try { return JSON.parse(s); } catch (e) { return undefined; } };
+
+    // 1) 原样
+    let parsed = direct(text);
+    if (parsed !== undefined) return parsed;
+
+    // 修复器：逐字符转义字符串内的裸引号/裸换行
+    const fixQuotes = (src) => {
       let result = [], inStr = false, esc = false;
-      for (let i = 0; i < raw.length; i++) {
-        const c = raw[i];
+      for (let i = 0; i < src.length; i++) {
+        const c = src[i];
         if (esc) { result.push(c); esc = false; continue; }
         if (c === '\\') { result.push(c); esc = true; continue; }
         if (inStr && (c === '\n' || c === '\r' || c === '\t')) {
@@ -4315,7 +4712,7 @@ const MVU = {
         if (c === '"') {
           if (!inStr) { inStr = true; result.push(c); }
           else {
-            const rest = raw.substring(i + 1).trimStart();
+            const rest = src.substring(i + 1).trimStart();
             if (!rest || ',}]:'.includes(rest[0])) { inStr = false; result.push(c); }
             else { result.push('\\"'); } // unescaped inner quote → escape it
           }
@@ -4323,33 +4720,105 @@ const MVU = {
         }
         result.push(c);
       }
-      const repaired = result.join('');
-      const parsed = JSON.parse(repaired);
-      log('JSON repaired (escaped inner quotes)');
-      return parsed;
-    } catch (e2) { log('JSON repair also failed:', e2); return null; }
-  },
+      return result.join('');
+    };
+    // 去尾逗号（对象/数组闭合前的孤立逗号）
+    const stripTrailingCommas = (src) => src.replace(/,\s*([}\]])/g, '$1');
+    // 中文智能引号 → ASCII（AI 中文写作时高频出现）
+    const normalizeSmartQuotes = (src) => src
+      .replace(/[\u201C\u201D\u2033]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'");
 
-  parseInit(text) {
-    const m = text.match(/```json:mvu_init\s*\n([\s\S]*?)\n```/);
-    if (!m) return null;
-    return this._tryParseJson(m[1]);
-  },
+    const variants = [
+      { name: 'escaped-inner-quotes', make: fixQuotes },
+      { name: 'trailing-commas', make: stripTrailingCommas },
+      { name: 'smart-quotes', make: normalizeSmartQuotes },
+      { name: 'smart-quotes+commas', make: (s) => stripTrailingCommas(normalizeSmartQuotes(s)) },
+    ];
+    for (const v of variants) {
+      parsed = direct(v.make(text));
+      if (parsed !== undefined) { log('JSON repaired (' + v.name + ')'); return parsed; }
+    }
 
-  parsePatch(text) {
-    const m = text.match(/```json:mvu\s*\n([\s\S]*?)\n```/);
-    if (!m) return null;
-    const parsed = this._tryParseJson(m[1]);
-    if (!parsed) return null;
-    if (Array.isArray(parsed)) return { analysis: '', patches: parsed };
-    if (parsed.patches && Array.isArray(parsed.patches)) return parsed;
+    // 5) 截取平衡括号子串（含前后夹带文字 / 组合修复）
+    const sliced = this._sliceBalancedJson(text);
+    if (sliced) {
+      parsed = direct(sliced);
+      if (parsed !== undefined) { log('JSON repaired (balanced slice)'); return parsed; }
+      for (const v of variants) {
+        parsed = direct(v.make(sliced));
+        if (parsed !== undefined) { log('JSON repaired (balanced slice + ' + v.name + ')'); return parsed; }
+      }
+    }
+
+    log('JSON repair failed for payload of length', text.length);
     return null;
   },
 
+  parseInit(text) {
+    // 兼容 json:mvu_init / mvu_init，多块时取第一个可解析的
+    for (const body of this._extractFencedBlocks(text, 'mvu_init')) {
+      const parsed = this._tryParseJson(body);
+      if (parsed) return parsed;
+    }
+    return null;
+  },
+
+  /**
+   * 解析 json:mvu 更新块。同一回复里出现多个块时合并 patches，
+   * analysis 用换行拼接（AI 分段输出时不再丢后半段）。
+   */
+  parsePatch(text) {
+    const blocks = this._extractFencedBlocks(text, 'mvu');
+    if (!blocks.length) return null;
+    const merged = { analysis: '', patches: [] };
+    let ok = false;
+    for (const body of blocks) {
+      const parsed = this._tryParseJson(body);
+      if (!parsed) continue;
+      const patches = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.patches) ? parsed.patches : null);
+      if (!patches) continue;
+      if (typeof parsed.analysis === 'string' && parsed.analysis.trim()) {
+        merged.analysis = merged.analysis ? merged.analysis + '\n' + parsed.analysis : parsed.analysis;
+      }
+      merged.patches.push(...patches);
+      ok = true;
+    }
+    return ok ? merged : null;
+  },
+
   parseMvuUpdate(text) {
-    const m = text.match(/```json:mvu_update\s*\n([\s\S]*?)\n```/);
-    if (!m) return null;
-    return this._tryParseJson(m[1]);
+    for (const body of this._extractFencedBlocks(text, 'mvu_update')) {
+      const parsed = this._tryParseJson(body);
+      if (parsed) return parsed;
+    }
+    return null;
+  },
+
+  /**
+   * 诊断一轮 AI 回复里的状态栏更新为什么没生效。
+   * 供 UI 区分「AI 本轮确实没写」与「写了但解析失败」——历史实现两者都静默，
+   * 用户只看到状态栏没动。
+   * @returns {{found:boolean, blockCount:number, parseOk:boolean, reason:string}}
+   */
+  diagnoseMvuResponse(text) {
+    const blocks = this._extractFencedBlocks(text, 'mvu');
+    if (!blocks.length) {
+      return { found: false, blockCount: 0, parseOk: false, reason: 'no-block' };
+    }
+    let parsedAny = false;
+    for (const body of blocks) {
+      const parsed = this._tryParseJson(body);
+      if (!parsed) continue;
+      const patches = Array.isArray(parsed) ? parsed : (Array.isArray(parsed.patches) ? parsed.patches : null);
+      if (patches) { parsedAny = true; break; }
+    }
+    return {
+      found: true,
+      blockCount: blocks.length,
+      parseOk: parsedAny,
+      reason: parsedAny ? 'ok' : 'parse-failed',
+    };
   },
 
   /**
@@ -4418,12 +4887,13 @@ const MVU = {
 
   cleanText(text) {
     return text
-      .replace(/```json:mvu_init\s*\n[\s\S]*?\n```/g, '')
-      .replace(/```json:mvu_update\s*\n[\s\S]*?\n```/g, '')
-      .replace(/```json:mvu\s*\n[\s\S]*?\n```/g, '')
-      .replace(/```text:story_setting\s*\n[\s\S]*?\n```/g, '')
-      .replace(/```json:story_setting_patch\s*\n[\s\S]*?\n```/g, '')
-      .replace(/```text:options\s*\n[\s\S]*?\n```/g, '')
+      .replace(/```[ \t]*(?:json[ \t]*:[ \t]*)?mvu_init\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:json[ \t]*:[ \t]*)?mvu_update\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:json[ \t]*:[ \t]*)?mvu\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:text[ \t]*:[ \t]*)?story_setting\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:json[ \t]*:[ \t]*)?story_setting_patch\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:text[ \t]*:[ \t]*)?options\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
+      .replace(/```[ \t]*(?:json[ \t]*:[ \t]*)?image\b[^\n]*\r?\n[\s\S]*?(?:\r?\n?```|$)/gi, '')
       .replace(/<branches>[\s\S]*?<\/branches>/g, '')
       .replace(/<thinking>[\s\S]*?<\/thinking>/g, '')
       .replace(/<think>[\s\S]*?<\/think>/g, '')
@@ -4554,8 +5024,16 @@ const MVU = {
       return t === 'bar' || t === 'number';
     };
     for (const p of patches) {
+      if (!p || typeof p !== 'object') { log('patch skipped (not an object)', p); continue; }
       if (p.op === 'addFromTemplate' || p.op === 'removeFromTemplate') continue; // handled separately
-      const path = p.path.replace(/^\//, '');
+      // 路径防御：历史实现在这里直接 p.path.replace，AI 漏写 path 会抛异常并中断
+      // 整批 patch 的应用（后续所有更新全部丢失）——正是「状态栏不更新」的一种成因。
+      if (typeof p.path !== 'string' || !p.path.trim()) {
+        log('patch skipped (missing path)', p.op, JSON.stringify(p.value));
+        continue;
+      }
+      const path = p.path.replace(/^\//, '').replace(/\/+$/, '');
+      if (!path) { log('patch skipped (empty path)', p.op); continue; }
       const parts = path.split('/');
       const field = parts[0];
       if (p.op === 'replace') {
@@ -4570,14 +5048,30 @@ const MVU = {
           assignKey(resolveParent(s, parts, true), parts[parts.length - 1], v);
         }
       } else if (p.op === 'delta') {
-        const parent = parts.length === 1 ? s : resolveParent(s, parts, false);
+        const parent = parts.length === 1 ? s : resolveParent(s, parts, true);
         const key = parts.length === 1 ? field : parts[parts.length - 1];
         if (parent) {
           // 历史坏数据防御：state 里已经是 "45/100" 字符串时，delta 先归一化再加
           const rawCur = parent[key];
-          const cur = typeof rawCur === 'number' ? rawCur : (isNumericField(key) ? this._coerceNumeric(rawCur) : null);
+          const def = parts.length === 1 ? schema?.[field] : null;
+          const numeric = isNumericField(key) || (def && (def.type === 'bar' || def.type === 'number'));
           const dv = this._coerceNumeric(p.value);
-          if (cur !== null && dv !== null) parent[key] = cur + dv;
+          if (dv === null) {
+            log('patch delta skipped (non-numeric value)', p.path, p.value);
+          } else if (rawCur === undefined || rawCur === null || rawCur === '') {
+            // 字段尚未初始化（AI 对未声明/未初始化字段直接用 delta）：按 schema 默认值起算，
+            // 历史实现直接丢弃 → 表现为「AI 更新了但状态栏没动」。
+            const base = def ? (Number(def.value) || 0) : 0;
+            parent[key] = base + dv;
+            log('patch delta initialized missing field', p.path, '→', parent[key]);
+          } else {
+            const cur = typeof rawCur === 'number' ? rawCur : (numeric ? this._coerceNumeric(rawCur) : null);
+            if (cur !== null) {
+              parent[key] = cur + dv;
+            } else {
+              log('patch delta skipped (uncoercible current value)', p.path, rawCur);
+            }
+          }
         }
       } else if (p.op === 'add') {
         const parent = resolveParent(s, parts, true);
@@ -4589,7 +5083,6 @@ const MVU = {
     }
     return s;
   },
-
   /**
    * Handle addFromTemplate / removeFromTemplate ops.
    * Mutates mvu.schema, mvu.state, and inserts/removes DOM elements.
@@ -4603,26 +5096,29 @@ const MVU = {
         if (!tpl) { log('Template not found:', p.template); continue; }
         const id = p.id;
         if (!mvu.templateInstances) mvu.templateInstances = [];
+        // 显示名兜底：优先补丁的 name，其次 values.name；都没有时 UI 层会从档案文本提取，
+        // 这里保持 id 以免编造。绝不把拼音 id 当最终显示名传下去。
+        const displayName = p.name || p.values?.name || id;
         // Register schema fields with prefix
         for (const [key, def] of Object.entries(tpl.fields)) {
           const fieldName = id + '_' + key;
-          mvu.schema[fieldName] = { ...def, label: (p.name || id) + ' - ' + def.label };
+          mvu.schema[fieldName] = { ...def, label: displayName + ' - ' + def.label };
         }
         // Set initial state values
-        const values = p.values || {};
+        const values2 = p.values || {};
         for (const [key, def] of Object.entries(tpl.fields)) {
           const fieldName = id + '_' + key;
-          mvu.state[fieldName] = values[key] !== undefined ? values[key]
+          mvu.state[fieldName] = values2[key] !== undefined ? values2[key]
             : def.type === 'bar' || def.type === 'number' ? 0
             : def.type === 'list' ? [] : '';
         }
         // Record instance for persistence (re-render on page load)
         if (!mvu.templateInstances.find(i => i.id === id)) {
-          mvu.templateInstances.push({ template: p.template, id, name: p.name || id });
+          mvu.templateInstances.push({ template: p.template, id, name: displayName });
         }
         // Clone template HTML and insert into container
-        this._insertTemplateHtml(tpl, id, p.name || id, container);
-        log('Template added:', p.template, id, Object.keys(values));
+        this._insertTemplateHtml(tpl, id, displayName, container);
+        log('Template added:', p.template, id, Object.keys(values2));
       } else if (p.op === 'removeFromTemplate') {
         const tpl = templates[p.template];
         if (!tpl) continue;
@@ -4718,19 +5214,24 @@ const MVU = {
     return value.map(v => this._renderListItem(v)).join('');
   },
 
-  updateDOM(container, state, schema, changedFields = []) {
+  updateDOM(container, state, schema, changedFields = [], changes = null) {
     if (!container) return;
     const changed = new Set(changedFields || []);
     container.querySelectorAll('.mvu-field-changed').forEach(el => el.classList.remove('mvu-field-changed'));
+    container.querySelectorAll('.mvu-delta-badge').forEach(el => el.remove());
+    const changeMap = new Map();
+    if (Array.isArray(changes)) for (const c of changes) { if (c && c.field) changeMap.set(c.field, c); }
     for (const [field, rawValue] of Object.entries(state)) {
       const def = schema?.[field];
       // bar/number 显示前归一化：旧存档 state 里可能残留 "45/100" 字符串（净化机制上线前写入的）
       let value = rawValue;
-      if (def && (def.type === 'bar' || def.type === 'number') && typeof value !== 'number') {
+      const isNumeric = !!(def && (def.type === 'bar' || def.type === 'number'));
+      if (isNumeric && typeof value !== 'number') {
         const n = this._coerceNumeric(value);
         if (n !== null) value = n;
       }
       const els = [...container.querySelectorAll(`[data-field="${field}"]`)];
+      const change = changeMap.get(field);
       for (const el of els) {
         const text = this._formatDisplayValue(value);
         if (text.includes('\n')) {
@@ -4739,9 +5240,23 @@ const MVU = {
           el.textContent = text;
         }
       }
+      // B1: 数值滚动动画（before → after 数字插值），仅在确有数值变化时触发
+      if (isNumeric && change && typeof change.before === 'number' && typeof value === 'number' && change.before !== value) {
+        this._rollNumericValue(els, change.before, value);
+      }
       const barEls = [...container.querySelectorAll(`[data-field-bar="${field}"]`)];
       for (const barEl of barEls) {
-        if (def?.max && typeof value === 'number') barEl.style.width = Math.max(0, Math.min(100, (value / def.max) * 100)) + '%';
+        if (def?.max && typeof value === 'number') {
+          const ratio = Math.max(0, Math.min(100, (value / def.max) * 100));
+          barEl.style.width = ratio + '%';
+          // B1: 低值警示 —— 条体转警示色（阈值可被 schema 覆写）
+          const lowAt = Number(def.lowAt ?? 0.2);
+          const midAt = Number(def.midAt ?? 0.45);
+          barEl.classList.toggle('mvu-bar-low', ratio <= lowAt * 100);
+          barEl.classList.toggle('mvu-bar-mid', ratio > lowAt * 100 && ratio <= midAt * 100);
+        } else {
+          barEl.classList.remove('mvu-bar-low', 'mvu-bar-mid');
+        }
       }
       const listEls = [...container.querySelectorAll(`[data-field-list="${field}"]`)];
       for (const listEl of listEls) {
@@ -4752,8 +5267,49 @@ const MVU = {
           if (!target) continue;
           (target.closest('.mvu-field') || target).classList.add('mvu-field-changed');
         }
+        // B1: 数值字段变化时，在字段行右侧浮出 delta 徽标（+N / -N）
+        const host = els.length ? els[0].closest('.mvu-field') : null;
+        if (host && typeof change?.delta === 'string' && /^[+-]\d/.test(change.delta)) {
+          const badge = document.createElement('span');
+          badge.className = 'mvu-delta-badge ' + (change.delta.startsWith('+') ? 'up' : 'down');
+          badge.textContent = change.delta;
+          host.appendChild(badge);
+          setTimeout(() => badge.remove(), 2100);
+        }
       }
     }
+  },
+
+  /**
+   * B1: 数值滚动动画。把 el 的文本从 from 插值到 to（约 620ms）。
+   * 用 requestAnimationFrame 而非 CSS 计数动画 —— 起点是真实旧值，终点精确落回目标值。
+   */
+  _rollNumericValue(els, from, to) {
+    if (!els || !els.length) return;
+    const list = els.filter(el => el && el.isConnected);
+    if (!list.length) return;
+    const decimals = (String(to).split('.')[1] || '').length;
+    const duration = 620;
+    const start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const ease = t => 1 - Math.pow(1 - t, 3);
+    for (const el of list) el.classList.add('mvu-num-roll', 'rolling');
+    const tick = () => {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const t = Math.min(1, (now - start) / duration);
+      const cur = from + (to - from) * ease(t);
+      const text = decimals ? cur.toFixed(decimals) : String(Math.round(cur));
+      for (const el of list) { if (el.isConnected) el.textContent = text; }
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        for (const el of list) {
+          if (!el.isConnected) continue;
+          el.textContent = this._formatDisplayValue(to);
+          el.classList.remove('rolling');
+        }
+      }
+    };
+    requestAnimationFrame(tick);
   },
 
   _insertTemplateHtml(tpl, id, name, container) {
@@ -4990,7 +5546,7 @@ const MVU = {
       const tpl = templates[inst.template];
       if (tpl) this._insertTemplateHtml(tpl, inst.id, inst.name, container);
     }
-    if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema, mvuData._changedFields || []);
+    if (mvuData.state && mvuData.schema) this.updateDOM(container, mvuData.state, mvuData.schema, mvuData._changedFields || [], mvuData._lastChanges || []);
     // Tab component: bind click events for data-tab / data-tab-panel pairs
     this._bindTabs(container);
   },
@@ -5040,16 +5596,31 @@ const MVU = {
 // Summary Module
 // ============================================================
 const Summary = {
+  /**
+   * 摘要块提取用的宽松正则。
+   * 历史实现是字面量 /<details><summary>...<\/summary>([\s\S]*?)<\/details>/，
+   * 只在 AI 输出与模板**逐字节一致**时才匹配——以下常见写法全部静默失配，
+   * 表现为「编辑面板能取到摘要，正式游玩时取不到」：
+   *   <details open> / <summary class="..."> / 标签里带空行或空格 / 大小写差异
+   * 失配后 aiMsg.abstract 为 null，该轮摘要永久丢失（L0 层断裂，后续 sm/ar 也少了输入）。
+   * 这里放宽标签匹配（允许属性、空白、大小写），summary 文案仍不限定。
+   */
+  _ABSTRACT_RE: /<details\b[^>]*>\s*<summary\b[^>]*>[\s\S]*?<\/summary>([\s\S]*?)<\/details\s*>/i,
+  _ABSTRACT_RE_G: /<details\b[^>]*>\s*<summary\b[^>]*>[\s\S]*?<\/summary>[\s\S]*?<\/details\s*>/gi,
+
   parseAbstract(text) {
-    const m = text.match(/<details><summary>[\s\S]*?<\/summary>([\s\S]*?)<\/details>/);
+    if (!text) return null;
+    const m = text.match(this._ABSTRACT_RE);
     return m ? m[0].trim() : null;
   },
   extractAbstractContent(text) {
-    const m = text.match(/<details><summary>[\s\S]*?<\/summary>([\s\S]*?)<\/details>/);
+    if (!text) return null;
+    const m = text.match(this._ABSTRACT_RE);
     return m ? m[1].trim() : null;
   },
   cleanAbstract(text) {
-    return text.replace(/<details><summary>[\s\S]*?<\/summary>[\s\S]*?<\/details>/g, '').trim();
+    if (!text) return '';
+    return text.replace(this._ABSTRACT_RE_G, '').trim();
   },
   /**
    * Count unmerged abstracts since lastMergedIdx.
@@ -5494,7 +6065,7 @@ const Storyline = {
     const id = Utils.generateId('conv');
     return {
       id,
-      name: String(name || `${storyline?.name || '新'} · ${new Date().toLocaleDateString()}`).trim(),
+      name: String(name || `${storyline?.name || '故事'} · 第 1 卷`).trim(),
       phase: 'init',
       apiProfileId,
       model,
@@ -5874,9 +6445,21 @@ const Utils = {
     h = h.replace(/\u201c([^\u201c\u201d]*)\u201d/g, '<span class=\'quote-text\'>\u201c$1\u201d</span>');
     h = h.replace(/「([^「」]*)」/g, '<span class=\'quote-text\'>「$1」</span>');
     h = h.replace(/『([^『』]*)』/g, '<span class=\'quote-text\'>『$1』</span>');
-    h = h.replace(/^(\*{3}|---)/gm, '<hr class="story-divider">');
-    h = h.replace(/\n/g, '<br>');
-    return h;
+    h = h.replace(/^(\*{3,}|---+)\s*$/gm, '<hr class="story-divider">');
+    // 段落化：按空行切块，每块包 <p>，块内换行仍为 <br>。
+    // 这样正文才能拿到首行缩进（text-indent 只作用于块级元素的首行），
+    // 纯 <br> 流的排版永远做不出小说装帧的呼吸感。
+    const blocks = h.split(/\n{2,}/);
+    return blocks.map(b => {
+      const seg = b.trim();
+      if (!seg) return '';
+      if (seg === '<hr class="story-divider">') return seg;
+      const body = seg.replace(/\n/g, '<br>');
+      // 以引号台词开头的段落标记出来，CSS 据此取消首行缩进（中文排版惯例）。
+      // 用显式 class 而不是 :has()，因为 :has() 在旧版 Android WebView 不支持。
+      const cls = /^<span class='quote-text'>/.test(seg) ? ' class="quote-line"' : '';
+      return `<p${cls}>${body}</p>`;
+    }).filter(Boolean).join('');
   },
   cleanNullFlood(text) {
     if (!text) return '';
@@ -5985,59 +6568,264 @@ const UI = {
   s.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Noto+Serif+SC:wght@400;600;700&family=Outfit:wght@300;400;500;600&display=swap');
     :root {
-      --bg-deep: #0f0c08; --bg-primary: #18140e; --bg-surface: #211c14; --bg-elevated: #2a2318;
-      --bg-glass: rgba(33, 28, 20, 0.85); --bg-glass-light: rgba(42, 35, 24, 0.7);
-      --text-primary: #e8dcc8; --text-secondary: #b0a48e; --text-muted: #7a6f5e;
-      --accent: #c9a44c; --accent-dim: rgba(201, 164, 76, 0.15); --accent-glow: rgba(201, 164, 76, 0.3);
-      --border: rgba(201, 164, 76, 0.12); --border-strong: rgba(201, 164, 76, 0.25);
-      --success: #7cb87a; --danger: #c96a5a;
+      /* ---- 东方玄金·沉浸画卷 设计令牌 (v2.5) ----
+         旧变量名全部保留（数百处样式引用它们），只升级取值并追加新令牌，
+         这样全局质感提升的同时不会破坏任何既有选择器。 */
+      --bg-void: #080706;
+      --bg-deep: #110e0a; --bg-primary: #16120c; --bg-surface: #1a1610; --bg-elevated: #241f17;
+      --bg-highlight: #2e271e;
+      --bg-glass: rgba(26, 22, 16, 0.88); --bg-glass-light: rgba(36, 31, 23, 0.72);
+      --text-primary: #f2e9dc; --text-secondary: #c8bea9; --text-muted: #8d8270;
+      --text-faint: #6a6053;
+      --accent: #d6b25f; --accent-bright: #f3d484;
+      --accent-dim: rgba(214, 178, 95, 0.12); --accent-glow: rgba(214, 178, 95, 0.28);
+      --accent-soft: rgba(214, 178, 95, 0.18); --accent-ring: rgba(214, 178, 95, 0.10);
+      --gold-primary: #d6b25f; --gold-bright: #f3d484;
+      --gold-border: rgba(214, 178, 95, 0.22); --gold-border-subtle: rgba(214, 178, 95, 0.08);
+      --border: rgba(214, 178, 95, 0.12); --border-strong: rgba(214, 178, 95, 0.25);
+      --success: #78c091; --danger: #d46556;
+      --jade-accent: #78c091; --jade-dim: rgba(120, 192, 145, 0.15);
+      --cinnabar-red: #d46556; --cinnabar-dim: rgba(212, 101, 86, 0.15);
+      --cinnabar-soft: rgba(212, 101, 86, 0.28);
+      --ink-blue: #6d91ba; --purple-accent: #b485d4;
+      --azure-blue: #5b92e5; --azure-dim: rgba(91, 146, 229, 0.15);
+      --violet-accent: #b47ae5; --violet-dim: rgba(180, 122, 229, 0.15);
+      --bg-glass-heavy: rgba(18, 14, 10, 0.95);
+      --bg-glass-card: rgba(32, 26, 20, 0.78);
+      /* 遮罩与渐变副色：原先硬编码在各页面 13 处，收口后所有主题自动同步 */
+      --overlay-scrim: rgba(9, 8, 7, 0.72);
+      --overlay-scrim-heavy: rgba(9, 8, 7, 0.96);
+      --scrim-soft: rgba(9, 8, 7, 0.62); --vignette: rgba(9, 8, 7, 0.55);
+      --scrim-strong: rgba(9, 8, 7, 0.85); --scrim-chip: rgba(9, 8, 7, 0.68); --scrim-grad-heavy: rgba(9, 8, 7, 0.95);
+      --hairline: rgba(255, 255, 255, 0.06);
+      --stage-line: rgba(214, 178, 95, 0.35);
+      --gradient-gold-from: var(--gold-primary);
+      --gradient-gold-to: #d8b662;
+      --ink-on-gold: #1a1510;
       --font-display: 'Cormorant Garamond', 'Noto Serif SC', serif;
       --font-body: 'Noto Serif SC', 'Cormorant Garamond', serif;
       --font-ui: 'Outfit', sans-serif;
-      --radius: 8px; --radius-lg: 14px;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4); --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      /* 别名令牌：v2.5 方案预览里用的名字，补齐后新板块 CSS 可原样移植 */
+      --font-serif: var(--font-body);
+      --font-sans: var(--font-ui);
+      --font-mono: 'SF Mono', 'Fira Code', 'Outfit', monospace;
+      --text-main: var(--text-primary);
+      --text-regular: var(--text-secondary);
+      --gold-dim: rgba(214, 178, 95, 0.14);
+      --gold-glow: rgba(214, 178, 95, 0.28);
+      /* 圆角栅格：4 / 6 / 10 / 12 / 16 / 20 / full */
+      --radius-xs: 4px;
+      --radius-sm: 6px; --radius: 10px; --radius-md: 12px; --radius-lg: 16px;
+      --radius-xl: 20px; --radius-full: 9999px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --shadow-ambient: 0 4px 20px rgba(0, 0, 0, 0.5);
+      --shadow-floating: 0 16px 48px rgba(0, 0, 0, 0.7), 0 0 1px 1px rgba(214, 178, 95, 0.15);
+      --shadow-gold-glow: 0 0 24px rgba(214, 178, 95, 0.2);
+      /* 间距栅格：4px 基数 */
+      --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+      --space-6: 24px; --space-7: 28px; --space-8: 32px; --space-10: 40px;
+      /* 字号栅格 */
+      --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 14px; --fs-lg: 15.5px;
+      --fs-xl: 18px; --fs-2xl: 22px; --fs-3xl: 28px;
+      /* 层级阶梯：同值不同语义的两组已按用途拆开 */
+      --z-content: 10; --z-sticky: 50; --z-sidebar: 150; --z-topbar: 250;
+      --z-dropdown: 300; --z-lightbox: 1200; --z-edit-overlay: 1800;
+      --z-scrim: 1900; --z-modal: 2000; --z-toast: 3000;
+      /* 页面骨架层：接线时引用了这四个名字却漏了定义。缺失时 z-index 跌回 auto，
+         顶栏/悬浮按钮会被 z-index:1 的 .page-container 整个盖住（首页右上角设置
+         按钮点不到、底部悬浮条不可按即此因） */
+      --z-chrome: 100; --z-fab: 90; --z-rail: 50; --z-banner: 9999;
+      --ease-silk: cubic-bezier(0.16, 1, 0.3, 1);
+      --transition-smooth: 0.3s var(--ease-silk);
+      --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-fast: 0.15s var(--ease-silk);
+      /* 品牌朱砂印章：不随主题变金变绿，保持东方本色 */
+      --seal-from: #c93b2b;
+      --seal-to: #8b1f14;
+      --seal-border: rgba(255, 215, 0, 0.4);
+      --seal-ink: #fff8e8;
+      --seal-glow: rgba(201, 59, 43, 0.45);
     }
+    /* 东方天工 3.0 通用胶囊与卡片（自 MVU BASE_STYLE 迁出：首页徽章等全局节点也要有胶囊底） */
+    .pill-item {
+      background: var(--bg-surface); border: 1px solid var(--gold-border-subtle); color: var(--text-muted);
+      font-size: var(--fs-xs); padding: 4px 11px; border-radius: 99px; cursor: pointer; white-space: nowrap;
+      transition: all var(--transition-fast); display: inline-flex; align-items: center; gap: 5px;
+    }
+    .pill-item:hover { color: var(--gold-bright); border-color: var(--gold-border); background: var(--bg-elevated); }
+    .pill-item.active { background: var(--gold-dim); border-color: var(--gold-primary); color: var(--gold-bright); font-weight: 600; }
+    /* 背包法宝稀有度光晕 */
+    .bag-slot.rare-gold { border-color: var(--gold-primary) !important; box-shadow: inset 0 0 10px var(--gold-dim), 0 0 12px var(--gold-glow); }
+    .bag-slot.rare-purple { border-color: var(--violet-accent) !important; box-shadow: inset 0 0 10px var(--violet-dim), 0 0 12px var(--violet-dim); }
+    .bag-slot.rare-jade { border-color: var(--jade-accent) !important; box-shadow: inset 0 0 10px var(--jade-dim), 0 0 12px var(--jade-dim); }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: var(--font-ui); background: var(--bg-deep); color: var(--text-primary); min-height: 100vh; overflow: hidden; }
-    body::before { content: ''; position: fixed; inset: 0; background: url('assets/bg.jpg') center/cover no-repeat; opacity: 0.35; z-index: 0; pointer-events: none; }
-    body::after { content: ''; position: fixed; inset: 0; background: radial-gradient(ellipse at 30% 20%, rgba(201,164,76,0.06) 0%, transparent 60%), radial-gradient(ellipse at 70% 80%, rgba(201,164,76,0.04) 0%, transparent 60%); z-index: 0; pointer-events: none; }
+    body::before { content: ''; position: fixed; inset: 0; background: url('assets/bg.jpg') center/cover no-repeat; opacity: 0.28; filter: saturate(0.85) brightness(0.9); z-index: 0; pointer-events: none; }
+    /* 双层氛围光 + 宣纸噪点暗纹，营造古典手账般的景深 */
+    body::after { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse at 28% 18%, rgba(214,178,95,0.07) 0%, transparent 58%),
+        radial-gradient(ellipse at 72% 82%, rgba(214,178,95,0.045) 0%, transparent 58%),
+        radial-gradient(ellipse at 50% 50%, transparent 45%, var(--vignette) 100%);
+    }
+    /* 宣纸噪点：极低透明度 SVG 噪点，避免大面积纯色的塑料感 */
+    .noise-veil { position: fixed; inset: 0; z-index: 1; pointer-events: none; opacity: 0.035; mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
     ::-webkit-scrollbar { width: 5px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; } ::-webkit-scrollbar-thumb:hover { background: var(--accent-glow); }
     .icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; } .icon svg { width: 100%; height: 100%; }
-    .btn { font-family: var(--font-ui); font-size: 13px; font-weight: 500; padding: 8px 18px; border: none; border-radius: var(--radius); cursor: pointer; transition: all var(--transition); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-    .btn-primary { background: linear-gradient(135deg, var(--accent), #d4b05c); color: #1a1510; font-weight: 600; }
-    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn { font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 500; padding: 8px 18px; border: none; border-radius: var(--radius); cursor: pointer; transition: all var(--transition-smooth); display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: linear-gradient(135deg, var(--gradient-gold-from), var(--gradient-gold-to)); color: var(--ink-on-gold); font-weight: 600; box-shadow: 0 2px 12px rgba(214,178,95,0.22); }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 20px rgba(214,178,95,0.34); }
     .btn-secondary { background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); }
-    .btn-secondary:hover { border-color: var(--border-strong); color: var(--text-primary); }
+    .btn-secondary:hover { border-color: var(--border-strong); color: var(--text-primary); background: var(--bg-highlight); }
     .btn-ghost { background: transparent; color: var(--text-secondary); padding: 6px 10px; }
     .btn-ghost:hover { color: var(--accent); background: var(--accent-dim); }
-    .btn-icon { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius); color: var(--text-secondary); cursor: pointer; transition: all var(--transition); }
+    .btn-danger { background: var(--cinnabar-dim); color: var(--cinnabar-red); border: 1px solid rgba(212,101,86,0.3); }
+    .btn-danger:hover { background: rgba(212,101,86,0.24); border-color: var(--cinnabar-red); }
+    .btn-icon { width: 36px; height: 36px; padding: 0; display: inline-flex; align-items: center; justify-content: center; background: transparent; border: none; border-radius: var(--radius); color: var(--text-secondary); cursor: pointer; transition: all var(--transition-smooth); }
     .btn-icon:hover { color: var(--accent); background: var(--accent-dim); }
-    input, textarea, select { font-family: var(--font-ui); font-size: 14px; background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; outline: none; transition: border-color var(--transition); width: 100%; }
+    input, textarea, select { font-family: var(--font-ui); font-size: var(--fs-md); background: var(--bg-surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; outline: none; transition: border-color var(--transition-smooth), box-shadow var(--transition-smooth); width: 100%; }
     input[type="checkbox"], input[type="radio"] { width: auto; padding: 0; background: none; border: revert; border-radius: revert; cursor: pointer; }
-    input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim), 0 0 16px rgba(214,178,95,0.08); }
+    input::placeholder, textarea::placeholder { color: var(--text-faint); }
     textarea { resize: vertical; min-height: 80px; line-height: 1.6; } select { cursor: pointer; }
-    label { font-size: 13px; color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; display: block; }
-    .toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-20px); z-index: 10000; opacity: 0; transition: all 0.3s ease; pointer-events: none; }
+    label { font-size: var(--fs-base); color: var(--text-secondary); font-weight: 500; margin-bottom: 4px; display: block; }
+    /* ---- 表单栅格：原先 index/settings 各有一份同义定义，收口到此处 ---- */
+    .form-group { margin-bottom: var(--space-4); }
+    .form-group:last-child { margin-bottom: 0; }
+    /* ---- 通用徽章 / 胶囊（玄金主题下统一质感） ---- */
+    .badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.3px; padding: 3px 9px; border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--accent-dim); color: var(--accent); white-space: nowrap; }
+    .badge-jade { background: var(--jade-dim); color: var(--jade-accent); border-color: rgba(120,192,145,0.3); }
+    .badge-cinnabar { background: var(--cinnabar-dim); color: var(--cinnabar-red); border-color: rgba(212,101,86,0.3); }
+    .badge-ink { background: rgba(109,145,186,0.14); color: var(--ink-blue); border-color: rgba(109,145,186,0.3); }
+    .badge-muted { background: rgba(133,122,104,0.12); color: var(--text-muted); border-color: var(--border); }
+    /* ---- 通用卡片容器 ---- */
+    .panel-card { background: linear-gradient(160deg, var(--bg-glass-card), var(--bg-glass-heavy)); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-ambient); }
+    .panel-card-hover { transition: border-color var(--transition-smooth), transform var(--transition-smooth), box-shadow var(--transition-smooth); }
+    .panel-card-hover:hover { border-color: var(--gold-border); transform: translateY(-2px); box-shadow: var(--shadow-floating); }
+    /* 金线分隔：中间亮两端淡，用于章节/面板分隔 */
+    .gold-rule { height: 1px; border: none; margin: 18px 0; background: linear-gradient(90deg, transparent, var(--gold-border), transparent); }
+    .toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-20px); z-index: var(--z-toast); opacity: 0; transition: all 0.35s var(--ease-silk); pointer-events: none; }
     .toast-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .toast-content { padding: 10px 22px; border-radius: var(--radius); font-size: 13px; font-weight: 500; backdrop-filter: blur(12px); border: 1px solid var(--border); }
+    .toast-content { padding: 11px 22px; border-radius: var(--radius-full); font-size: var(--fs-base); font-weight: 500; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border); box-shadow: var(--shadow-floating); }
     .toast-info .toast-content { background: var(--bg-glass); color: var(--text-primary); }
-    .toast-success .toast-content { background: rgba(124,184,122,0.15); color: var(--success); border-color: rgba(124,184,122,0.3); }
-    .toast-error .toast-content { background: rgba(201,106,90,0.15); color: var(--danger); border-color: rgba(201,106,90,0.3); }
-    .modal-overlay { position: fixed; inset: 0; z-index: 9000; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.2s ease; pointer-events: none; }
+    .toast-success .toast-content { background: rgba(120,192,145,0.16); color: var(--success); border-color: rgba(120,192,145,0.3); }
+    .toast-error .toast-content { background: rgba(212,101,86,0.16); color: var(--danger); border-color: rgba(212,101,86,0.3); }
+    /* 弹窗必须自身可滚动：起步面板 / API 高级参数这类长表单会超出视口，
+       旧样式没有 max-height 也没有 overflow，配合 align-items:center 会上下同时被裁掉且无法滚动。 */
+    .modal-overlay { position: fixed; inset: 0; z-index: var(--z-modal); background: var(--overlay-scrim); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.25s ease; pointer-events: none; padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
     .modal-visible { opacity: 1; pointer-events: auto; }
-    .modal-box { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0; min-width: 360px; max-width: 520px; width: 90%; box-shadow: var(--shadow); }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); }
-    .modal-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--accent); }
-    .modal-close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all var(--transition); }
-    .modal-close-btn:hover { color: var(--text-primary); background: var(--accent-dim); }
-    .modal-body { padding: 20px; line-height: 1.6; color: var(--text-secondary); font-size: 14px; }
-    .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+    .modal-box { background: linear-gradient(165deg, var(--bg-elevated), var(--bg-surface) 55%, var(--bg-primary)); border: 1px solid var(--gold-border); border-radius: var(--radius-lg); padding: 0; min-width: 0; max-width: 520px; width: 90%; box-shadow: var(--shadow-floating); display: flex; flex-direction: column; max-height: 100%; overflow: hidden; transform: translateY(10px) scale(0.98); transition: transform 0.3s var(--ease-silk); }
+    .modal-visible .modal-box { transform: translateY(0) scale(1); }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .modal-title { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 600; color: var(--accent); letter-spacing: 0.5px; }
+    .modal-close-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 50%; transition: all var(--transition-smooth); flex-shrink: 0; }
+    .modal-close-btn:hover { color: var(--text-primary); background: var(--accent-dim); transform: rotate(90deg); }
+    /* min-height:0 是 flex 子项能真正滚动的必要条件 */
+    .modal-body { padding: 20px; line-height: 1.6; color: var(--text-secondary); font-size: var(--fs-md); flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
     .quote-text { color: var(--accent); margin-right: 0.25em; }
     .story-divider { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+    @keyframes goldShimmer { 0% { background-position: -200% center; } 100% { background-position: 200% center; } }
     .fade-in { animation: fadeIn 0.4s ease forwards; }
-    .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: 14px; }
+    .mvu-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); font-style: italic; font-size: var(--fs-md); }
+    /* 空态统一版式（基准取自 index.html）：翎毛笔 + 装饰线 + 标题 + 描述 + CTA */
+    .empty-state { text-align: center; padding: 80px 20px; opacity: 0; animation: fadeIn 0.6s ease 0.2s forwards; }
+    .empty-quill { width: 64px; height: 64px; margin: 0 auto 20px; color: var(--text-muted); opacity: 0.35; }
+    .empty-quill svg { width: 100%; height: 100%; }
+    .empty-ornament { display: block; margin: 0 auto 16px; width: 120px; height: 1px; background: linear-gradient(90deg, transparent, var(--border-strong), transparent); }
+    .empty-title { font-family: var(--font-display); font-size: var(--fs-2xl); font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+    .empty-desc { font-family: var(--font-body); font-size: var(--fs-md); color: var(--text-muted); line-height: 1.8; max-width: 360px; margin: 0 auto 32px; }
+    .empty-cta { font-size: var(--fs-lg); padding: 12px 36px; border-radius: var(--radius-lg); box-shadow: 0 2px 20px rgba(214, 178, 95, 0.25); }
+    .empty-cta:hover { box-shadow: 0 4px 28px rgba(214, 178, 95, 0.4); }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    /* ---- 三套副主题（自 MVU BASE_STYLE 迁出）：置于样式表末尾，保证同特异性下覆盖 :root ---- */
+    /* 主题 2: 翡翠青竹 (Celadon Jade) */
+    [data-theme="jade"] {
+      --bg-void: #050e09; --bg-deep: #0a1711; --bg-surface: #10221a; --bg-elevated: #183025; --bg-highlight: #213f32;
+      --bg-glass: rgba(16, 34, 26, 0.88); --bg-glass-heavy: rgba(10, 23, 17, 0.95); --bg-glass-card: rgba(24, 48, 37, 0.75);
+      --accent: #52c794; --accent-bright: #7ee0b3; --gold-primary: #52c794; --gold-bright: #7ee0b3;
+      --gold-dim: rgba(82, 199, 148, 0.12); --gold-glow: rgba(82, 199, 148, 0.28);
+      --gold-border: rgba(82, 199, 148, 0.24); --gold-border-subtle: rgba(82, 199, 148, 0.10);
+      --border: rgba(82, 199, 148, 0.16); --border-strong: rgba(82, 199, 148, 0.32);
+      --text-primary: #ebf8f2; --text-secondary: #b8d9cb; --text-muted: #7fae9b; --text-faint: #527a68;
+      --gradient-gold-to: #3fb884; --ink-on-gold: #04150e;
+      --overlay-scrim: rgba(5, 14, 9, 0.72); --overlay-scrim-heavy: rgba(5, 14, 9, 0.96);
+      --accent-dim: rgba(82, 199, 148, 0.14); --accent-glow: rgba(82, 199, 148, 0.28);
+      --accent-soft: rgba(82, 199, 148, 0.20); --accent-ring: rgba(82, 199, 148, 0.12);
+      --bg-glass-light: rgba(28, 54, 42, 0.72);
+    }
+    /* 主题 3: 紫微星阙 (Celestial Violet) */
+    [data-theme="violet"] {
+      --bg-void: #090610; --bg-deep: #100b1d; --bg-surface: #171128; --bg-elevated: #221a3a; --bg-highlight: #2f254f;
+      --bg-glass: rgba(23, 17, 40, 0.88); --bg-glass-heavy: rgba(16, 11, 29, 0.95); --bg-glass-card: rgba(34, 26, 58, 0.75);
+      --accent: #b886fc; --accent-bright: #d4b3ff; --gold-primary: #b886fc; --gold-bright: #d4b3ff;
+      --gold-dim: rgba(184, 134, 252, 0.12); --gold-glow: rgba(184, 134, 252, 0.28);
+      --gold-border: rgba(184, 134, 252, 0.24); --gold-border-subtle: rgba(184, 134, 252, 0.10);
+      --border: rgba(184, 134, 252, 0.16); --border-strong: rgba(184, 134, 252, 0.32);
+      --text-primary: #f5f0ff; --text-secondary: #d0c4ea; --text-muted: #9586b3; --text-faint: #655884;
+      --gradient-gold-to: #9a63e8; --ink-on-gold: #100620;
+      --overlay-scrim: rgba(9, 6, 16, 0.72); --overlay-scrim-heavy: rgba(9, 6, 16, 0.96);
+      --accent-dim: rgba(184, 134, 252, 0.14); --accent-glow: rgba(184, 134, 252, 0.28);
+      --accent-soft: rgba(184, 134, 252, 0.20); --accent-ring: rgba(184, 134, 252, 0.12);
+      --bg-glass-light: rgba(38, 30, 66, 0.72);
+    }
+    /* 主题 4: 素宣书斋 (Warm Parchment / 护眼浅色) */
+    [data-theme="parchment"] {
+      --bg-void: #f5efe4; --bg-deep: #ede4d5; --bg-surface: #e4dac8; --bg-elevated: #ded0bc; --bg-highlight: #d2c0a8;
+      --bg-glass: rgba(244, 238, 227, 0.92); --bg-glass-heavy: rgba(237, 228, 213, 0.96); --bg-glass-card: rgba(228, 218, 200, 0.85);
+      --accent: #946824; --accent-bright: #b88432; --gold-primary: #946824; --gold-bright: #b88432;
+      --gold-dim: rgba(148, 104, 36, 0.12); --gold-glow: rgba(148, 104, 36, 0.22);
+      --gold-border: rgba(148, 104, 36, 0.25); --gold-border-subtle: rgba(148, 104, 36, 0.12);
+      --border: rgba(148, 104, 36, 0.18); --border-strong: rgba(148, 104, 36, 0.36);
+      --text-primary: #2b2219; --text-secondary: #4a3e31; --text-muted: #796b5c; --text-faint: #a69888;
+      --gradient-gold-to: #a8761f; --ink-on-gold: #fff8e8;
+      --overlay-scrim: rgba(70, 58, 44, 0.42); --overlay-scrim-heavy: rgba(60, 50, 38, 0.72);
+      --accent-dim: rgba(148, 104, 36, 0.14); --accent-glow: rgba(148, 104, 36, 0.22);
+      --accent-soft: rgba(148, 104, 36, 0.20); --accent-ring: rgba(148, 104, 36, 0.12);
+      --bg-glass-light: rgba(255, 251, 242, 0.78);
+      --shadow: 0 4px 20px rgba(90, 74, 52, 0.14);
+      --shadow-ambient: 0 4px 18px rgba(90, 74, 52, 0.18);
+      --shadow-floating: 0 16px 40px rgba(90, 74, 52, 0.24), 0 0 1px 1px rgba(148, 104, 36, 0.18);
+      --shadow-gold-glow: 0 0 20px rgba(148, 104, 36, 0.14);
+    }
+    /* 浅色主题专项：金底按钮须用深墨字，深色渐变须转暖棕，否则出现浅底白字 */
+    [data-theme="parchment"] .btn-primary,
+    [data-theme="parchment"] .qr-chip.qr-hardcore,
+    [data-theme="parchment"] .img-gen-chip.active,
+    [data-theme="parchment"] .pill-item.active { color: var(--ink-on-gold); }
+    [data-theme="parchment"] .panel-card {
+      background: linear-gradient(160deg, rgba(228, 218, 200, 0.95), rgba(237, 228, 213, 0.95));
+    }
   `;
   document.head.appendChild(s);
+  // 宣纸噪点覆盖层：纯装饰、不拦事件，挂到 body 后由 CSS 固定在底层之上
+  if (!document.querySelector('.noise-veil')) {
+    const veil = document.createElement('div');
+    veil.className = 'noise-veil';
+    (document.body || document.documentElement).appendChild(veil);
+  }
 })();
+
+// ============================================================
+// Theme Manager (东方天工 3.0 多意境主题)
+// ============================================================
+const Theme = {
+  current: 'obsidian',
+  get() { return this.current; },
+  set(t) {
+    this.current = t || 'obsidian';
+    try { localStorage.setItem('airp_theme', this.current); } catch {}
+    document.documentElement.setAttribute('data-theme', this.current);
+  },
+  init() {
+    let t = 'obsidian';
+    try { t = localStorage.getItem('airp_theme') || 'obsidian'; } catch {}
+    this.set(t);
+  }
+};
+try { Theme.init(); } catch {}
+window.Theme = Theme;
